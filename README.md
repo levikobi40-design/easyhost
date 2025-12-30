@@ -1,0 +1,2 @@
+# easyhost
+EasyHost MVP
