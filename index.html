@@ -1,324 +1,574 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>EasyHost — Modern Airbnb Hosting, Simplified</title>
-  <meta name="description" content="EasyHost helps independent Airbnb hosts automate check-in/check-out messages and stay organized with a clean daily dashboard." />
-
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EasyHost — Airbnb Host Assistant</title>
+  <meta name="description" content="EasyHost helps Airbnb hosts manage check-in, check-out and guest messages — fast, simple, professional." />
   <style>
     :root{
-      --bg:#0B0F17;
-      --panel:rgba(255,255,255,.06);
-      --panel2:rgba(255,255,255,.08);
-      --text:#E9EEF7;
-      --muted:rgba(233,238,247,.72);
-      --muted2:rgba(233,238,247,.55);
-      --border:rgba(255,255,255,.12);
-      --accent:#7C5CFF;
-      --accent2:#2DD4BF;
-      --warn:#FBBF24;
-      --shadow:0 20px 60px rgba(0,0,0,.45);
-      --radius:18px;
-      --radius2:26px;
-      --max:1120px;
+      --bg:#0b0f17;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.10);
+      --text:#e9eefc;
+      --muted: rgba(233,238,252,0.72);
+      --line: rgba(233,238,252,0.14);
+      --brand:#7aa2ff;
+      --brand2:#a78bfa;
+      --ok:#34d399;
+      --shadow: 0 20px 60px rgba(0,0,0,0.55);
+      --radius: 18px;
+      --radius2: 14px;
+      --max: 1100px;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
     }
-
-    *{box-sizing:border-box}
-    html,body{height:100%}
+    *{ box-sizing:border-box; }
     body{
       margin:0;
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-      background:
-        radial-gradient(900px 420px at 15% 10%, rgba(124,92,255,.30), transparent 60%),
-        radial-gradient(900px 420px at 85% 15%, rgba(45,212,191,.22), transparent 60%),
-        radial-gradient(800px 500px at 55% 75%, rgba(255,255,255,.08), transparent 60%),
-        linear-gradient(180deg, #060912 0%, #0B0F17 50%, #060912 100%);
+      font-family:var(--font);
       color:var(--text);
-      line-height:1.5;
-      overflow-x:hidden;
+      background:
+        radial-gradient(900px 500px at 20% 10%, rgba(122,162,255,0.28), transparent 60%),
+        radial-gradient(900px 500px at 80% 30%, rgba(167,139,250,0.22), transparent 60%),
+        radial-gradient(900px 600px at 50% 90%, rgba(52,211,153,0.10), transparent 60%),
+        var(--bg);
+      min-height:100vh;
     }
-
-    a{color:inherit; text-decoration:none}
-    .wrap{max-width:var(--max); margin:0 auto; padding:0 20px}
-    .nav{
-      position:sticky; top:0; z-index:30;
-      backdrop-filter: blur(10px);
-      background:rgba(6,9,18,.55);
-      border-bottom:1px solid rgba(255,255,255,.08);
+    a{ color:inherit; }
+    .wrap{ max-width:var(--max); margin:0 auto; padding:24px; }
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+      padding:10px 0 18px;
     }
-    .nav .row{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:14px 0;
-      gap:14px;
+    .brand{
+      display:flex; align-items:center; gap:10px; user-select:none;
     }
-    .brand{display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.2px}
     .logo{
-      width:34px; height:34px; border-radius:12px;
-      background:
-        linear-gradient(135deg, rgba(124,92,255,.95), rgba(45,212,191,.85));
-      box-shadow: 0 14px 30px rgba(124,92,255,.22);
+      width:38px; height:38px; border-radius:12px;
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow: 0 10px 30px rgba(122,162,255,0.22);
+      position:relative;
     }
-    .brand span{opacity:.95}
-    .navlinks{display:flex; align-items:center; gap:18px; color:var(--muted); font-size:14px}
-    .navlinks a{padding:8px 10px; border-radius:12px}
-    .navlinks a:hover{background:rgba(255,255,255,.06); color:var(--text)}
-    .cta{
-      display:flex; align-items:center; gap:10px;
+    .logo:after{
+      content:"";
+      position:absolute; inset:10px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,0.35);
     }
-    .btn{
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
+    .brand h1{ font-size:15px; margin:0; letter-spacing:0.2px; }
+    .tag{ font-size:12px; color:var(--muted); margin-top:2px; }
+    .lang{
+      display:flex; gap:8px; flex-wrap:wrap;
+      padding:6px;
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:999px;
+      backdrop-filter: blur(10px);
+    }
+    .lang button{
+      border:0; background:transparent; color:var(--muted);
+      padding:8px 12px; border-radius:999px; cursor:pointer;
+      font-size:13px;
+      transition: 0.15s ease;
+    }
+    .lang button.active{
+      background: linear-gradient(135deg, rgba(122,162,255,0.22), rgba(167,139,250,0.18));
       color:var(--text);
-      padding:10px 14px;
-      border-radius:14px;
-      font-weight:600;
-      font-size:14px;
-      cursor:pointer;
-      transition: transform .18s ease, background .18s ease, border-color .18s ease;
+      border:1px solid rgba(233,238,252,0.18);
     }
-    .btn:hover{transform: translateY(-1px); background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.18)}
-    .btn.primary{
-      border:none;
-      background: linear-gradient(135deg, rgba(124,92,255,.95), rgba(45,212,191,.92));
-      color:#071018;
-      box-shadow: 0 18px 40px rgba(124,92,255,.22);
+    .grid{
+      display:grid; grid-template-columns: 1.1fr 0.9fr;
+      gap:18px;
     }
-    .btn.primary:hover{transform: translateY(-2px)}
-    .btn.ghost{
-      background:transparent;
-      border:1px solid rgba(255,255,255,.14);
+    @media (max-width: 900px){
+      .grid{ grid-template-columns:1fr; }
     }
-
-    /* HERO */
-    .hero{padding:64px 0 26px}
-    .heroGrid{
-      display:grid;
-      grid-template-columns: 1.1fr .9fr;
-      gap:26px;
-      align-items:stretch;
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.04));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
     }
-    @media (max-width: 980px){
-      .heroGrid{grid-template-columns:1fr; }
-      .navlinks{display:none}
+    .hero{
+      padding:28px;
+      position:relative;
     }
-
     .pill{
-      display:inline-flex; align-items:center; gap:10px;
+      display:inline-flex; align-items:center; gap:8px;
       padding:8px 12px;
       border-radius:999px;
-      border:1px solid rgba(255,255,255,.14);
-      background:rgba(255,255,255,.06);
-      color:var(--muted);
+      background: rgba(52,211,153,0.10);
+      border:1px solid rgba(52,211,153,0.18);
+      color: rgba(233,238,252,0.92);
       font-size:13px;
+      margin-bottom:14px;
     }
-    .pill b{color:var(--text)}
-    .h1{
-      font-size:52px;
-      line-height:1.05;
-      letter-spacing:-1.2px;
-      margin:14px 0 12px;
+    .dot{ width:8px; height:8px; border-radius:99px; background:var(--ok); box-shadow:0 0 0 6px rgba(52,211,153,0.10); }
+    h2{
+      margin:0 0 10px;
+      font-size:40px; line-height:1.08;
+      letter-spacing:-0.6px;
     }
-    @media (max-width:560px){ .h1{font-size:40px} }
-    .lead{
-      color:var(--muted);
-      font-size:18px;
+    .sub{
       margin:0 0 18px;
-      max-width:58ch;
-    }
-    .heroActions{display:flex; gap:12px; flex-wrap:wrap; margin:18px 0 10px}
-    .trust{display:flex; gap:14px; flex-wrap:wrap; align-items:center; color:var(--muted2); font-size:13px; margin-top:10px}
-    .dot{width:6px;height:6px;border-radius:50%; background:rgba(255,255,255,.35)}
-    .mini{
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.05);
-      border-radius:var(--radius2);
-      box-shadow:var(--shadow);
-      overflow:hidden;
-      position:relative;
-    }
-
-    .mockTop{
-      padding:14px 16px;
-      border-bottom:1px solid rgba(255,255,255,.10);
-      display:flex; justify-content:space-between; align-items:center;
       color:var(--muted);
-      font-size:13px;
+      font-size:16px;
+      line-height:1.55;
+      max-width: 62ch;
     }
-    .status{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(45,212,191,.10);
-      color:rgba(233,238,247,.85);
-    }
-    .pulse{
-      width:8px; height:8px; border-radius:999px;
-      background: var(--accent2);
-      box-shadow: 0 0 0 6px rgba(45,212,191,.15);
-    }
-    .mockBody{padding:16px}
-    .cards{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-    @media (max-width:560px){ .cards{grid-template-columns:1fr} }
-    .card{
-      padding:14px;
-      border-radius:16px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.05);
-    }
-    .card h3{margin:0 0 8px; font-size:14px; letter-spacing:.2px}
-    .kpi{display:flex; gap:10px; align-items:flex-end}
-    .big{font-size:28px; font-weight:800; letter-spacing:-.6px}
-    .small{color:var(--muted); font-size:13px}
-    .list{margin:10px 0 0; padding:0; list-style:none; display:grid; gap:8px}
-    .li{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
-      padding:10px 10px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.04);
-      color:rgba(233,238,247,.90);
-      font-size:13px;
-    }
-    .tag{
-      padding:4px 8px;
-      border-radius:999px;
-      font-size:12px;
-      border:1px solid rgba(255,255,255,.12);
-      color:rgba(233,238,247,.82);
-      background:rgba(255,255,255,.05);
-      white-space:nowrap;
-    }
-    .tag.ok{background:rgba(45,212,191,.12); border-color:rgba(45,212,191,.18)}
-    .tag.warn{background:rgba(251,191,36,.12); border-color:rgba(251,191,36,.18)}
-
-    /* SECTIONS */
-    section{padding:38px 0}
-    .sectionHead{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:16px}
-    .sectionHead h2{margin:0; font-size:26px; letter-spacing:-.4px}
-    .sectionHead p{margin:0; color:var(--muted); max-width:62ch}
-    .grid3{display:grid; grid-template-columns: repeat(3,1fr); gap:14px}
-    @media (max-width:980px){ .grid3{grid-template-columns:1fr} }
-    .feature{
-      padding:18px;
-      border-radius:var(--radius);
-      border:1px solid rgba(255,255,255,.10);
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      box-shadow: 0 16px 40px rgba(0,0,0,.22);
-    }
-    .icon{
-      width:40px; height:40px; border-radius:14px;
-      display:grid; place-items:center;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.06);
-      margin-bottom:12px;
-      font-weight:900;
-      color:rgba(233,238,247,.92);
-    }
-    .feature h3{margin:0 0 8px; font-size:16px}
-    .feature p{margin:0; color:var(--muted)}
-
-    .how{
+    .bullets{
       display:grid;
       grid-template-columns: 1fr 1fr;
-      gap:14px;
-    }
-    @media (max-width:980px){ .how{grid-template-columns:1fr} }
-    .step{
-      padding:18px;
-      border-radius:var(--radius);
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.05);
-    }
-    .step b{
-      display:inline-flex;
-      align-items:center;
       gap:10px;
-      font-size:14px;
+      margin:18px 0 20px;
     }
-    .num{
-      width:28px; height:28px; border-radius:10px;
-      display:grid; place-items:center;
-      background:rgba(124,92,255,.18);
-      border:1px solid rgba(124,92,255,.25);
-      color:rgba(233,238,247,.95);
-      font-weight:800;
+    @media (max-width: 520px){
+      h2{ font-size:34px; }
+      .bullets{ grid-template-columns:1fr; }
     }
-    .step p{margin:10px 0 0; color:var(--muted)}
-
-    .pricing{
-      display:grid;
-      grid-template-columns: 1.15fr .85fr;
-      gap:14px;
-      align-items:stretch;
-    }
-    @media (max-width:980px){ .pricing{grid-template-columns:1fr} }
-    .priceCard{
-      padding:22px;
-      border-radius:var(--radius2);
-      border:1px solid rgba(255,255,255,.12);
-      background:linear-gradient(180deg, rgba(124,92,255,.16), rgba(255,255,255,.05));
-      box-shadow: var(--shadow);
-      position:relative;
-      overflow:hidden;
-    }
-    .priceCard:before{
-      content:"";
-      position:absolute; inset:-2px;
-      background: radial-gradient(600px 260px at 20% 10%, rgba(124,92,255,.35), transparent 60%),
-                  radial-gradient(600px 260px at 90% 20%, rgba(45,212,191,.28), transparent 60%);
-      opacity:.9;
-      pointer-events:none;
-    }
-    .priceCard > *{position:relative}
-    .priceTop{display:flex; align-items:flex-start; justify-content:space-between; gap:16px}
-    .badge{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:7px 10px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.14);
-      background:rgba(255,255,255,.08);
-      color:rgba(233,238,247,.9);
-      font-size:13px;
-    }
-    .price{
-      font-size:46px; font-weight:900; letter-spacing:-1px; margin:14px 0 4px;
-    }
-    .price small{font-size:14px; font-weight:700; color:rgba(233,238,247,.75)}
-    .bullets{margin:14px 0 0; padding:0; list-style:none; display:grid; gap:10px}
-    .bullets li{display:flex; gap:10px; align-items:flex-start; color:rgba(233,238,247,.90)}
-    .check{
-      width:18px; height:18px; border-radius:6px;
-      background:rgba(45,212,191,.18);
-      border:1px solid rgba(45,212,191,.25);
-      display:grid; place-items:center;
-      font-size:12px;
-      flex:0 0 auto;
-      margin-top:2px;
-    }
-    .sideCard{
-      padding:18px;
-      border-radius:var(--radius2);
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.05);
-    }
-    .sideCard h3{margin:0 0 8px}
-    .sideCard p{margin:0 0 14px; color:var(--muted)}
-    .miniList{list-style:none; padding:0; margin:0; display:grid; gap:10px}
-    .miniList li{
+    .b{
+      display:flex; gap:10px; align-items:flex-start;
       padding:12px;
-      border-radius:16px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.04);
-      color:rgba(233,238,247,.88);
-      font-size:13px;
+      border-radius: var(--radius2);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(233,238,252,0.10);
+    }
+    .b svg{ flex:0 0 auto; margin-top:2px; }
+    .b strong{ display:block; font-size:14px; margin-bottom:3px;}
+    .b span{ color:var(--muted); font-size:13px; line-height:1.45;}
+    .ctaRow{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      gap:10px;
+      padding:12px 16px;
+      border-radius: 12px;
+      border:1px solid rgba(233,238,252,0.16);
+      cursor:pointer;
+      text-decoration:none;
+      transition: 0.15s ease;
+      user-select:none;
+      font-weight:600;
+    }
+    .btnPrimary{
+      background: linear-gradient(135deg, rgba(122,162,255,0.95), rgba(167,139,250,0.90));
+      color:#0b0f17;
+      box-shadow: 0 16px 40px rgba(122,162,255,0.22);
+    }
+    .btnPrimary:hover{ transform: translateY(-1px); }
+    .btnGhost{
+      background: rgba(255,255,255,0.05);
+      color:var(--text);
+    }
+    .btnGhost:hover{ background: rgba(255,255,255,0.07); }
+    .mini{
+      color: var(--muted);
+      font-size:12px;
+      margin-top:10px;
     }
 
-    .faq{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:14px;
+    .form{
+      padding:22px;
     }
-    @media (max-width:980px){ .faq{
+    .form h3{ margin:0 0 6px; font-size:18px; }
+    .form p{ margin:0 0 14px; color:var(--muted); font-size:13px; line-height:1.5; }
+    label{ display:block; font-size:12px; color:var(--muted); margin:12px 0 6px; }
+    input, select{
+      width:100%;
+      padding:12px 12px;
+      border-radius: 12px;
+      border:1px solid rgba(233,238,252,0.14);
+      background: rgba(0,0,0,0.18);
+      color:var(--text);
+      outline:none;
+    }
+    input::placeholder{ color: rgba(233,238,252,0.45); }
+    .row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media (max-width: 520px){ .row{ grid-template-columns:1fr; } }
+    .submit{
+      margin-top:14px;
+      width:100%;
+    }
+    .fine{
+      margin-top:10px;
+      font-size:12px;
+      color: var(--muted);
+      border-top:1px solid rgba(233,238,252,0.10);
+      padding-top:12px;
+      line-height:1.5;
+    }
+    .toast{
+      display:none;
+      margin-top:12px;
+      padding:10px 12px;
+      border-radius: 12px;
+      border:1px solid rgba(52,211,153,0.22);
+      background: rgba(52,211,153,0.10);
+      color: rgba(233,238,252,0.95);
+      font-size:13px;
+    }
+    .rtl{ direction: rtl; text-align: right; }
+    .ltr{ direction: ltr; text-align: left; }
+    .hide{ display:none !important; }
+    footer{
+      margin:18px 0 6px;
+      color: rgba(233,238,252,0.45);
+      font-size:12px;
+      text-align:center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>EasyHost</h1>
+          <div class="tag" id="topTag">Airbnb host assistant</div>
+        </div>
+      </div>
+
+      <div class="lang" role="tablist" aria-label="Language">
+        <button class="active" id="btnEn" type="button">English</button>
+        <button id="btnEl" type="button">Ελληνικά</button>
+        <button id="btnHe" type="button">עברית</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- HERO -->
+      <section class="card hero" id="heroCard">
+        <div class="pill" id="pill">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="pillText">Early access • Greece focused</span>
+        </div>
+
+        <div id="contentEn" class="ltr">
+          <h2>Run your Airbnb messages like a pro.</h2>
+          <p class="sub">
+            EasyHost helps hosts manage check-in, check-out, and guest messages with a clean workflow.
+            Start with a simple dashboard — expand later.
+          </p>
+
+          <div class="bullets">
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>Save time daily</strong>
+                <span>Fast view of today’s check-ins & check-outs.</span>
+              </div>
+            </div>
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M12 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>Quick actions</strong>
+                <span>Send manual guest messages in one click.</span>
+              </div>
+            </div>
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M7 12l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>Professional experience</strong>
+                <span>Consistent messaging and fewer mistakes.</span>
+              </div>
+            </div>
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <div>
+                <strong>Built for Greece</strong>
+                <span>Perfect for remote hosting and cleaners.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="btn btnPrimary" href="#formCard">Get early access</a>
+            <a class="btn btnGhost" href="#howItWorks">How it works</a>
+          </div>
+          <div class="mini">No billing. No analytics. MVP focused on the essentials.</div>
+        </div>
+
+        <div id="contentEl" class="ltr hide">
+          <h2>Διαχειρίσου τα μηνύματα Airbnb σαν επαγγελματίας.</h2>
+          <p class="sub">
+            Το EasyHost βοηθά τους οικοδεσπότες να οργανώνουν check-in, check-out και μηνύματα επισκεπτών
+            με καθαρή ροή εργασίας. Ξεκινάμε απλό — επεκτείνουμε μετά.
+          </p>
+
+          <div class="bullets">
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>Εξοικονόμηση χρόνου</strong>
+                <span>Γρήγορη εικόνα για σημερινά check-in & check-out.</span>
+              </div>
+            </div>
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M12 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>Γρήγορες ενέργειες</strong>
+                <span>Χειροκίνητο μήνυμα επισκέπτη με ένα κλικ.</span>
+              </div>
+            </div>
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M7 12l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>Πιο επαγγελματικά</strong>
+                <span>Σταθερή επικοινωνία, λιγότερα λάθη.</span>
+              </div>
+            </div>
+            <div class="b">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <div>
+                <strong>Για Ελλάδα</strong>
+                <span>Ιδανικό για απομακρυσμένη διαχείριση.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="btn btnPrimary" href="#formCard">Ζήτησε πρόσβαση</a>
+            <a class="btn btnGhost" href="#howItWorks">Πώς λειτουργεί</a>
+          </div>
+          <div class="mini">Χωρίς χρεώσεις. Χωρίς analytics. MVP στα βασικά.</div>
+        </div>
+
+        <div id="contentHe" class="rtl hide">
+          <h2>לנהל את Airbnb כמו מקצוען.</h2>
+          <p class="sub">
+            EasyHost עוזר למארחים לנהל צ׳ק-אין, צ׳ק-אאוט והודעות לאורחים בצורה מסודרת ונקייה.
+            מתחילים פשוט — ומתרחבים בהמשך.
+          </p>
+
+          <div class="bullets">
+            <div class="b rtl">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>חוסך זמן יומי</strong>
+                <span>תצוגה מהירה של צ׳ק-אין וצ׳ק-אאוט היום.</span>
+              </div>
+            </div>
+            <div class="b rtl">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M12 8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>פעולות מהירות</strong>
+                <span>שליחת הודעה ידנית בלחיצה אחת.</span>
+              </div>
+            </div>
+            <div class="b rtl">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M7 12l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div>
+                <strong>נראה מקצועי</strong>
+                <span>שפה אחידה, פחות טעויות.</span>
+              </div>
+            </div>
+            <div class="b rtl">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <div>
+                <strong>מתאים ליוון</strong>
+                <span>בול למי שמנהל מרחוק עם מנקה.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctaRow rtl">
+            <a class="btn btnPrimary" href="#formCard">קבל גישה מוקדמת</a>
+            <a class="btn btnGhost" href="#howItWorks">איך זה עובד</a>
+          </div>
+          <div class="mini rtl">בלי תשלומים. בלי אנליטיקס. MVP ממוקד בבסיס.</div>
+        </div>
+
+        <div id="howItWorks" style="margin-top:18px; padding-top:18px; border-top:1px solid rgba(233,238,252,0.10);">
+          <div class="ltr" id="hiwEn">
+            <strong>How it works (MVP):</strong>
+            <div class="mini">
+              1) See today’s check-ins/outs • 2) Open reservation • 3) Send a manual message • 4) Track connection status.
+            </div>
+          </div>
+          <div class="ltr hide" id="hiwEl">
+            <strong>Πώς λειτουργεί (MVP):</strong>
+            <div class="mini">
+              1) Δες σημερινά check-in/out • 2) Άνοιξε κράτηση • 3) Στείλε μήνυμα • 4) Κατάσταση σύνδεσης.
+            </div>
+          </div>
+          <div class="rtl hide" id="hiwHe">
+            <strong>איך זה עובד (MVP):</strong>
+            <div class="mini">
+              1) רואים צ׳ק-אין/אאוט • 2) נכנסים להזמנה • 3) שולחים הודעה • 4) סטטוס חיבור.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FORM -->
+      <aside class="card form" id="formCard">
+        <div id="formEn" class="ltr">
+          <h3>Request early access</h3>
+          <p>Leave details and we’ll contact you to validate fit for your property in Greece.</p>
+          <form id="leadForm">
+            <div class="row">
+              <div>
+                <label for="name">Name</label>
+                <input id="name" name="name" placeholder="Your name" required />
+              </div>
+              <div>
+                <label for="email">Email</label>
+                <input id="email" name="email" type="email" placeholder="you@email.com" required />
+              </div>
+            </div>
+
+            <label for="city">City / Island</label>
+            <input id="city" name="city" placeholder="Athens, Thessaloniki, Crete…" />
+
+            <label for="units">How many listings?</label>
+            <select id="units" name="units">
+              <option value="1">1</option>
+              <option value="2-3">2–3</option>
+              <option value="4-10">4–10</option>
+              <option value="10+">10+</option>
+            </select>
+
+            <button class="btn btnPrimary submit" type="submit">Send</button>
+            <div class="toast" id="toast">Done. Saved locally (demo). Next step: connect to email/CRM.</div>
+
+            <div class="fine">
+              MVP note: this is a demo form. For now it stores submissions in your browser only.
+              Next we’ll connect it to email (Formspree) or Google Sheet.
+            </div>
+          </form>
+        </div>
+
+        <div id="formEl" class="ltr hide">
+          <h3>Ζήτησε πρόσβαση</h3>
+          <p>Άφησε στοιχεία και θα επικοινωνήσουμε για να δούμε αν ταιριάζει στο ακίνητό σου στην Ελλάδα.</p>
+          <div class="fine">Η φόρμα είναι demo (θα τη συνδέσουμε σε email/CRM).</div>
+        </div>
+
+        <div id="formHe" class="rtl hide">
+          <h3>בקשת גישה מוקדמת</h3>
+          <p>השאר פרטים ונחזור אליך כדי לבדוק התאמה לנכס ביוון.</p>
+          <div class="fine">הטופס כרגע דמו (נחבר למייל/CRM בשלב הבא).</div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>© EasyHost — MVP landing page</footer>
+  </div>
+
+  <script>
+    const btnEn = document.getElementById('btnEn');
+    const btnEl = document.getElementById('btnEl');
+    const btnHe = document.getElementById('btnHe');
+
+    const contentEn = document.getElementById('contentEn');
+    const contentEl = document.getElementById('contentEl');
+    const contentHe = document.getElementById('contentHe');
+
+    const hiwEn = document.getElementById('hiwEn');
+    const hiwEl = document.getElementById('hiwEl');
+    const hiwHe = document.getElementById('hiwHe');
+
+    const formEn = document.getElementById('formEn');
+    const formEl = document.getElementById('formEl');
+    const formHe = document.getElementById('formHe');
+
+    const pillText = document.getElementById('pillText');
+    const topTag = document.getElementById('topTag');
+
+    function setActive(activeBtn){
+      [btnEn,btnEl,btnHe].forEach(b=>b.classList.remove('active'));
+      activeBtn.classList.add('active');
+    }
+
+    function show(lang){
+      // hero
+      contentEn.classList.toggle('hide', lang !== 'en');
+      contentEl.classList.toggle('hide', lang !== 'el');
+      contentHe.classList.toggle('hide', lang !== 'he');
+
+      // how it works
+      hiwEn.classList.toggle('hide', lang !== 'en');
+      hiwEl.classList.toggle('hide', lang !== 'el');
+      hiwHe.classList.toggle('hide', lang !== 'he');
+
+      // form
+      formEn.classList.toggle('hide', lang !== 'en');
+      formEl.classList.toggle('hide', lang !== 'el');
+      formHe.classList.toggle('hide', lang !== 'he');
+
+      // tags
+      if(lang==='en'){ pillText.textContent = 'Early access • Greece focused'; topTag.textContent='Airbnb host assistant'; document.documentElement.lang='en'; }
+      if(lang==='el'){ pillText.textContent = 'Πρόσβαση • Εστίαση στην Ελλάδα'; topTag.textContent='Βοηθός οικοδεσπότη Airbnb'; document.documentElement.lang='el'; }
+      if(lang==='he'){ pillText.textContent = 'גישה מוקדמת • ממוקד יוון'; topTag.textContent='עוזר למארחי Airbnb'; document.documentElement.lang='he'; }
+    }
+
+    btnEn.addEventListener('click', ()=>{ setActive(btnEn); show('en'); });
+    btnEl.addEventListener('click', ()=>{ setActive(btnEl); show('el'); });
+    btnHe.addEventListener('click', ()=>{ setActive(btnHe); show('he'); });
+
+    // default
+    show('en');
+
+    // demo form handler (localStorage)
+    const form = document.getElementById('leadForm');
+    const toast = document.getElementById('toast');
+    form?.addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const data = {
+        name: form.name.value.trim(),
+        email: form.email.value.trim(),
+        city: form.city.value.trim(),
+        units: form.units.value
+      };
+      const key = 'easyhost_leads';
+      const arr = JSON.parse(localStorage.getItem(key) || '[]');
+      arr.push({ ...data, ts: new Date().toISOString() });
+      localStorage.setItem(key, JSON.stringify(arr));
+      toast.style.display = 'block';
+      form.reset();
+      setTimeout(()=> toast.style.display='none', 4500);
+    });
+  </script>
+</body>
+</html>
