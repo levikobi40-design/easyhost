@@ -1,0 +1,64 @@
+.airbnb-importer {
+  position: relative;
+}
+
+.scanning-laser-effect {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.scanning-laser-effect::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(253, 224, 71, 0.9),
+    rgba(251, 191, 36, 0.9),
+    rgba(253, 224, 71, 0.9),
+    transparent
+  );
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.6);
+  animation: scanning-laser 1.5s ease-in-out infinite;
+}
+
+.scanning-laser-effect::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(253, 224, 71, 0.5),
+    rgba(251, 191, 36, 0.6),
+    rgba(253, 224, 71, 0.5),
+    transparent
+  );
+  animation: scanning-laser 1.5s ease-in-out infinite 0.75s;
+}
+
+@keyframes scanning-laser {
+  0%, 100% {
+    transform: translateX(-100%);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateX(100%);
+    opacity: 1;
+  }
+}
+
+[dir='rtl'] .scanning-laser-effect::before,
+[dir='rtl'] .scanning-laser-effect::after {
+  animation-direction: reverse;
+}

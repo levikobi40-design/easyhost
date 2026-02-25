@@ -1,0 +1,39 @@
+.property-creator-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.property-creator-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.property-creator-dropzone {
+  outline: none;
+}
+
+/* Global modal rule - force black text on ALL inputs/textareas */
+.property-creator-backdrop input,
+.property-creator-backdrop textarea,
+.property-creator-modal input,
+.property-creator-modal textarea,
+.property-creator-backdrop input[type="text"],
+.property-creator-backdrop input[type="number"],
+.property-creator-modal input[type="text"],
+.property-creator-modal input[type="number"] {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+.property-creator-backdrop input::placeholder,
+.property-creator-backdrop textarea::placeholder,
+.property-creator-modal input::placeholder,
+.property-creator-modal textarea::placeholder {
+  color: #4b5563 !important;
+}

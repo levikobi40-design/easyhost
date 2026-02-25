@@ -1,0 +1,581 @@
+{
+  "branding": {
+    "name": "Easy Hotel AI",
+    "subtitle": "מערכת ניהול מלון יוקרתית מבוססת AI",
+    "aiConcierge": "קונסיירז׳ AI",
+    "aiShort": "AI"
+  },
+  "nav": {
+    "dashboard": "דשבורד",
+    "premium": "פרמיום",
+    "properties": "הנכסים שלי",
+    "tasks": "לוח משימות",
+    "leads": "לידים",
+    "crm": "ניהול לידים",
+    "operator": "מעקב לידים",
+    "analytics": "אנליטיקס",
+    "field": "צוות שטח",
+    "enterprise": "Enterprise"
+  },
+  "languages": {
+    "he": "עברית",
+    "en": "English",
+    "el": "Ελληνικά"
+  },
+  "roles": {
+    "host": "מארח",
+    "operator": "מפעיל",
+    "field": "שטח",
+    "guest": "אורח"
+  },
+  "status": {
+    "online": "פעיל",
+    "busy": "עסוק",
+    "offline": "לא פעיל",
+    "active": "פעיל",
+    "inactive": "לא פעיל"
+  },
+  "common": {
+    "close": "סגור",
+    "cancel": "ביטול",
+    "save": "שמור",
+    "search": "חיפוש",
+    "loading": "טוען...",
+    "scanning": "סורק...",
+    "generate": "הפק",
+    "send": "שלח",
+    "copy": "העתק",
+    "copied": "הועתק!",
+    "viewDetails": "הצג פרטים",
+    "checking": "בודק...",
+    "live": "חי",
+    "offline": "לא מקוון",
+    "online": "מקוון",
+    "all": "הכל",
+    "noData": "אין נתונים זמינים",
+    "readyToHelp": "המערכת מוכנה לעזור לך!",
+    "taskCompleted": "המשימה הושלמה בהצלחה!"
+  },
+  "topbar": {
+    "breadcrumbEnterprise": "Enterprise",
+    "breadcrumbDashboard": "Dashboard",
+    "userName": "מנהל המערכת",
+    "notifications": "התראות"
+  },
+  "sidebar": {
+    "aiAssistant": "AI Assistant",
+    "zeroTrust": "מאובטח Zero-Trust"
+  },
+  "placeholders": {
+    "roomsTitle": "ניהול חדרים",
+    "roomsDesc": "תצוגת ניהול חדרים תהיה זמינה בקרוב",
+    "analyticsTitle": "אנליטיקס",
+    "analyticsDesc": "דוחות ואנליטיקס מתקדמים יהיו זמינים בקרוב",
+    "settingsTitle": "הגדרות",
+    "settingsDesc": "הגדרות מערכת יהיו זמינות בקרוב"
+  },
+  "agentsView": {
+    "title": "ניהול סוכנים",
+    "tasks": "משימות",
+    "statusOnline": "פעיל",
+    "statusBusy": "עסוק",
+    "statusOffline": "לא פעיל"
+  },
+  "dashboard": {
+    "title": "Easy Host AI",
+    "subtitle": "מערכת ניהול מלון חכמה מבוססת AI",
+    "generateReport": "הפק דוח יומי",
+    "actions": "פעולות ודוחות",
+    "waitingForSync": "ממתין לסנכרון",
+    "liveProperty": "נכס פעיל",
+    "livePreview": "תצוגה חיה",
+    "successSynced": "הצלחה: הנכס סונכרן!",
+    "propertyFound": "נכס נמצא!",
+    "generatedForClient": "נוצר עבור הלקוח שלך",
+    "guestPortal": "צור פורטל לאורח",
+    "guestPortalTitle": "תצוגת פורטל לאורח",
+    "guestPortalHeadline": "ברוכים הבאים ל-Hacienda Paraíso",
+    "guestPortalCopy": "נקי, מסודר וממותג. האורח רואה חוויה יוקרתית מיד.",
+    "staffSection": "צוות עובדים",
+    "assignStaff": "הוסף/שייך עובד",
+    "cleanedBy": "הנכס נוקה על ידי {{name}}",
+    "staffPlaceholder": "מאיה כהן",
+    "guests": "{{count}} אורחים",
+    "perNight": "ללילה",
+    "managementStaff": "ניהול וצוות",
+    "assignCleaner": "שייך מנקה",
+    "cleaningScheduled": "נקיון מתוזמן",
+    "smartAiTip": "נכס זה יכול לחסוך ₪350 לשבוע באמצעות התראות צ׳ק-אאוט אוטומטיות",
+    "mayaTeam": "מרכז הפיקוד של Maya",
+    "leadFinder": "מאתר לידים",
+    "outreach": "פנייה ללקוחות",
+    "demoCreator": "יוצר הדגמות",
+    "memoryBank": "בנק זיכרון",
+    "mayaName": "Maya",
+    "mayaRole": "מנהלת תפעול AI",
+    "demoLinkLabel": "הדבק קישור Airbnb",
+    "demoLinkPlaceholder": "הדבק כאן את הקישור...",
+    "sendDemo": "שלח הדגמה ללקוח",
+    "insightsTitle": "תובנות מהעסק הזה",
+    "insightsBody": "העדפות ודפוסים יופיעו כאן לשימוש עתידי.",
+    "leadFinderBody": "לידים איכותיים יוצגו כאן אוטומטית.",
+    "outreachBody": "רצפי פנייה אוטומטיים מנוהלים כאן.",
+    "mayaManager": "Maya (מנהלת)",
+    "sendToWhatsApp": "שלח ל-WhatsApp",
+    "memoryCardTitle": "לומד מהנכס הזה...",
+    "memoryCardBody": "ממקד אורחים יוקרתיים בהתבסס על מתקני הבריכה.",
+    "mayaOverviewTitle": "גשר הפיקוד של Maya",
+    "mayaOverviewBody": "מתאם את צוות הלידים, הפנייה, ההדגמות והזיכרון בזמן אמת.",
+    "recentActivity": {
+      "title": "פעילות אחרונה",
+      "empty": "אין פעילות אחרונה עדיין."
+    },
+    "damageAlert": {
+      "title": "התראת תקלה",
+      "count": "{{count}} חדרים חסומים",
+      "roomLabel": "{{room}} - דווחה תקלה",
+      "viewHistory": "צפה בהיסטוריה",
+      "more": "+{{count}} חדרים נוספים"
+    },
+    "export": {
+      "daily": "דוח יומי",
+      "monthlyPdf": "דוח חודשי (PDF)",
+      "data": "ייצוא נתונים"
+    },
+    "trendLabelDefault": "מהחודש שעבר",
+    "generatingReport": "מייצר דוח...",
+    "sidebar": {
+      "title": "סרגל צד",
+      "hide": "הסתר",
+      "show": "הצג"
+    },
+    "shiftManager": {
+      "title": "מנהל משמרת",
+      "activeCount": "{{count}} עובדים פעילים",
+      "noActive": "אין עובדים פעילים עדיין.",
+      "loading": "טוען עובדים...",
+      "waiting": "ממתין לשעון כניסה.",
+      "idle": "בהמתנה"
+    },
+    "stats": {
+      "revenueToday": "הכנסות היום",
+      "occupancy": "תפוסה נוכחית",
+      "bookingsToday": "הזמנות היום",
+      "automationSavings": "חיסכון אוטומציה",
+      "automationRate": "אחוז אוטומציה"
+    },
+    "charts": {
+      "revenueBookings": "הכנסות והזמנות",
+      "revenue": "הכנסות",
+      "bookings": "הזמנות",
+      "roomStatus": "סטטוס חדרים",
+      "agentsStatus": "סטטוס סוכנים",
+      "agentsAllActive": "הכל פעיל",
+      "agentsPerformance": "ביצועי סוכנים",
+      "tasks": "משימות",
+      "successes": "הצלחות"
+    },
+    "rooms": {
+      "title": "חדרים",
+      "count": "{{count}} חדרים",
+      "checkout": "צ׳ק-אאוט",
+      "sendCleaner": "שלח מנקה",
+      "ownerActions": "פעולות בעלים",
+      "status": {
+        "occupied": "תפוס",
+        "available": "פנוי",
+        "cleaning": "ניקיון",
+        "maintenance": "תחזוקה",
+        "toggle": "החלפת סטטוס"
+      },
+      "roomLabel": "חדר {{number}}"
+    },
+    "alerts": {
+      "title": "התראות ניהול",
+      "empty": "אין התראות דחופות",
+      "leadNoReply": "אין תגובה מ־{{name}} כבר שעתיים",
+      "bookingConfirmed": "הזמנה אושרה - ניקיון הופעל",
+      "notification": "עדכון מערכת",
+      "justNow": "עכשיו",
+      "minutesAgo": "לפני {{count}} דק׳",
+      "hoursAgo": "לפני {{count}} שעות"
+    },
+    "report": {
+      "title": "דוח ROI יומי",
+      "humanHoursSaved": "שעות אנוש שנחסכו",
+      "hoursSaved": "שעות שנחסכו",
+      "cleaningsTriggered": "ניקיונות שהופעלו",
+      "leadsCaptured": "לידים שנלכדו",
+      "liveSnapshot": "צילום מצב ROI חי",
+      "leadsFound": "לידים שנמצאו",
+      "aiMessages": "הודעות AI",
+      "dealsClosed": "עסקאות שנסגרו",
+      "estimatedRoi": "ROI מוערך",
+      "recommendationsTitle": "המלצות Maya",
+      "agentSummaryTitle": "סיכום סוכנים",
+      "automationMessage": "המערכת חסכה {{rate}}% מהעבודה הידנית היום"
+    }
+  },
+  "leadsCRM": {
+    "title": "ניהול לידים",
+    "leadCount": "{{count}} לידים",
+    "scanNew": "סרוק לידים חדשים",
+    "searchPlaceholder": "חיפוש לפי שם או איש קשר...",
+    "perNight": "ללילה",
+    "stats": {
+      "newLeads": "לידים חדשים",
+      "inProgress": "בטיפול",
+      "qualified": "מוכשרים",
+      "totalValue": "ערך כולל"
+    },
+    "table": {
+      "property": "נכס",
+      "contact": "איש קשר",
+      "source": "מקור",
+      "status": "סטטוס",
+      "value": "ערך",
+      "rating": "דירוג",
+      "actions": "פעולות"
+    },
+    "actions": {
+      "sendDemo": "שלח דמו",
+      "call": "התקשר",
+      "more": "אפשרויות נוספות"
+    },
+    "autoGreetingSent": "נשלחה ברכה אוטומטית ל־{{name}}",
+    "modal": {
+      "email": "אימייל",
+      "phone": "טלפון",
+      "source": "מקור",
+      "createdAt": "תאריך יצירה",
+      "notes": "הערות",
+      "sendMessage": "שלח הודעה"
+    },
+    "status": {
+      "all": "הכל",
+      "new": "חדש",
+      "contacted": "נוצר קשר",
+      "qualified": "מוכשר",
+      "converted": "הומר",
+      "lost": "אבוד"
+    }
+  },
+  "mayaChat": {
+    "title": "Maya",
+    "role": "מנהלת פרויקט בכירה",
+    "greeting": "שלום! אני Maya, מנהלת הפרויקט הבכירה שלך. איך אוכל לעזור היום?",
+    "askPlaceholder": "דבר עם מאיה...",
+    "hint": "Maya מנהלת 5 סוכנים חכמים שעובדים בשבילך",
+    "leadsFoundLabel": "לידים שנמצאו:",
+    "proactiveOccupancy": "זיהיתי פער בהזמנות לשבוע הבא; האם להפעיל את סוכן השיווק לקמפיין Airbnb?",
+    "connectingMaya": "מתחבר ל-Maya... נסה שוב בעוד רגע.",
+    "quickActions": {
+      "scan": "סרוק לידים",
+      "report": "דוח יומי",
+      "cleaning": "בקשת ניקיון",
+      "post": "צור פוסט",
+      "automation": "אוטומציה"
+    }
+  },
+  "notifications": {
+    "title": "התראות",
+    "newCount": "{{count}} חדשות",
+    "clearAll": "נקה הכל",
+    "empty": "אין התראות חדשות",
+    "connected": "מחובר לשרת",
+    "roomRequest": "בקשה מחדר",
+    "agentUpdate": "עדכון סוכן",
+    "agentTaskCreated": "משימה חדשה נוצרה והוקצתה לעובד.",
+    "newLead": "ליד חדש",
+    "messages": {
+      "towels": "נדרשו מגבות לחדר {{room}}",
+      "cleaning": "נדרש ניקיון לחדר {{room}}",
+      "roomService": "נדרש שירות חדרים לחדר {{room}}",
+      "maintenance": "נדרשת תחזוקה לחדר {{room}}",
+      "agentAction": "סוכן {{agent}} {{action}}",
+      "newLead": "ליד חדש מ-{{platform}}"
+    },
+    "time": {
+      "now": "עכשיו",
+      "minutesAgo": "לפני {{count}} דקות",
+      "hoursAgo": "לפני {{count}} שעות"
+    }
+  },
+  "leadsPage": {
+    "title": "לידים / מכירות",
+    "addDemo": "הוסף ליד לדוגמה",
+    "status": {
+      "all": "הכל",
+      "new": "חדש",
+      "contacted": "נוצר קשר",
+      "qualified": "מתאים",
+      "won": "זכינו",
+      "lost": "אבוד"
+    },
+    "stats": {
+      "total": "סה\"כ",
+      "new": "חדשים",
+      "qualified": "מתאימים",
+      "won": "זכינו",
+      "avgScore": "ציון ממוצע"
+    },
+    "table": {
+      "score": "ציון",
+      "name": "שם",
+      "contact": "יצירת קשר",
+      "dates": "תאריכים",
+      "guests": "אורחים",
+      "status": "סטטוס",
+      "created": "נוצר"
+    },
+    "empty": "אין לידים עדיין",
+    "errorLoad": "שגיאה בטעינת לידים"
+  },
+  "leadModal": {
+    "contactInfo": "פרטי קשר",
+    "bookingDetails": "פרטי הזמנה",
+    "status": "סטטוס",
+    "quickActions": "פעולות מהירות",
+    "copyMessage": "העתק הודעה",
+    "created": "נוצר:",
+    "source": "מקור:",
+    "score": "ציון",
+    "whatsapp": {
+      "intro": "שלום {{name}},\n\nתודה על פנייתך ל-{{hotelName}}!",
+      "dates": "\n\nראינו שאתם מתעניינים בתאריכים:\n{{checkin}} - {{checkout}}",
+      "guests": "\nעבור {{guests}} אורחים.",
+      "closing": "\n\nנשמח לעזור לכם להזמין את החופשה המושלמת!\nאיך נוכל לסייע?"
+    },
+    "email": {
+      "subject": "בקשת הזמנה - {{hotelName}}"
+    }
+  },
+  "staffView": {
+    "openTask": "משימה פתוחה"
+  },
+  "orchestrator": {
+    "messages": {
+      "unknown": "לא הצלחתי להבין את הבקשה. אנא נסה שוב או בחר פעולה מהתפריט.",
+      "leadsFound": "נמצאו {{count}} לידים חדשים",
+      "postCreated": "פוסט נוצר בהצלחה",
+      "campaignSent": "קמפיין נשלח ל-{{count}} נמענים",
+      "videoEdited": "וידאו נערך בהצלחה",
+      "imagesEnhanced": "{{count}} תמונות שופרו בהצלחה",
+      "tourCreated": "סיור וירטואלי נוצר בהצלחה",
+      "demoSent": "דמו נשלח ל-{{name}}",
+      "negotiationStarted": "משא ומתן התחיל",
+      "followUpSent": "מעקב נשלח",
+      "whatsappSent": "הודעת WhatsApp נשלחה למחלקת {{department}}",
+      "checkoutDone": "תהליך צ'ק-אאוט הושלם עבור חדר {{room}}"
+    }
+  },
+  "calendar": {
+    "title": "חיבור יומן",
+    "guide": {
+      "title": "חיבור iCal ב-3 שלבים",
+      "airbnb": "Airbnb",
+      "booking": "Booking",
+      "google": "Google Calendar",
+      "steps": {
+        "airbnb": {
+          "1": "היכנסו ל-Airbnb → לוח שנה → יצוא לוח שנה.",
+          "2": "העתיקו את קישור ה-iCal.",
+          "3": "הדביקו כאן וחברו."
+        },
+        "booking": {
+          "1": "היכנסו ל-Booking → לוח שנה → סנכרון יומנים.",
+          "2": "העתיקו את קישור ה-iCal.",
+          "3": "הדביקו כאן וחברו."
+        },
+        "google": {
+          "1": "פתחו Google Calendar → הגדרות.",
+          "2": "מצאו \"כתובת סודית בפורמט iCal\".",
+          "3": "העתיקו את הקישור וחברו כאן."
+        }
+      }
+    },
+    "manualCheckout": {
+      "title": "צ'ק-אאוט ידני (בדיקה)",
+      "roomPlaceholder": "חדר / תווית",
+      "submit": "צור צ'ק-אאוט ידני",
+      "link": "או הזינו צ'ק-אאוט ידני לבדיקה"
+    },
+    "security": {
+      "title": "למה iCal בטוח",
+      "body": "iCal הוא קישור לקריאה בלבד. אין לנו גישה לפרטי בנק, שינוי מחירים או לחשבון Airbnb האישי שלך.",
+      "badges": {
+        "readOnly": "קריאה בלבד",
+        "noPayments": "ללא תשלומים",
+        "encrypted": "מוצפן ב-PostgreSQL"
+      },
+      "link": "למה iCal בטוח?"
+    },
+    "mode": "מצב",
+    "icalMode": "מצב iCal",
+    "manualMode": "מצב ידני",
+    "refresh": "רענן iCal",
+    "synced": "מסונכרן",
+    "notConnected": "לא מחובר",
+    "vacantNights": "לילות פנויים",
+    "potentialRevenue": "הכנסה פוטנציאלית",
+    "placeholder": "הדביקו קישור iCal של Airbnb/Booking",
+    "connect": "חבר iCal",
+    "trust": {
+      "readOnly": "אנחנו קוראים רק תאריכי צ'ק-אאוט. אין גישה לתשלומים או פרטי אורחים.",
+      "encrypted": "מאוחסן בהצפנה ברמת ארגון בבסיס הנתונים PostgreSQL שלנו."
+    },
+    "demoMode": "נסה ללא חיבור יומן (מצב דמו)",
+    "helpWhatsApp": "צריך עזרה בחיבור?",
+    "pilotName": "שם בעל הפיילוט",
+    "pilotLink": "קישור גישה לפיילוט",
+    "generatePilot": "ייצור גישת פיילוט",
+    "copyLink": "העתק קישור"
+  },
+  "manual": {
+    "addRoom": "הוסף חדר חדש",
+    "roomCount": "{{count}} חדרים",
+    "importLabel": "ייבוא קסם",
+    "importPlaceholder": "הדבק קישור Airbnb",
+    "import": "ייבוא",
+    "importFallbackName": "נכס שיובא",
+    "importedFrom": "יובא מ-{{source}}",
+    "importedDetails": "{{guests}} אורחים • ₪{{price}} • {{source}}",
+    "addManual": "+ הוסף ידנית",
+    "roomNamePlaceholder": "מספר/שם חדר (למשל חדר 3)",
+    "roomDescriptionPlaceholder": "תיאור (אופציונלי)",
+    "saveRoom": "שמור חדר",
+    "searchPlaceholder": "חיפוש נכס לפי שם",
+    "searchOnline": "חפש אונליין",
+    "propertyMeta": "{{city}} · {{count}} חדרים",
+    "empty": "אין חדרים עדיין.",
+    "statusLabel": "סטטוס",
+    "lastCheckout": "צ'ק-אאוט אחרון",
+    "lastCleanedBy": "נוקה לאחרונה על ידי {{name}}",
+    "checkIn": "צ'ק-אין",
+    "checkOut": "צ'ק-אאוט",
+    "assignPlaceholder": "שייך צוות...",
+    "assign": "שייך",
+    "history": {
+      "link": "היסטוריית חדר",
+      "title": "{{name}} — היסטוריה",
+      "filter": "סנן לפי עובד",
+      "resolve": "פתור תקלה",
+      "damageReport": "דיווח תקלה",
+      "viewPhoto": "צפה בתמונה",
+      "loading": "טוען היסטוריה...",
+      "empty": "עדיין אין ניקיונות."
+    },
+    "staffList": "רשימת עובדים",
+    "staffCount": "{{count}} עובדים",
+    "onShift": "במשמרת",
+    "offShift": "מחוץ למשמרת",
+    "status": {
+      "active": "פעיל",
+      "blocked": "חסום"
+    }
+  },
+  "field": {
+    "title": "צוות שטח",
+    "subtitle": "פיד משימות מותאם מובייל",
+    "rank": "דירוג",
+    "points": "{{count}} נק׳",
+    "pointsWithPrefix": "{{prefix}}{{count}} נק׳",
+    "actions": {
+      "onMyWay": "אני בדרך",
+      "cleaning": "ניקיון",
+      "finishedWithPhoto": "סיום (העלאת תמונה)"
+    },
+    "taskTypes": {
+      "cleaning": "ניקיון",
+      "maintenance": "תחזוקה",
+      "vip": "טיפולי VIP",
+      "vip_treats": "טיפולי VIP",
+      "inspection": "בדיקה",
+      "checkout": "צ'ק-אאוט",
+      "checkin": "צ'ק-אין"
+    },
+    "rankTier": {
+      "starter": "מתחיל",
+      "bronze": "ברונזה",
+      "silver": "כסף",
+      "gold": "זהב",
+      "platinum": "פלטינה"
+    },
+    "clockIn": {
+      "title": "שעון כניסה",
+      "scanPlaceholder": "סרוק QR / מזהה עובד",
+      "stopCamera": "עצור מצלמה",
+      "scanQr": "סרוק QR",
+      "nameOptional": "שם (אופציונלי)",
+      "phoneOptional": "טלפון (אופציונלי)",
+      "button": "שעון כניסה"
+    },
+    "loadingTasks": "טוען משימות...",
+    "reportIssue": "דווח על נזק",
+    "issueModal": {
+      "title": "דווח על תקלה",
+      "notePlaceholder": "הוסף הערה קצרה",
+      "sending": "שולח...",
+      "submit": "שלח דיווח"
+    },
+    "toast": {
+      "qrScanned": "QR נסרק",
+      "cameraUnavailable": "המצלמה לא זמינה",
+      "newTask": "שובצה משימה חדשה",
+      "clockedIn": "נכנסת למשמרת",
+      "goldPoints": "צברת נקודות זהב! +{{count}}",
+      "taskUpdated": "המשימה עודכנה",
+      "issueReported": "דווחה תקלה",
+      "levelUp": "עלית רמה! זהב!",
+      "roomReady": "החדר מוכן!"
+    }
+  },
+  "staff": {
+    "onMyWay": "אני בדרך",
+    "enteringRoom": "נכנסתי לחדר",
+    "finished": "סיימתי וניקיתי"
+  },
+  "activity": {
+    "title": "חדר {{room}}",
+    "unknownRoom": "חדר לא ידוע",
+    "onMyWay": "חדר {{room}} - אני בדרך",
+    "cleaningStarted": "חדר {{room}} - הניקיון התחיל",
+    "cleaningFinished": "חדר {{room}} - הניקיון הסתיים",
+    "damageReported": "חדר {{room}} - דווחה תקלה",
+    "generic": "חדר {{room}} - עדכון"
+  },
+  "pdf": {
+    "daily": {
+      "title": "דוח יומי",
+      "heading": "דוח ROI יומי"
+    },
+    "monthly": {
+      "title": "דוח חודשי",
+      "heading": "דוח חודשי"
+    },
+    "window": "חלון זמן: {{start}} → {{end}}",
+    "windowLast30Days": "חלון זמן: 30 הימים האחרונים",
+    "labels": {
+      "hoursSaved": "שעות שנחסכו",
+      "leadsCaptured": "לידים שנלכדו",
+      "inboundMessages": "הודעות נכנסות",
+      "outboundMessages": "הודעות יוצאות",
+      "paidRevenue": "הכנסה ששולמה",
+      "automationInteractions": "אינטראקציות אוטומציה"
+    },
+    "recommendations": "המלצות",
+    "security": {
+      "title": "אישור אבטחה",
+      "subtitle": "אישור הצפנת נתונים",
+      "labels": {
+        "encryption": "הצפנה",
+        "accessScope": "היקף גישה",
+        "issued": "תאריך הנפקה"
+      },
+      "values": {
+        "encryption": "הצפנה ברמת ארגון במנוחה ב-PostgreSQL",
+        "accessScope": "גישת iCal לקריאה בלבד — ללא תשלומים או פרטי אורח"
+      }
+    }
+  }
+}

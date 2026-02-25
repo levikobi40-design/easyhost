@@ -1,0 +1,291 @@
+/* ============================================
+  Easy Host AI Header - Premium Glassmorphism
+   ============================================ */
+
+.app-header {
+  background-color: var(--bg-tertiary);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-xl);
+  border: 1px solid var(--border);
+}
+
+.app-header.easyhost-header {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* Brand Logo */
+.header-brand {
+  gap: 8px;
+}
+
+.brand-logo {
+  font-size: 22px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
+}
+
+.brand-ai-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 1px;
+}
+
+/* Maya AI Button */
+.maya-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border: none !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4) !important;
+}
+
+.maya-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5) !important;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.header-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.header-center {
+  flex: 1;
+  justify-content: center;
+}
+
+.header-right {
+  margin-left: auto;
+}
+
+/* === LANGUAGE BUTTONS === */
+.lang-btn {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--primary);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-normal);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  min-height: var(--input-height-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.lang-btn:hover {
+  background-color: rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px);
+}
+
+.lang-btn.active {
+  background-color: var(--primary);
+  color: var(--text-primary);
+  border-color: var(--primary);
+}
+
+.lang-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* === NAVIGATION BUTTONS === */
+.header-nav {
+  gap: var(--space-xs);
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-normal);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.nav-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.nav-btn.active {
+  background-color: var(--primary);
+  color: white;
+}
+
+.nav-btn svg {
+  flex-shrink: 0;
+}
+
+/* === AI ASSISTANT BUTTON === */
+.ai-assistant-btn {
+  font-weight: var(--font-semibold);
+  box-shadow: var(--shadow-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-xl);
+}
+
+.ai-assistant-btn:hover {
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+  transform: translateY(-3px) scale(1.02);
+}
+
+/* === ROLE SELECTOR === */
+.role-selector {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-primary);
+}
+
+.role-select {
+  background-color: var(--bg-secondary);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-xs) var(--space-2xl) var(--space-xs) var(--space-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: var(--transition-normal);
+  outline: none;
+  min-height: var(--input-height-sm);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%233b82f6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-sm) center;
+  background-size: 1rem;
+}
+
+.role-select:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-color: var(--primary-light);
+}
+
+.role-select:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.role-select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: var(--space-sm);
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 768px) {
+  .app-header {
+    padding: var(--space-md);
+  }
+
+  .header-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-md);
+  }
+
+  .header-section {
+    justify-content: center;
+  }
+
+  .header-nav {
+    order: -2;
+    margin-bottom: var(--space-xs);
+  }
+
+  .header-center {
+    order: -1;
+    margin-bottom: var(--space-sm);
+  }
+
+  .header-right {
+    margin-left: 0;
+    justify-content: center;
+  }
+
+  .ai-assistant-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+  }
+
+  .lang-btn {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--text-xs);
+  }
+
+  .nav-btn {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--text-xs);
+  }
+
+  .nav-btn span {
+    display: none;
+  }
+
+  .role-select {
+    font-size: var(--text-xs);
+    padding: var(--space-xs) var(--space-xl) var(--space-xs) var(--space-sm);
+  }
+}
+
+@media (max-width: 320px) {
+  .header-section {
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+
+  .lang-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    min-height: 1.75rem;
+  }
+
+  .ai-assistant-btn {
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-xs);
+  }
+
+  .role-select {
+    min-height: 1.75rem;
+    font-size: 0.7rem;
+  }
+}

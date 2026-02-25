@@ -1,0 +1,65 @@
+.whatsapp-monitor {
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.monitor-count {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.monitor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.monitor-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.monitor-item.outbound {
+  border-color: rgba(201, 162, 39, 0.35);
+}
+
+.monitor-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 0.6rem;
+  background: rgba(201, 162, 39, 0.12);
+}
+
+.monitor-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.monitor-text {
+  color: #f8fafc;
+}
+
+.monitor-time {
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+.monitor-empty {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}

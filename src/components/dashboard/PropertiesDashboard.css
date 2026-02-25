@@ -1,0 +1,37 @@
+.properties-dashboard {
+  min-height: 100vh;
+}
+
+/* Grid layout: 3–4 cards per row */
+.properties-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.property-card-img {
+  background-color: #f3f4f6;
+}
+
+/* Airbnb-style property cards */
+.property-card-airbnb {
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.property-card-airbnb:hover {
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.12);
+}
+
+/* Smart text truncation - 2-line clamp without breaking the card */
+.property-card-title,
+.property-suite-title,
+.room-list-title {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+}

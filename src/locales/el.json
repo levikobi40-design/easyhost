@@ -1,0 +1,292 @@
+{
+  "branding": {
+    "name": "Easy Host AI",
+    "subtitle": "Πλατφόρμα Διαχείρισης Ξενοδοχείου με AI",
+    "aiConcierge": "AI Concierge",
+    "aiShort": "AI"
+  },
+  "nav": {
+    "dashboard": "Πίνακας",
+    "premium": "Premium",
+    "properties": "Τα Ακίνητά μου",
+    "leads": "Leads",
+    "crm": "CRM Leads",
+    "operator": "Εποπτεία Leads",
+    "analytics": "Αναλύσεις",
+    "field": "Πεδίο",
+    "enterprise": "Enterprise"
+  },
+  "languages": {
+    "he": "Εβραϊκά",
+    "en": "English",
+    "el": "Ελληνικά"
+  },
+  "roles": {
+    "host": "Οικοδεσπότης",
+    "operator": "Χειριστής",
+    "field": "Πεδίο"
+  },
+  "status": {
+    "online": "Online",
+    "busy": "Busy",
+    "offline": "Offline",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "common": {
+    "close": "Κλείσιμο",
+    "cancel": "Άκυρο",
+    "save": "Αποθήκευση",
+    "search": "Αναζήτηση",
+    "loading": "Φόρτωση...",
+    "scanning": "Σάρωση...",
+    "generate": "Δημιουργία",
+    "send": "Αποστολή",
+    "copy": "Αντιγραφή",
+    "copied": "Αντιγράφηκε!",
+    "viewDetails": "Προβολή",
+    "checking": "Έλεγχος...",
+    "live": "Live",
+    "offline": "Offline",
+    "online": "Online",
+    "noData": "Δεν υπάρχουν δεδομένα",
+    "readyToHelp": "Το σύστημα είναι έτοιμο να βοηθήσει!",
+    "taskCompleted": "Η εργασία ολοκληρώθηκε με επιτυχία!"
+  },
+  "topbar": {
+    "breadcrumbEnterprise": "Enterprise",
+    "breadcrumbDashboard": "Dashboard",
+    "userName": "Διαχειριστής",
+    "notifications": "Ειδοποιήσεις"
+  },
+  "sidebar": {
+    "aiAssistant": "AI Assistant",
+    "zeroTrust": "Zero-Trust Secured"
+  },
+  "placeholders": {
+    "roomsTitle": "Διαχείριση Δωματίων",
+    "roomsDesc": "Η προβολή διαχείρισης δωματίων θα είναι διαθέσιμη σύντομα",
+    "analyticsTitle": "Αναλύσεις",
+    "analyticsDesc": "Προχωρημένες αναφορές θα είναι διαθέσιμες σύντομα",
+    "settingsTitle": "Ρυθμίσεις",
+    "settingsDesc": "Οι ρυθμίσεις θα είναι διαθέσιμες σύντομα"
+  },
+  "agentsView": {
+    "title": "Διαχείριση Agents",
+    "tasks": "Εργασίες",
+    "statusOnline": "Active",
+    "statusBusy": "Busy",
+    "statusOffline": "Offline"
+  },
+  "dashboard": {
+    "title": "Easy Host AI",
+    "subtitle": "Έξυπνο σύστημα διαχείρισης ξενοδοχείου",
+    "generateReport": "Ημερήσια Αναφορά",
+    "trendLabelDefault": "σε σχέση με τον προηγούμενο μήνα",
+    "generatingReport": "Δημιουργία αναφοράς...",
+    "stats": {
+      "revenueToday": "Έσοδα Σήμερα",
+      "occupancy": "Πληρότητα",
+      "bookingsToday": "Κρατήσεις Σήμερα",
+      "automationSavings": "Εξοικονόμηση Αυτοματισμού",
+      "automationRate": "Ποσοστό Αυτοματισμού"
+    },
+    "charts": {
+      "revenueBookings": "Έσοδα & Κρατήσεις",
+      "revenue": "Έσοδα",
+      "bookings": "Κρατήσεις",
+      "roomStatus": "Κατάσταση Δωματίων",
+      "agentsStatus": "Κατάσταση Agents",
+      "agentsAllActive": "Όλα Ενεργά",
+      "agentsPerformance": "Απόδοση Agents",
+      "tasks": "Εργασίες",
+      "successes": "Επιτυχίες"
+    },
+    "rooms": {
+      "title": "Δωμάτια",
+      "count": "{{count}} δωμάτια",
+      "checkout": "Check-out",
+      "sendCleaner": "Send Cleaner",
+      "ownerActions": "Ενέργειες Ιδιοκτήτη",
+      "status": {
+        "occupied": "Κατειλημμένο",
+        "available": "Διαθέσιμο",
+        "cleaning": "Καθαρισμός",
+        "maintenance": "Συντήρηση",
+        "toggle": "Εναλλαγή Κατάστασης"
+      },
+      "roomLabel": "Δωμάτιο {{number}}"
+    },
+    "alerts": {
+      "title": "Ειδοποιήσεις Διαχείρισης",
+      "empty": "Δεν υπάρχουν κρίσιμες ειδοποιήσεις",
+      "leadNoReply": "Καμία απάντηση από {{name}} για 2 ώρες",
+      "bookingConfirmed": "Επιβεβαιώθηκε κράτηση - ξεκίνησε καθαρισμός",
+      "notification": "Ενημέρωση συστήματος",
+      "justNow": "Μόλις τώρα",
+      "minutesAgo": "πριν {{count}}λ",
+      "hoursAgo": "πριν {{count}}ώ"
+    },
+    "report": {
+      "title": "Ημερήσια Αναφορά ROI",
+      "humanHoursSaved": "Ανθρώπινες ώρες που εξοικονομήθηκαν",
+      "hoursSaved": "Ώρες που Εξοικονομήθηκαν",
+      "cleaningsTriggered": "Καθαρισμοί",
+      "leadsCaptured": "Leads",
+      "recommendationsTitle": "Συστάσεις Maya",
+      "agentSummaryTitle": "Σύνοψη Agents",
+      "automationMessage": "Η αυτοματοποίηση εξοικονόμησε {{rate}}% χειροκίνητης εργασίας σήμερα"
+    }
+  },
+  "leadsCRM": {
+    "title": "Διαχείριση Leads",
+    "leadCount": "{{count}} leads",
+    "scanNew": "Σάρωση Νέων Leads",
+    "searchPlaceholder": "Αναζήτηση με όνομα ή επαφή...",
+    "perNight": "ανά νύχτα",
+    "stats": {
+      "newLeads": "Νέα Leads",
+      "inProgress": "Σε Εξέλιξη",
+      "qualified": "Qualified",
+      "totalValue": "Συνολική Αξία"
+    },
+    "table": {
+      "property": "Ιδιοκτησία",
+      "contact": "Επαφή",
+      "source": "Πηγή",
+      "status": "Κατάσταση",
+      "value": "Αξία",
+      "rating": "Αξιολόγηση",
+      "actions": "Ενέργειες"
+    },
+    "actions": {
+      "sendDemo": "Αποστολή Demo",
+      "call": "Κλήση",
+      "more": "Περισσότερα"
+    },
+    "autoGreetingSent": "Αυτόματο μήνυμα στάλθηκε σε {{name}}",
+    "modal": {
+      "email": "Email",
+      "phone": "Τηλέφωνο",
+      "source": "Πηγή",
+      "createdAt": "Ημ/νία Δημιουργίας",
+      "notes": "Σημειώσεις",
+      "sendMessage": "Αποστολή Μηνύματος"
+    },
+    "status": {
+      "all": "Όλα",
+      "new": "Νέο",
+      "contacted": "Επικοινώνησε",
+      "qualified": "Qualified",
+      "converted": "Converted",
+      "lost": "Χαμένο"
+    }
+  },
+  "mayaChat": {
+    "title": "Maya",
+    "role": "Senior Project Manager",
+    "greeting": "Γεια! Είμαι η Maya, η senior project manager σας. Πώς μπορώ να βοηθήσω σήμερα;",
+    "askPlaceholder": "דבר עם מאיה / Chat with Maya...",
+    "hint": "Η Maya διαχειρίζεται 5 έξυπνους agents",
+    "leadsFoundLabel": "Leads που βρέθηκαν:",
+    "proactiveOccupancy": "Εντόπισα κενό στις κρατήσεις της επόμενης εβδομάδας. Να ζητήσω από τον Marketing Agent ένα Airbnb promo;",
+    "quickActions": {
+      "scan": "Σάρωση Leads",
+      "report": "Ημερήσια Αναφορά",
+      "cleaning": "Αίτημα Καθαρισμού",
+      "post": "Δημιουργία Post",
+      "automation": "Αυτοματισμός"
+    }
+  },
+  "notifications": {
+    "title": "Ειδοποιήσεις",
+    "newCount": "{{count}} νέα",
+    "clearAll": "Καθαρισμός",
+    "empty": "Δεν υπάρχουν ειδοποιήσεις",
+    "connected": "Συνδεδεμένο στον διακομιστή",
+    "roomRequest": "Αίτημα Δωματίου",
+    "agentUpdate": "Ενημέρωση Agent",
+    "newLead": "Νέο Lead",
+    "messages": {
+      "towels": "Ζητήθηκαν πετσέτες για το δωμάτιο {{room}}",
+      "cleaning": "Ζητήθηκε καθαρισμός για το δωμάτιο {{room}}",
+      "roomService": "Ζητήθηκε room service για το δωμάτιο {{room}}",
+      "maintenance": "Απαιτείται συντήρηση για το δωμάτιο {{room}}",
+      "agentAction": "Agent {{agent}} {{action}}",
+      "newLead": "Νέο lead από {{platform}}"
+    },
+    "time": {
+      "now": "Τώρα",
+      "minutesAgo": "πριν {{count}} λεπτά",
+      "hoursAgo": "πριν {{count}} ώρες"
+    }
+  },
+  "leadsPage": {
+    "title": "Πωλήσεις / Leads",
+    "addDemo": "Προσθήκη Demo Lead",
+    "status": {
+      "all": "Όλα",
+      "new": "Νέο",
+      "contacted": "Επικοινώνησε",
+      "qualified": "Qualified",
+      "won": "Won",
+      "lost": "Lost"
+    },
+    "stats": {
+      "total": "Σύνολο",
+      "new": "Νέα",
+      "qualified": "Qualified",
+      "won": "Won",
+      "avgScore": "Μέσος Βαθμός"
+    },
+    "table": {
+      "score": "Βαθμός",
+      "name": "Όνομα",
+      "contact": "Επαφή",
+      "dates": "Ημερομηνίες",
+      "guests": "Επισκέπτες",
+      "status": "Κατάσταση",
+      "created": "Δημιουργήθηκε"
+    },
+    "empty": "Δεν υπάρχουν leads",
+    "errorLoad": "Σφάλμα φόρτωσης leads"
+  },
+  "leadModal": {
+    "contactInfo": "Στοιχεία Επικοινωνίας",
+    "bookingDetails": "Στοιχεία Κράτησης",
+    "status": "Κατάσταση",
+    "quickActions": "Γρήγορες Ενέργειες",
+    "copyMessage": "Αντιγραφή Μηνύματος",
+    "created": "Δημιουργήθηκε:",
+    "source": "Πηγή:",
+    "score": "Βαθμός",
+    "whatsapp": {
+      "intro": "Γεια σας {{name}},\n\nΕυχαριστούμε για το ενδιαφέρον σας στο {{hotelName}}!",
+      "dates": "\n\nΕνδιαφέρεστε για:\n{{checkin}} - {{checkout}}",
+      "guests": "\nΓια {{guests}} επισκέπτες.",
+      "closing": "\n\nΘα χαρούμε να βοηθήσουμε στην κράτησή σας!\nΠώς μπορούμε να βοηθήσουμε;"
+    },
+    "email": {
+      "subject": "Booking Inquiry - {{hotelName}}"
+    }
+  },
+  "staffView": {
+    "openTask": "Ανοιχτή Εργασία"
+  },
+  "orchestrator": {
+    "messages": {
+      "unknown": "Δεν κατάλαβα το αίτημα. Προσπαθήστε ξανά ή επιλέξτε ενέργεια.",
+      "leadsFound": "Βρέθηκαν {{count}} νέα leads",
+      "postCreated": "Το post δημιουργήθηκε",
+      "campaignSent": "Η καμπάνια στάλθηκε σε {{count}} παραλήπτες",
+      "videoEdited": "Το βίντεο επεξεργάστηκε",
+      "imagesEnhanced": "Βελτιώθηκαν {{count}} εικόνες",
+      "tourCreated": "Δημιουργήθηκε εικονική περιήγηση",
+      "demoSent": "Το demo στάλθηκε στον/στην {{name}}",
+      "negotiationStarted": "Ξεκίνησε διαπραγμάτευση",
+      "followUpSent": "Στάλθηκε follow-up",
+      "whatsappSent": "Το WhatsApp στάλθηκε στο τμήμα {{department}}",
+      "checkoutDone": "Ολοκληρώθηκε check-out για το δωμάτιο {{room}}"
+    }
+  }
+}

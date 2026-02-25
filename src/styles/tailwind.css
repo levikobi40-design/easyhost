@@ -1,0 +1,229 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Base layer customizations */
+@layer base {
+  * {
+    @apply box-border;
+  }
+  
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply bg-dark-950 text-white font-sans antialiased;
+    background-image: 
+      radial-gradient(ellipse at top, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom right, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-500;
+  }
+
+  /* RTL Support */
+  [dir="rtl"] {
+    @apply text-right;
+  }
+}
+
+/* Component layer - Glassmorphism utilities */
+@layer components {
+  /* Glassmorphism Cards */
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-glass;
+  }
+
+  .glass-light {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-glass-sm;
+  }
+
+  .glass-dark {
+    @apply bg-dark-900/80 backdrop-blur-xl border border-white/5 shadow-glass;
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl p-6 transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply bg-white/10 border-white/20 shadow-enterprise transform -translate-y-1;
+  }
+
+  /* Enterprise Buttons */
+  .btn-enterprise {
+    @apply px-6 py-3 rounded-xl font-semibold transition-all duration-300 
+           flex items-center justify-center gap-2 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn-enterprise text-dark-950;
+    background: linear-gradient(135deg, #D4AF37, #F9E27D);
+    box-shadow: 0 0 30px rgba(212, 175, 55, 0.3);
+  }
+
+  .btn-secondary {
+    @apply btn-enterprise text-dark-950;
+    background: linear-gradient(135deg, #D4AF37, #F9E27D);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+  }
+
+  .btn-accent {
+    @apply btn-enterprise bg-gradient-to-r from-accent-blue to-accent-purple
+           text-white hover:opacity-90 shadow-glow-purple;
+  }
+
+  .btn-danger {
+    @apply btn-enterprise bg-gradient-to-r from-accent-rose to-red-600
+           text-white hover:opacity-90;
+  }
+
+  /* Input Fields */
+  .input-glass {
+    @apply w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 
+           text-white placeholder-dark-400 outline-none 
+           focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20
+           transition-all duration-300;
+  }
+
+  /* Status Badges */
+  .badge {
+    @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  }
+
+  .badge-danger {
+    @apply badge bg-rose-500/20 text-rose-400 border border-rose-500/30;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-500/20 text-blue-400 border border-blue-500/30;
+  }
+
+  /* Smart Cards */
+  .smart-card {
+    @apply glass-card relative overflow-hidden group;
+  }
+
+  .smart-card::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br from-primary-500/10 to-transparent 
+           opacity-0 group-hover:opacity-100 transition-opacity duration-500;
+  }
+
+  /* Stats Display */
+  .stat-value {
+    @apply text-4xl font-bold bg-gradient-to-r from-primary-400 to-primary-600 
+           bg-clip-text text-transparent;
+  }
+
+  .stat-label {
+    @apply text-dark-400 text-sm font-medium uppercase tracking-wider;
+  }
+
+  /* Agent Status Indicator */
+  .agent-status {
+    @apply relative flex items-center gap-3;
+  }
+
+  .agent-status::before {
+    content: '';
+    @apply w-3 h-3 rounded-full animate-pulse;
+  }
+
+  .agent-status.online::before {
+    @apply bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)];
+  }
+
+  .agent-status.busy::before {
+    @apply bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)];
+  }
+
+  .agent-status.offline::before {
+    @apply bg-dark-500;
+  }
+
+  /* Maya Chat Interface */
+  .maya-container {
+    @apply fixed bottom-6 right-6 z-50;
+  }
+
+  .maya-button {
+    @apply w-16 h-16 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 
+           flex items-center justify-center shadow-glow cursor-pointer
+           hover:scale-110 transition-transform duration-300;
+  }
+
+  .maya-chat {
+    @apply glass-dark rounded-3xl w-[400px] h-[600px] flex flex-col overflow-hidden
+           shadow-enterprise;
+  }
+
+  .maya-message {
+    @apply glass-light rounded-2xl p-4 max-w-[80%] animate-slide-up;
+  }
+
+  .maya-message.user {
+    @apply bg-primary-500/20 ml-auto;
+  }
+
+  .maya-message.assistant {
+    @apply bg-white/5 mr-auto;
+  }
+}
+
+/* Utility layer */
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-400 via-primary-500 to-primary-600 
+           bg-clip-text text-transparent;
+  }
+
+  .text-gradient-blue {
+    @apply bg-gradient-to-r from-accent-blue to-accent-purple 
+           bg-clip-text text-transparent;
+  }
+
+  .animate-delay-100 {
+    animation-delay: 100ms;
+  }
+
+  .animate-delay-200 {
+    animation-delay: 200ms;
+  }
+
+  .animate-delay-300 {
+    animation-delay: 300ms;
+  }
+
+  .animate-delay-500 {
+    animation-delay: 500ms;
+  }
+}

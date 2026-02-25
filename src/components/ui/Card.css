@@ -1,0 +1,126 @@
+/* ============================================
+   Card Component - Design System
+   ============================================ */
+
+.card {
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  transition: var(--transition-normal);
+}
+
+/* === CARD VARIANTS === */
+.card-default {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.card-elevated {
+  background-color: var(--bg-tertiary);
+  box-shadow: var(--shadow-lg);
+  border: none;
+}
+
+.card-outlined {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--primary);
+}
+
+.card-gradient {
+  background: var(--gradient-purple);
+  color: var(--text-primary);
+  border: none;
+}
+
+.card-gradient .card-header {
+  border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+.card-gradient .card-title {
+  color: var(--text-primary);
+}
+
+/* === CARD HOVER === */
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-xl);
+}
+
+.card-gradient:hover {
+  box-shadow: 0 20px 25px -5px rgba(102, 126, 234, 0.3);
+}
+
+/* === CARD HEADER === */
+.card-header {
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.card-subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: var(--space-xs) 0 0 0;
+}
+
+/* === CARD BODY === */
+.card-body {
+  color: var(--text-primary);
+}
+
+/* === CARD FOOTER === */
+.card-footer {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 768px) {
+  .card {
+    padding: var(--space-lg);
+    border-radius: var(--radius-md);
+  }
+
+  .card-header {
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+  }
+
+  .card-title {
+    font-size: var(--text-lg);
+  }
+
+  .card-footer {
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+  }
+}
+
+@media (max-width: 320px) {
+  .card {
+    padding: var(--space-md);
+    border-radius: var(--radius-sm);
+  }
+
+  .card-title {
+    font-size: var(--text-base);
+  }
+
+  .card-subtitle {
+    font-size: var(--text-xs);
+  }
+}

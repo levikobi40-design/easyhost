@@ -1,0 +1,442 @@
+/* ============================================
+   Leads Page Component - Design System
+   ============================================ */
+
+.leads-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+/* === HEADER === */
+.leads-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+}
+
+.leads-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.leads-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  margin: 0;
+}
+
+.leads-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+.status-filter {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.status-filter:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* === STATS CARDS === */
+.leads-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-lg);
+}
+
+.stat-card {
+  text-align: center;
+  padding: var(--space-lg);
+}
+
+.stat-value {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.stat-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.stat-new .stat-value {
+  color: var(--primary);
+}
+
+.stat-qualified .stat-value {
+  color: var(--accent);
+}
+
+.stat-booked .stat-value {
+  color: var(--secondary);
+}
+
+/* === TABLE === */
+.leads-table-card {
+  overflow: hidden;
+}
+
+.leads-table-wrapper {
+  overflow-x: auto;
+}
+
+.leads-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.leads-table th {
+  text-align: left;
+  padding: var(--space-md) var(--space-lg);
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.leads-table td {
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.lead-row {
+  cursor: pointer;
+  transition: background-color var(--transition-normal);
+}
+
+.lead-row:hover {
+  background-color: var(--bg-hover);
+}
+
+/* Score Badge */
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  font-weight: var(--font-semibold);
+  font-size: var(--text-xs);
+}
+
+.score-high {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: var(--secondary);
+}
+
+.score-medium {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: var(--accent);
+}
+
+.score-low {
+  background-color: rgba(156, 163, 175, 0.2);
+  color: var(--text-secondary);
+}
+
+/* Lead Name */
+.lead-name {
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+}
+
+/* Contact Info */
+.lead-contact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.contact-item svg {
+  color: var(--primary);
+}
+
+/* Dates */
+.dates-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.dates-item svg {
+  color: var(--accent);
+}
+
+/* Guests */
+.guests-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+}
+
+.guests-item svg {
+  color: var(--secondary);
+}
+
+/* Status Badge */
+.status-badge {
+  display: inline-block;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  text-transform: capitalize;
+}
+
+.status-new {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: var(--primary);
+}
+
+.status-contacted {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: var(--accent);
+}
+
+.status-qualified {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: var(--secondary);
+}
+
+.status-booked {
+  background-color: rgba(16, 185, 129, 0.4);
+  color: var(--secondary);
+}
+
+.status-lost {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+/* Created Time */
+.lead-created {
+  white-space: nowrap;
+}
+
+.created-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.created-time {
+  color: var(--text-muted);
+  margin-left: var(--space-xs);
+}
+
+/* Empty/Loading/Error States */
+.leads-loading,
+.leads-error,
+.leads-empty {
+  padding: var(--space-3xl);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.leads-empty svg {
+  color: var(--text-muted);
+  margin-bottom: var(--space-lg);
+  opacity: 0.5;
+}
+
+.leads-error {
+  color: var(--danger);
+}
+
+/* Connection Status (reusing from OwnerView) */
+.leads-page .connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+}
+
+.leads-page .connection-status.connected {
+  background: rgba(16, 185, 129, 0.3);
+  color: var(--secondary-light);
+}
+
+.leads-page .connection-status.error {
+  background: rgba(239, 68, 68, 0.3);
+  color: var(--danger-light);
+}
+
+.leads-page .connection-status.connecting {
+  background: rgba(99, 102, 241, 0.3);
+  color: var(--primary-light);
+}
+
+/* === RTL Support === */
+[dir="rtl"] .leads-table th,
+[dir="rtl"] .leads-table td {
+  text-align: right;
+}
+
+[dir="rtl"] .contact-item,
+[dir="rtl"] .dates-item,
+[dir="rtl"] .guests-item,
+[dir="rtl"] .created-item {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .created-time {
+  margin-left: 0;
+  margin-right: var(--space-xs);
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 1024px) {
+  .leads-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .leads-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .leads-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .leads-table th,
+  .leads-table td {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  /* Hide some columns on mobile */
+  .leads-table th:nth-child(4),
+  .leads-table td:nth-child(4),
+  .leads-table th:nth-child(5),
+  .leads-table td:nth-child(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .leads-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+  }
+
+  .stat-card {
+    padding: var(--space-md);
+  }
+
+  .stat-value {
+    font-size: var(--text-2xl);
+  }
+
+  .leads-title {
+    font-size: var(--text-xl);
+  }
+
+  /* Hide more columns */
+  .leads-table th:nth-child(3),
+  .leads-table td:nth-child(3),
+  .leads-table th:nth-child(7),
+  .leads-table td:nth-child(7) {
+    display: none;
+  }
+
+  .leads-table th,
+  .leads-table td {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--text-xs);
+  }
+}
+
+@media (max-width: 320px) {
+  .leads-page {
+    gap: var(--space-md);
+  }
+
+  .leads-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+
+  .stat-card {
+    padding: var(--space-sm);
+  }
+
+  .stat-value {
+    font-size: var(--text-xl);
+  }
+
+  .stat-label {
+    font-size: var(--text-xs);
+  }
+
+  .leads-title {
+    font-size: var(--text-lg);
+  }
+
+  .status-filter {
+    min-width: 80px;
+    font-size: var(--text-xs);
+    padding: var(--space-xs) var(--space-sm);
+  }
+}
+
+/* === DEMO LEAD BUTTON === */
+.demo-lead-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+}
+
+.demo-lead-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}

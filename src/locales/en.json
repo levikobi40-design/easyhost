@@ -1,0 +1,581 @@
+{
+  "branding": {
+    "name": "Easy Hotel AI",
+    "subtitle": "Luxury Hotel Management OS",
+    "aiConcierge": "AI Concierge",
+    "aiShort": "AI"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "premium": "Premium",
+    "properties": "My Properties",
+    "tasks": "Task Calendar",
+    "leads": "Leads",
+    "crm": "Leads CRM",
+    "operator": "Lead Monitor",
+    "analytics": "Analytics",
+    "field": "Field Ops",
+    "enterprise": "Enterprise"
+  },
+  "languages": {
+    "he": "Hebrew",
+    "en": "English",
+    "el": "Greek"
+  },
+  "roles": {
+    "host": "Host",
+    "operator": "Operator",
+    "field": "Field",
+    "guest": "Guest"
+  },
+  "status": {
+    "online": "Online",
+    "busy": "Busy",
+    "offline": "Offline",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "search": "Search",
+    "loading": "Loading...",
+    "scanning": "Scanning...",
+    "generate": "Generate",
+    "send": "Send",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "viewDetails": "View Details",
+    "checking": "Checking...",
+    "live": "Live",
+    "offline": "Offline",
+    "online": "Online",
+    "all": "All",
+    "noData": "No data available",
+    "readyToHelp": "The system is ready to help you!",
+    "taskCompleted": "Task completed successfully!"
+  },
+  "topbar": {
+    "breadcrumbEnterprise": "Enterprise",
+    "breadcrumbDashboard": "Dashboard",
+    "userName": "System Manager",
+    "notifications": "Notifications"
+  },
+  "sidebar": {
+    "aiAssistant": "AI Assistant",
+    "zeroTrust": "Zero-Trust Secured"
+  },
+  "placeholders": {
+    "roomsTitle": "Room Management",
+    "roomsDesc": "Room management view will be available soon",
+    "analyticsTitle": "Analytics",
+    "analyticsDesc": "Advanced analytics and reports will be available soon",
+    "settingsTitle": "Settings",
+    "settingsDesc": "System settings will be available soon"
+  },
+  "agentsView": {
+    "title": "Agent Management",
+    "tasks": "Tasks",
+    "statusOnline": "Active",
+    "statusBusy": "Busy",
+    "statusOffline": "Offline"
+  },
+  "dashboard": {
+    "title": "Easy Host AI",
+    "subtitle": "AI-powered hotel management OS",
+    "generateReport": "Generate Daily Report",
+    "actions": "Actions",
+    "waitingForSync": "Waiting for sync",
+    "liveProperty": "Live Property",
+    "livePreview": "Live Preview",
+    "successSynced": "SUCCESS: Property Synced!",
+    "propertyFound": "Property Found!",
+    "generatedForClient": "Generated for your Client",
+    "guestPortal": "Generate Guest Portal",
+    "guestPortalTitle": "Guest Portal Preview",
+    "guestPortalHeadline": "Welcome to Hacienda Paraíso",
+    "guestPortalCopy": "Clean, organized, branded. Your guest sees a premium experience instantly.",
+    "staffSection": "Staff",
+    "assignStaff": "Add/Assign Staff",
+    "cleanedBy": "Property Cleaned by {{name}}",
+    "staffPlaceholder": "Maya Cohen",
+    "guests": "{{count}} guests",
+    "perNight": "per night",
+    "managementStaff": "Management & Staff",
+    "assignCleaner": "Assign Cleaner",
+    "cleaningScheduled": "Cleaning Scheduled",
+    "smartAiTip": "This property can save ₪350/week using automated checkout alerts",
+    "mayaTeam": "Maya Command Center",
+    "leadFinder": "Lead Finder",
+    "outreach": "Outreach",
+    "demoCreator": "Demo Creator",
+    "memoryBank": "Memory Bank",
+    "mayaName": "Maya",
+    "mayaRole": "AI Operations Manager",
+    "demoLinkLabel": "Paste Airbnb Link",
+    "demoLinkPlaceholder": "Paste the listing link here...",
+    "sendDemo": "Send Demo to Client",
+    "insightsTitle": "Insights from this Business",
+    "insightsBody": "AI preferences and patterns will appear here for future interactions.",
+    "leadFinderBody": "New high-intent leads will be surfaced here automatically.",
+    "outreachBody": "Automated outreach sequences are running and tracked here.",
+    "mayaManager": "Maya (Manager)",
+    "sendToWhatsApp": "Send to WhatsApp",
+    "memoryCardTitle": "Learning from this Property...",
+    "memoryCardBody": "Targeting high-end guests based on pool amenities.",
+    "mayaOverviewTitle": "Maya Command Bridge",
+    "mayaOverviewBody": "Coordinating Lead Scout, Outreach, Demo, and Memory in real time.",
+    "recentActivity": {
+      "title": "Recent Activity",
+      "empty": "No recent activity yet."
+    },
+    "damageAlert": {
+      "title": "Damage Alert",
+      "count": "{{count}} rooms blocked",
+      "roomLabel": "{{room}} - Damage Reported",
+      "viewHistory": "View History",
+      "more": "+{{count}} more rooms"
+    },
+    "export": {
+      "daily": "Daily Report",
+      "monthlyPdf": "Monthly Report (PDF)",
+      "data": "Export Data"
+    },
+    "trendLabelDefault": "from last month",
+    "generatingReport": "Generating report...",
+    "sidebar": {
+      "title": "Sidebar",
+      "hide": "Hide",
+      "show": "Show"
+    },
+    "shiftManager": {
+      "title": "Shift Manager",
+      "activeCount": "{{count}} Active Staff",
+      "noActive": "No active staff yet.",
+      "loading": "Loading staff...",
+      "waiting": "Waiting for staff to clock in.",
+      "idle": "Idle"
+    },
+    "stats": {
+      "revenueToday": "Revenue Today",
+      "occupancy": "Current Occupancy",
+      "bookingsToday": "Bookings Today",
+      "automationSavings": "Automation Savings",
+      "automationRate": "Automation Rate"
+    },
+    "charts": {
+      "revenueBookings": "Revenue & Bookings",
+      "revenue": "Revenue",
+      "bookings": "Bookings",
+      "roomStatus": "Room Status",
+      "agentsStatus": "Agent Status",
+      "agentsAllActive": "All Active",
+      "agentsPerformance": "Agent Performance",
+      "tasks": "Tasks",
+      "successes": "Successes"
+    },
+    "rooms": {
+      "title": "Rooms",
+      "count": "{{count}} rooms",
+      "checkout": "Check-out",
+      "sendCleaner": "Send Cleaner",
+      "ownerActions": "Owner Actions",
+      "status": {
+        "occupied": "Occupied",
+        "available": "Available",
+        "cleaning": "Cleaning",
+        "maintenance": "Maintenance",
+        "toggle": "Toggle Status"
+      },
+      "roomLabel": "Room {{number}}"
+    },
+    "alerts": {
+      "title": "Management Alerts",
+      "empty": "No high-priority alerts",
+      "leadNoReply": "No reply from {{name}} for 2 hours",
+      "bookingConfirmed": "Booking confirmed - cleaning triggered",
+      "notification": "System update",
+      "justNow": "Just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago"
+    },
+    "report": {
+      "title": "Daily ROI Report",
+      "humanHoursSaved": "Human Hours Saved",
+      "hoursSaved": "Hours Saved",
+      "cleaningsTriggered": "Cleanings Triggered",
+      "leadsCaptured": "Leads Captured",
+      "liveSnapshot": "Live ROI Snapshot",
+      "leadsFound": "Leads Found",
+      "aiMessages": "AI Messages",
+      "dealsClosed": "Deals Closed",
+      "estimatedRoi": "Estimated ROI",
+      "recommendationsTitle": "Maya Recommendations",
+      "agentSummaryTitle": "Agent Summary",
+      "automationMessage": "Automation saved {{rate}}% of manual work today"
+    }
+  },
+  "leadsCRM": {
+    "title": "Lead Management",
+    "leadCount": "{{count}} leads",
+    "scanNew": "Scan New Leads",
+    "searchPlaceholder": "Search by name or contact...",
+    "perNight": "per night",
+    "stats": {
+      "newLeads": "New Leads",
+      "inProgress": "In Progress",
+      "qualified": "Qualified",
+      "totalValue": "Total Value"
+    },
+    "table": {
+      "property": "Property",
+      "contact": "Contact",
+      "source": "Source",
+      "status": "Status",
+      "value": "Value",
+      "rating": "Rating",
+      "actions": "Actions"
+    },
+    "actions": {
+      "sendDemo": "Send Demo",
+      "call": "Call",
+      "more": "More"
+    },
+    "autoGreetingSent": "Auto greeting sent to {{name}}",
+    "modal": {
+      "email": "Email",
+      "phone": "Phone",
+      "source": "Source",
+      "createdAt": "Created",
+      "notes": "Notes",
+      "sendMessage": "Send Message"
+    },
+    "status": {
+      "all": "All",
+      "new": "New",
+      "contacted": "Contacted",
+      "qualified": "Qualified",
+      "converted": "Converted",
+      "lost": "Lost"
+    }
+  },
+  "mayaChat": {
+    "title": "Maya",
+    "role": "Senior Project Manager",
+    "greeting": "Hello! I'm Maya, your senior project manager. How can I help you today?",
+    "askPlaceholder": "דבר עם מאיה / Chat with Maya...",
+    "hint": "Maya manages 5 smart agents working for you",
+    "leadsFoundLabel": "Leads found:",
+    "proactiveOccupancy": "I've detected a gap in next week's bookings; should I have the Marketing Agent create an Airbnb promo?",
+    "connectingMaya": "Connecting to Maya... Please try again in a moment.",
+    "quickActions": {
+      "scan": "Scan Leads",
+      "report": "Daily Report",
+      "cleaning": "Request Cleaning",
+      "post": "Create Post",
+      "automation": "Automation"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "newCount": "{{count}} new",
+    "clearAll": "Clear All",
+    "empty": "No new notifications",
+    "connected": "Connected to server",
+    "roomRequest": "Room Request",
+    "agentUpdate": "Agent Update",
+    "agentTaskCreated": "A new task was created and assigned to staff.",
+    "newLead": "New Lead",
+    "messages": {
+      "towels": "Towels requested for room {{room}}",
+      "cleaning": "Cleaning requested for room {{room}}",
+      "roomService": "Room service requested for room {{room}}",
+      "maintenance": "Maintenance required for room {{room}}",
+      "agentAction": "Agent {{agent}} {{action}}",
+      "newLead": "New lead from {{platform}}"
+    },
+    "time": {
+      "now": "Now",
+      "minutesAgo": "{{count}} minutes ago",
+      "hoursAgo": "{{count}} hours ago"
+    }
+  },
+  "leadsPage": {
+    "title": "Sales / Leads",
+    "addDemo": "Add Demo Lead",
+    "status": {
+      "all": "All",
+      "new": "New",
+      "contacted": "Contacted",
+      "qualified": "Qualified",
+      "won": "Won",
+      "lost": "Lost"
+    },
+    "stats": {
+      "total": "Total",
+      "new": "New",
+      "qualified": "Qualified",
+      "won": "Won",
+      "avgScore": "Avg Score"
+    },
+    "table": {
+      "score": "Score",
+      "name": "Name",
+      "contact": "Contact",
+      "dates": "Dates",
+      "guests": "Guests",
+      "status": "Status",
+      "created": "Created"
+    },
+    "empty": "No leads yet",
+    "errorLoad": "Error loading leads"
+  },
+  "leadModal": {
+    "contactInfo": "Contact Info",
+    "bookingDetails": "Booking Details",
+    "status": "Status",
+    "quickActions": "Quick Actions",
+    "copyMessage": "Copy Message",
+    "created": "Created:",
+    "source": "Source:",
+    "score": "Score",
+    "whatsapp": {
+      "intro": "Hello {{name}},\n\nThank you for your inquiry at {{hotelName}}!",
+      "dates": "\n\nWe noticed you're interested in:\n{{checkin}} - {{checkout}}",
+      "guests": "\nFor {{guests}} guests.",
+      "closing": "\n\nWe would be happy to help you book your perfect stay!\nHow can we assist you?"
+    },
+    "email": {
+      "subject": "Booking Inquiry - {{hotelName}}"
+    }
+  },
+  "staffView": {
+    "openTask": "Open Task"
+  },
+  "orchestrator": {
+    "messages": {
+      "unknown": "I couldn't understand the request. Please try again or choose an action from the menu.",
+      "leadsFound": "Found {{count}} new leads",
+      "postCreated": "Post created successfully",
+      "campaignSent": "Campaign sent to {{count}} recipients",
+      "videoEdited": "Video edited successfully",
+      "imagesEnhanced": "{{count}} images enhanced successfully",
+      "tourCreated": "Virtual tour created successfully",
+      "demoSent": "Demo sent to {{name}}",
+      "negotiationStarted": "Negotiation started",
+      "followUpSent": "Follow-up sent",
+      "whatsappSent": "WhatsApp message sent to {{department}}",
+      "checkoutDone": "Checkout completed for room {{room}}"
+    }
+  },
+  "calendar": {
+    "title": "Calendar Connection",
+    "guide": {
+      "title": "Connect iCal in 3 steps",
+      "airbnb": "Airbnb",
+      "booking": "Booking",
+      "google": "Google Calendar",
+      "steps": {
+        "airbnb": {
+          "1": "Go to Airbnb → Calendar → Export calendar.",
+          "2": "Copy the iCal link.",
+          "3": "Paste it here and connect."
+        },
+        "booking": {
+          "1": "Go to Booking → Calendar → Sync calendars.",
+          "2": "Copy the iCal link.",
+          "3": "Paste it here and connect."
+        },
+        "google": {
+          "1": "Open Google Calendar → Settings.",
+          "2": "Find \"Secret address in iCal format\".",
+          "3": "Copy the link and connect it here."
+        }
+      }
+    },
+    "manualCheckout": {
+      "title": "Manual checkout (testing)",
+      "roomPlaceholder": "Room / label",
+      "submit": "Create Manual Checkout",
+      "link": "Or enter a manual checkout for testing"
+    },
+    "security": {
+      "title": "Why iCal is Safe",
+      "body": "iCal is a Read-Only link. We cannot see your bank details, change your prices, or access your personal Airbnb account.",
+      "badges": {
+        "readOnly": "Read-Only",
+        "noPayments": "No Payments",
+        "encrypted": "Encrypted in PostgreSQL"
+      },
+      "link": "Why iCal is safe?"
+    },
+    "mode": "Mode",
+    "icalMode": "iCal Mode",
+    "manualMode": "Manual Mode",
+    "refresh": "Refresh iCal",
+    "synced": "Synced",
+    "notConnected": "Not Connected",
+    "vacantNights": "Vacant Nights",
+    "potentialRevenue": "Potential Revenue",
+    "placeholder": "Paste Airbnb/Booking iCal URL",
+    "connect": "Connect iCal",
+    "trust": {
+      "readOnly": "We only read check-out dates. No access to payments or personal guest data.",
+      "encrypted": "Stored with enterprise-grade encryption in our PostgreSQL database."
+    },
+    "demoMode": "Try without calendar (Demo Mode)",
+    "helpWhatsApp": "Need help connecting?",
+    "pilotName": "Pilot owner name",
+    "pilotLink": "Pilot access link",
+    "generatePilot": "Generate Pilot Access",
+    "copyLink": "Copy Link"
+  },
+  "manual": {
+    "addRoom": "Add New Room",
+    "roomCount": "{{count}} rooms",
+    "importLabel": "Magic Import",
+    "importPlaceholder": "Paste Airbnb Link",
+    "import": "Import",
+    "importFallbackName": "Imported Listing",
+    "importedFrom": "Imported from {{source}}",
+    "importedDetails": "{{guests}} guests • ₪{{price}} • {{source}}",
+    "addManual": "+ Add manually",
+    "roomNamePlaceholder": "Room number / name (e.g. Room 3)",
+    "roomDescriptionPlaceholder": "Description (optional)",
+    "saveRoom": "Save Room",
+    "searchPlaceholder": "Search property by name",
+    "searchOnline": "Search online",
+    "propertyMeta": "{{city}} · {{count}} rooms",
+    "empty": "No rooms yet.",
+    "statusLabel": "Status",
+    "lastCheckout": "Last checkout",
+    "lastCleanedBy": "Last cleaned by {{name}}",
+    "checkIn": "Check-in",
+    "checkOut": "Check-out",
+    "assignPlaceholder": "Assign staff...",
+    "assign": "Assign",
+    "history": {
+      "link": "Room History",
+      "title": "{{name}} — History",
+      "filter": "Filter by staff",
+      "resolve": "Resolve Issue",
+      "damageReport": "Damage report",
+      "viewPhoto": "View photo",
+      "loading": "Loading history...",
+      "empty": "No cleanings yet."
+    },
+    "staffList": "Staff List",
+    "staffCount": "{{count}} staff",
+    "onShift": "On Shift",
+    "offShift": "Off Shift",
+    "status": {
+      "active": "Active",
+      "blocked": "Blocked"
+    }
+  },
+  "field": {
+    "title": "Field Ops",
+    "subtitle": "Mobile-first task feed",
+    "rank": "Rank",
+    "points": "{{count}} pts",
+    "pointsWithPrefix": "{{prefix}}{{count}} pts",
+    "actions": {
+      "onMyWay": "On my way",
+      "cleaning": "Cleaning in progress",
+      "finishedWithPhoto": "Finished (Upload Photo)"
+    },
+    "taskTypes": {
+      "cleaning": "Cleaning",
+      "maintenance": "Maintenance",
+      "vip": "VIP Treats",
+      "vip_treats": "VIP Treats",
+      "inspection": "Inspection",
+      "checkout": "Check-out",
+      "checkin": "Check-in"
+    },
+    "rankTier": {
+      "starter": "Starter",
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "platinum": "Platinum"
+    },
+    "clockIn": {
+      "title": "Clock In",
+      "scanPlaceholder": "Scan QR / Staff ID",
+      "stopCamera": "Stop Camera",
+      "scanQr": "Scan QR",
+      "nameOptional": "Name (optional)",
+      "phoneOptional": "Phone (optional)",
+      "button": "Clock In"
+    },
+    "loadingTasks": "Loading tasks...",
+    "reportIssue": "Report damage",
+    "issueModal": {
+      "title": "Report issue",
+      "notePlaceholder": "Add a short note",
+      "sending": "Sending...",
+      "submit": "Send report"
+    },
+    "toast": {
+      "qrScanned": "QR scanned",
+      "cameraUnavailable": "Camera unavailable",
+      "newTask": "New task assigned",
+      "clockedIn": "Clocked in",
+      "goldPoints": "Gold Points Earned! +{{count}}",
+      "taskUpdated": "Task updated",
+      "issueReported": "Issue reported",
+      "levelUp": "Level Up! Gold!",
+      "roomReady": "Your room is ready!"
+    }
+  },
+  "staff": {
+    "onMyWay": "I am on my way",
+    "enteringRoom": "Entering Room",
+    "finished": "Finished & Clean"
+  },
+  "activity": {
+    "title": "Room {{room}}",
+    "unknownRoom": "Unknown room",
+    "onMyWay": "Room {{room}} - I'm on my way",
+    "cleaningStarted": "Room {{room}} - Cleaning Started",
+    "cleaningFinished": "Room {{room}} - Cleaning Finished",
+    "damageReported": "Room {{room}} - Damage Reported",
+    "generic": "Room {{room}} - Update"
+  },
+  "pdf": {
+    "daily": {
+      "title": "Daily Report",
+      "heading": "Daily ROI Report"
+    },
+    "monthly": {
+      "title": "Monthly Report",
+      "heading": "Monthly Report"
+    },
+    "window": "Window: {{start}} → {{end}}",
+    "windowLast30Days": "Window: Last 30 days",
+    "labels": {
+      "hoursSaved": "Hours Saved",
+      "leadsCaptured": "Leads Captured",
+      "inboundMessages": "Inbound Messages",
+      "outboundMessages": "Outbound Messages",
+      "paidRevenue": "Paid Revenue",
+      "automationInteractions": "Automation Interactions"
+    },
+    "recommendations": "Recommendations",
+    "security": {
+      "title": "Security Certificate",
+      "subtitle": "Data encryption confirmation",
+      "labels": {
+        "encryption": "Encryption",
+        "accessScope": "Access Scope",
+        "issued": "Issued"
+      },
+      "values": {
+        "encryption": "Enterprise-grade encryption at rest in PostgreSQL",
+        "accessScope": "Read-only iCal access — no payments or guest PII"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+/* Base styles - additional global styles are in styles/global.css */
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Force all inputs visible - black text, white background. No white-on-white. */
+input,
+textarea {
+  color: black !important;
+  background-color: white !important;
+}
+select {
+  color: black !important;
+  background-color: white !important;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #4b5563 !important;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
