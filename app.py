@@ -6806,7 +6806,7 @@ if __name__ == "__main__":
     prop_rules = [r for r in app.url_map.iter_rules() if r.rule == "/api/properties"]
     print("[hotel_dashboard] /api/properties url_map:", [f"{r.rule} {sorted(r.methods - {'HEAD'})}" for r in prop_rules])
     print("[hotel_dashboard] AUTH_DISABLED:", AUTH_DISABLED)
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 1000))
     app.run(host="0.0.0.0", port=port)
 
 
