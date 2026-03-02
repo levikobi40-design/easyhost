@@ -1297,7 +1297,7 @@ def _is_retryable_error(err):
     return "limit" in s or "429" in s or "rate" in s or "timeout" in s or "503" in s or "502" in s or "temporarily" in s
 
 
-TWILIO_SIMULATE = str(os.getenv("TWILIO_SIMULATE") or "").strip().lower() in ("1", "true", "yes", "on")
+TWILIO_SIMULATE = False  # Real WhatsApp — no simulation
 if TWILIO_SIMULATE:
     print("[Twilio] SIMULATE mode - messages print to terminal, no API calls (no 401/503)")
 
@@ -2715,7 +2715,7 @@ def scout_worker():
 #
 # To enable: set AUTO_MODE = True  OR  set env AUTO_MODE=1
 # ══════════════════════════════════════════════════════════════════
-AUTO_MODE = str(os.getenv("AUTO_MODE", "0")).strip().lower() in ("1", "true", "yes")
+AUTO_MODE = True  # Full autonomous mode — Maya runs independently
 if AUTO_MODE:
     print("[Maya] ✅ AUTO_MODE = True  — Maya is running autonomously")
 else:
@@ -6168,6 +6168,39 @@ def scout_scan():
     AUTOMATION_STATS[tenant_id]["last_scan"] = now_iso()
     emit_automation_stats(tenant_id)
     return jsonify({"success": True, "leads": new_leads})
+
+
+@app.route("/whatsapp", methods=["POST"])
+def twilio_whatsapp_webhook():
+    """
+    Twilio webhook — set this URL in the Twilio console:
+      https://your-domain.com/whatsapp
+    Twilio POSTs form data (not JSON) when a WhatsApp message arrives.
+    Must return 200 OK so Twilio knows the message was received.
+    """
+    body        = (request.values.get("Body")        or "").strip()
+    from_number = (request.values.get("From")        or "").strip()  # e.g. whatsapp:+972501234567
+    to_number   = (request.values.get("To")          or "").strip()  # your Twilio sandbox number
+    profile     = (request.values.get("ProfileName") or "").strip()
+
+    print(f"[Twilio/WhatsApp] ← from={from_number}  body={body[:80]!r}")
+
+    if body and from_number:
+        # Normalise the sender number (strip "whatsapp:" prefix)
+        clean_from = from_number.replace("whatsapp:", "").strip()
+
+        # Route the message through Maya
+        try:
+            reply_text = _gemini_generate(f"Guest ({profile or clean_from}) says: {body}")
+        except Exception as _e:
+            reply_text = "תודה על הפנייה! נחזור אליך בהקדם. 🙏"
+            print(f"[Twilio/WhatsApp] Maya offline: {_e}")
+
+        # Send Maya's reply back via WhatsApp
+        send_whatsapp(clean_from, reply_text)
+
+    # Twilio REQUIRES a 200 response — any other status causes a retry flood
+    return "OK", 200
 
 
 @app.route("/api/whatsapp/welcome", methods=["POST"])
