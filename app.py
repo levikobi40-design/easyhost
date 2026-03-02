@@ -68,7 +68,7 @@ _GEMINI_CLIENT  = None
 _USE_NEW_GENAI  = False
 
 try:
-    from google import genai as _gnai
+    from google import google.generativeai as genai
     _GEMINI_CLIENT = _gnai.Client(api_key=_GEMINI_API_KEY)
     _USE_NEW_GENAI = True
     print(f"[Gemini] ✅ google.genai SDK loaded — client ready")
