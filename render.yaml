@@ -1,11 +1,40 @@
+databases:
+  - name: easyhost-db
+    databaseName: easyhost
+    user: easyhost
+    plan: free
+
 services:
   - type: web
     name: easyhost
     runtime: python
+    plan: free
     buildCommand: "npm install && npm run build && pip install -r requirements.txt"
-    startCommand: "gunicorn app:app"
+    startCommand: "gunicorn app:app --timeout 120 --workers 2"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.6"
       - key: NODE_VERSION
         value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: easyhost-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_PHONE_FROM
+        sync: false
+      - key: OWNER_PHONE
+        sync: false
+      - key: STAFF_PHONE
+        sync: false
+      - key: TWILIO_SIMULATE
+        value: "1"
+      - key: JWT_SECRET
+        generateValue: true

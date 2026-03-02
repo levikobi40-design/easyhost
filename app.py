@@ -274,6 +274,9 @@ def serve_uploads(filename):
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///leads.db")
+# Render provides postgres:// but SQLAlchemy requires postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ISSUER = os.getenv("JWT_ISSUER", "easyhost")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "easyhost-dashboard")
