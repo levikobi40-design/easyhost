@@ -7,7 +7,7 @@ import easyHostLogo from '../../assets/easyhost-logo.svg';
 import './TopBar.css';
 
 const TopBar = () => {
-  const { lang, setLang, role, setRole, sidebarOpen, toggleSidebar, tenants, activeTenantId, setActiveTenantId, market } = useStore();
+  const { lang, setLang, role, setRole, toggleSidebar, tenants, activeTenantId, setActiveTenantId, market } = useStore();
   const { t } = useTranslations();
 
   const languages = market === 'IL'

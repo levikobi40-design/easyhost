@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Users, Search, Filter, Plus,
-  Mail, Phone, Globe, Calendar, Tag, Star,
-  ArrowUpRight, ExternalLink, MessageCircle,
+  Users, Search,
+  Mail, Phone, Globe, Calendar, Star,
+  ArrowUpRight, MessageCircle,
   Target, BarChart3, Activity
 } from 'lucide-react';
 import FinancialStat from './FinancialStat';

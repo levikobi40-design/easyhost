@@ -88,10 +88,8 @@ class WebSocketService {
       return;
     }
 
-    const message = JSON.stringify({ type: eventType, data, timestamp: new Date().toISOString() });
-    
     // In production, send via actual WebSocket
-    // this.socket.send(message);
+    // this.socket.send(JSON.stringify({ type: eventType, data, timestamp: new Date().toISOString() }));
     
     console.log('[WebSocket] Emitting:', eventType, data);
   }

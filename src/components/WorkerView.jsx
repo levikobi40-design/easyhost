@@ -51,9 +51,6 @@ function isInProgress(s = '') {
   return ['In_Progress','in_progress','in progress','InProgress',
           'Accepted','accepted','started','Started','working','Working'].includes(s);
 }
-function isActive(s = '') {
-  return isPending(s) || isInProgress(s);
-}
 function isDone(s = '') {
   return ['done','Done','completed','Completed','closed','Closed'].includes(s);
 }
@@ -588,6 +585,7 @@ function FocusCard({ task, workerName, onDone, queueSize = 0 }) {
 }
 
 /* ── Dot pager indicator ─────────────────────────────────── */
+// eslint-disable-next-line no-unused-vars
 function Pager({ total, current }) {
   if (total <= 1) return null;
   return (
@@ -609,7 +607,7 @@ export default function WorkerView() {
 
   const [pending,   setPending]   = useState([]);   // pending tasks
   const [completed, setCompleted] = useState([]);   // done tasks today
-  const [idx,       setIdx]       = useState(0);
+  const [_idx,      setIdx]       = useState(0); // eslint-disable-line no-unused-vars
   const [loading,   setLoading]   = useState(true);
   const [spin,      setSpin]      = useState(false);
   const [toast,     setToast]     = useState(null);

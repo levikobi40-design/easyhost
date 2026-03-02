@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  LayoutDashboard, Users, MessageCircle, Settings,
-  Building2, Shield, Zap, ChevronLeft,
+  LayoutDashboard, Users, MessageCircle,
+  Building2, Shield, ChevronLeft,
   ChevronRight, Sparkles, ExternalLink, Home, CalendarCheck
 } from 'lucide-react';
 import useTranslations from '../../hooks/useTranslations';

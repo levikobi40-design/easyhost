@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   Bell, X, CheckCircle2, AlertTriangle, Info,
-  Zap, MessageCircle, User, Trash2
+  Trash2
 } from 'lucide-react';
 import useTranslations from '../../hooks/useTranslations';
 import useStore from '../../store/useStore';
@@ -61,7 +61,7 @@ const NotificationCenter = () => {
       unsubLead();
       wsService.disconnect();
     };
-  }, [addNotification]);
+  }, [addNotification, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getIcon = (type) => {
     switch (type) {

@@ -133,7 +133,7 @@ const FieldView = ({ clockInOnly = false, autoClockInOnScan = false }) => {
     };
     start();
     return stopCamera;
-  }, [cameraOn]);
+  }, [cameraOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const loadTasks = async () => {
@@ -191,7 +191,7 @@ const FieldView = ({ clockInOnly = false, autoClockInOnScan = false }) => {
       setTimeout(() => setToast(''), 1500);
     }
     prevTaskCountRef.current = count;
-  }, [tasks]);
+  }, [tasks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!staffProfile.staffId) return;
@@ -368,7 +368,7 @@ const FieldView = ({ clockInOnly = false, autoClockInOnScan = false }) => {
       setTimeout(() => setLevelToast(''), 2200);
     }
     prevGoldPointsRef.current = goldPoints;
-  }, [goldPoints, marketKey, staffProfile.rankTier]);
+  }, [goldPoints, marketKey, staffProfile.rankTier]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!staffProfile.staffId || !navigator.geolocation) return () => {};

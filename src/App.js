@@ -27,7 +27,7 @@ const parseJwtPayload = (token) => {
 };
 
 function App() {
-  const { lang, activeTenantId, authToken, setAuthToken, setActiveTenantId, role, hasHydrated, setLang, market } = useStore();
+  const { lang, authToken, setAuthToken, setActiveTenantId, role, hasHydrated, setLang, market } = useStore();
   const { i18n } = useTranslations();
   const isRTL = lang === 'he';
   const [activeView, setActiveView] = useState('dashboard');

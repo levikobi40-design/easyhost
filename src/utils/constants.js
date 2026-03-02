@@ -48,7 +48,7 @@ export const POLL_INTERVAL = 5000;
 // SSE reconnect delay (ms)
 export const SSE_RECONNECT_DELAY = 3000;
 
-export default {
+const CONSTANTS = {
   API_URL,
   API_BASE_URL,
   SSE_STREAM_URL,
@@ -60,3 +60,5 @@ export default {
   POLL_INTERVAL,
   SSE_RECONNECT_DELAY,
 };
+
+export default CONSTANTS;

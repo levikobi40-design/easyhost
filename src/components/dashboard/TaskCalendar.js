@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CalendarCheck, Phone, CheckCircle, MessageCircle, FileText } from 'lucide-react';
+import { CalendarCheck, Phone, MessageCircle, FileText } from 'lucide-react';
 import { toWhatsAppPhone, getTaskWhatsAppPhone } from '../../utils/phone';
 import { getPropertyTasks, updatePropertyTaskStatus, sendMayaCommand } from '../../services/api';
 import TaskListErrorBoundary from '../common/TaskListErrorBoundary';
