@@ -60,21 +60,21 @@ except Exception:
     TwilioClient = None
 
 # ══════════════════════════════════════════════════════════════════
-# GEMINI AI — hardcoded key, new google.genai SDK (v1.64+)
-# Model priority: gemini-2.0-flash → gemini-2.0-flash-lite → offline
+# GEMINI AI — google-generativeai SDK (classic, stable)
+# Model priority: gemini-1.5-flash → gemini-1.5-pro → offline
 # ══════════════════════════════════════════════════════════════════
-_GEMINI_API_KEY = "AIzaSyBFtKTlij6hojLc1he7HBCHK02TEYMTv3E"  # hardcoded — bypass .env
-_GEMINI_CLIENT  = None
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBFtKTlij6hojLc1he7HBCHK02TEYMTv3E")
 _USE_NEW_GENAI  = False
+_GEMINI_CLIENT  = None   # kept for backwards-compat guards elsewhere
 
 try:
-    from google import google.generativeai as genai
-    _GEMINI_CLIENT = _gnai.Client(api_key=_GEMINI_API_KEY)
+    import google.generativeai as genai
+    genai.configure(api_key=_GEMINI_API_KEY)
     _USE_NEW_GENAI = True
-    print(f"[Gemini] ✅ google.genai SDK loaded — client ready")
+    print("[Gemini] ✅ google-generativeai SDK loaded — Maya brain ready")
 except Exception as _ge1:
     import traceback as _tb1
-    print(f"[Gemini] ❌ google.genai failed: {type(_ge1).__name__}: {_ge1}")
+    print(f"[Gemini] ❌ google-generativeai failed: {type(_ge1).__name__}: {_ge1}")
     _tb1.print_exc()
 
 TWILIO_CLIENT = None
@@ -97,15 +97,29 @@ except Exception as e:
     TWILIO_CLIENT = None
     print("[Twilio] Init failed (server will run without Voice/SMS/WhatsApp):", e)
 
-MAYA_SYSTEM_INSTRUCTION = """את עוזרת וירטואלית חכמה בשם מאיה, המייצגת חברת ניהול נכסי Airbnb ודירות נופש.
-התפקיד שלך הוא לתת מענה לאורחים בנכסים השונים שלנו בצורה אדיבה ומקצועית.
+MAYA_SYSTEM_INSTRUCTION = """את מאיה — עוזרת AI חכמה לניהול נכסי Airbnb ודירות נופש.
+את משרתת גם אורחים וגם מנהלים. השב תמיד בשפה שבה פנו אליך.
 
-הנחיות פעולה:
-1. זיהוי נכס: לכל אורח יש נכס ספציפי. אם חסר לך מידע על הנכס (כמו קוד כניסה או כתובת), תבדקי בנתוני ההזמנה המצורפים לפני שאת עונה.
-2. פרטי צ'ק-אין/אאוט: כברירת מחדל, כניסה ב-15:00 ויציאה ב-11:00, אלא אם מופיע מידע אחר בנתוני הנכס הספציפי.
-3. שפה: תעני תמיד בשפה שבה פנו אלייך.
-4. שירותיות: אם האורח מדווח על תקלה, תגידי שאת מעדכנת את צוות התחזוקה (הצוות שלך: אלמה, קובי, גוני).
-5. איסור המצאות: לעולם אל תמציאי קוד כניסה או כתובת. אם המידע לא קיים, תגידי שאת בודקת עם מנהל הנכס."""
+═══ תפקיד כלפי אורחים ═══
+• ברוך הבא / ברכה: תקבלי אורחים בחום ותספקי פרטי כניסה אם קיימים בנתוני הנכס.
+• צ'ק-אין/אאוט: כניסה ב-15:00, יציאה ב-11:00 (אלא אם הנכס מציין אחרת).
+• תקלות: אם האורח מדווח על בעיה (נזילה, חשמל, ניקיון, נעילה) — אמרי "אני מעדכנת את הצוות עכשיו" וצרי משימה.
+• שאלות על הנכס: ענה רק על מידע שנמסר לך. לעולם אל תמציאי קוד כניסה, כתובת, או פרטים שאינם בנתונים.
+
+═══ תפקיד כלפי מנהל (קובי) ═══
+• פתיחת משימה: אם מנהל אומר "לפתוח משימה / לשלוח X לחדר Y / צריך ניקיון" — תמיד שאלי "לאיזה חדר?" אם חסר מספר, ואז צור משימה.
+• ניתוב צוות לפי מילות מפתח:
+  - ניקיון/מגבות/עלמה → staff: עלמה
+  - תיקון/נזילה/תחזוקה/קובי → staff: קובי
+  - חשמל/נורה/קצר/אבי → staff: אבי
+• דוחות: אם מבקשים "דוח / סטטוס / מה קורה" — סכם את המשימות הפתוחות.
+• לעולם אל תגיד "לא הבנתי". תמיד תגיב ותציע עזרה.
+
+═══ פורמט JSON למשימות ═══
+כשאת יוצרת משימה, החזירי JSON תקני:
+{"action":"add_task","room":"<מספר>","staffName":"<שם>","content":"<תיאור>","status":"Pending"}
+
+כלל זהב: תעני תמיד. עברית ← כשפונים בעברית. English ← when addressed in English."""
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
 STAFF_KEYWORDS = {
@@ -130,31 +144,29 @@ _GEMINI_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite
 
 def _gemini_generate(prompt: str) -> str:
     """
-    Unified Gemini call.  Tries each model in _GEMINI_MODELS until one works.
-    Prints full traceback for every error so the terminal always shows why.
+    Unified Gemini call using google-generativeai (classic SDK).
+    Tries each model in _GEMINI_MODELS until one works.
     Raises on hard failure so caller can serve a friendly offline message.
     """
     import traceback as _tb
 
-    if not (_USE_NEW_GENAI and _GEMINI_CLIENT):
-        raise RuntimeError("[Gemini] Client not initialised — install google-genai and check API key")
-
-    from google.genai import types as _gt
+    if not _USE_NEW_GENAI:
+        raise RuntimeError("[Gemini] google-generativeai not installed — run: pip install google-generativeai")
 
     last_exc = None
     for model_name in _GEMINI_MODELS:
         try:
             print("--- API CALL START ---")
             print(f"[Gemini] → calling {model_name} …")
-            resp = _GEMINI_CLIENT.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=_gt.GenerateContentConfig(
-                    system_instruction=MAYA_SYSTEM_INSTRUCTION,
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=MAYA_SYSTEM_INSTRUCTION,
+                generation_config=genai.types.GenerationConfig(
                     temperature=0.35,
                     max_output_tokens=512,
                 ),
             )
+            resp = model.generate_content(prompt)
             text = (resp.text or "").strip()
             print(f"[Gemini] ✅ {model_name} responded ({len(text)} chars)")
             return text
