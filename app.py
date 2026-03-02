@@ -29,7 +29,7 @@ try:
 except Exception:
     pass
 
-from flask import Flask, request, jsonify, Response, send_from_directory, g
+from flask import Flask, request, jsonify, Response, send_from_directory, g, render_template
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS, cross_origin
@@ -6872,6 +6872,11 @@ def create_tables_cmd():
         return
     init_db()
     print("[create-tables] Done: users, staff schema, property_staff")
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 
 if __name__ == "__main__":
