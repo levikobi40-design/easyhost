@@ -184,8 +184,44 @@ def _gemini_generate(prompt: str) -> str:
 
     raise last_exc or RuntimeError("[Gemini] All models failed")
 
-app = Flask(__name__)
+_BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+_BUILD_DIR  = os.path.join(_BASE_DIR, "build")          # React production build
+_PUBLIC_DIR = os.path.join(_BASE_DIR, "public")         # fallback for dev
+
+# Serve React's build/ as static files; fall back to public/ if build/ missing
+_static_dir   = _BUILD_DIR  if os.path.isdir(_BUILD_DIR)  else _PUBLIC_DIR
+_template_dir = _BUILD_DIR  if os.path.isdir(_BUILD_DIR)  else _PUBLIC_DIR
+
+app = Flask(
+    __name__,
+    static_folder=os.path.join(_static_dir, "static"),  # JS/CSS chunks
+    template_folder=_template_dir,                       # index.html
+)
 CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-Tenant-Id"]}})
+
+
+@app.route("/")
+@app.route("/<path:path>")
+def serve_react(path=""):
+    """Serve the React SPA for every non-API route."""
+    # API routes are handled by their own endpoints — don't intercept them
+    if path.startswith("api/") or path.startswith("whatsapp"):
+        from flask import abort
+        abort(404)
+    # Serve a real static file if it exists (JS, CSS, images, etc.)
+    static_file = os.path.join(_static_dir, path)
+    if path and os.path.isfile(static_file):
+        return send_from_directory(_static_dir, path)
+    # Everything else → index.html (React Router handles client-side routing)
+    idx = os.path.join(_template_dir, "index.html")
+    if os.path.isfile(idx):
+        return send_from_directory(_template_dir, "index.html")
+    return (
+        "<h2>Maya Hotel AI</h2>"
+        "<p>Run <code>npm run build</code> inside the project folder, "
+        "then restart the server.</p>",
+        200,
+    )
 
 
 @app.before_request
