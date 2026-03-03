@@ -63,7 +63,7 @@ except Exception:
 # GEMINI AI — google-generativeai SDK (classic, stable)
 # Model priority: gemini-1.5-flash → gemini-1.5-pro → offline
 # ══════════════════════════════════════════════════════════════════
-_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBFtKTlij6hojLc1he7HBCHK02TEYMTv3E")
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY",)
 _USE_NEW_GENAI  = False
 _GEMINI_CLIENT  = None   # kept for backwards-compat guards elsewhere
 
@@ -2754,7 +2754,7 @@ def scout_worker():
 #
 # To enable: set AUTO_MODE = True  OR  set env AUTO_MODE=1
 # ══════════════════════════════════════════════════════════════════
-AUTO_MODE = True  # Full autonomous mode — Maya runs independently
+AUTO_MODE = False  # Manual Trigger Mode — Maya waits for commands
 if AUTO_MODE:
     print("[Maya] ✅ AUTO_MODE = True  — Maya is running autonomously")
 else:

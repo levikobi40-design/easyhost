@@ -334,3 +334,20 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* תיקון לטבלה בטלפון */
+@media (max-width: 600px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* הפיכת השורות לכרטיסים אם הטבלה עדיין רחבה מדי */
+  .task-row {
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+    display: block;
+    padding: 10px;
+  }
+}

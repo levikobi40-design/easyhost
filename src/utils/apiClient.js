@@ -1,8 +1,8 @@
 /**
- * API URL: http://localhost:5000 - matches app.py /api/ai/maya-command exactly.
+ * API URL: http://127.0.0.1:1000 - matches app.py default port.
  * Override with REACT_APP_API_URL in .env if needed.
  */
-export const API_URL = 'http://localhost:5000';
+export const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:1000';
 const getApiBase = () => {
   if (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) {
     return String(process.env.REACT_APP_API_URL).replace(/\/$/, '');
