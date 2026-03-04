@@ -97,29 +97,18 @@ except Exception as e:
     TWILIO_CLIENT = None
     print("[Twilio] Init failed (server will run without Voice/SMS/WhatsApp):", e)
 
-MAYA_SYSTEM_INSTRUCTION = """את מאיה — עוזרת AI חכמה לניהול נכסי Airbnb ודירות נופש.
-את משרתת גם אורחים וגם מנהלים. השב תמיד בשפה שבה פנו אליך.
+MAYA_SYSTEM_INSTRUCTION = """את מאיה — עוזרת ניהול קצרה ויעילה לנכסי נופש.
 
-═══ תפקיד כלפי אורחים ═══
-• ברוך הבא / ברכה: תקבלי אורחים בחום ותספקי פרטי כניסה אם קיימים בנתוני הנכס.
-• צ'ק-אין/אאוט: כניסה ב-15:00, יציאה ב-11:00 (אלא אם הנכס מציין אחרת).
-• תקלות: אם האורח מדווח על בעיה (נזילה, חשמל, ניקיון, נעילה) — אמרי "אני מעדכנת את הצוות עכשיו" וצרי משימה.
-• שאלות על הנכס: ענה רק על מידע שנמסר לך. לעולם אל תמציאי קוד כניסה, כתובת, או פרטים שאינם בנתונים.
-
-═══ תפקיד כלפי מנהל (קובי) ═══
-• פתיחת משימה: אם מנהל אומר "לפתוח משימה / לשלוח X לחדר Y / צריך ניקיון" — תמיד שאלי "לאיזה חדר?" אם חסר מספר, ואז צור משימה.
-• ניתוב צוות לפי מילות מפתח:
-  - ניקיון/מגבות/עלמה → staff: עלמה
-  - תיקון/נזילה/תחזוקה/קובי → staff: קובי
-  - חשמל/נורה/קצר/אבי → staff: אבי
-• דוחות: אם מבקשים "דוח / סטטוס / מה קורה" — סכם את המשימות הפתוחות.
-• לעולם אל תגיד "לא הבנתי". תמיד תגיב ותציע עזרה.
-
-═══ פורמט JSON למשימות ═══
-כשאת יוצרת משימה, החזירי JSON תקני:
-{"action":"add_task","room":"<מספר>","staffName":"<שם>","content":"<תיאור>","status":"Pending"}
-
-כלל זהב: תעני תמיד. עברית ← כשפונים בעברית. English ← when addressed in English."""
+חוקים מוחלטים — אף פעם אל תשברי אותם:
+1. החזירי JSON בלבד — ללא טקסט חופשי, ללא הסברים, ללא רשימות.
+2. אסור לרשום נכסים, צוות, או מאפייני נכס אלא אם המשתמש ביקש במפורש "רשימת נכסים" / "רשימת צוות" / "דוח".
+3. כשמבקשים משימה → החזירי רק:
+   {"action":"add_task","task":{"staffName":"<שם>","content":"<תיאור>","propertyName":"<נכס>","status":"Pending"}}
+4. כשמבקשים מידע (שאלה, דוח) → החזירי רק:
+   {"action":"info","message":"<תשובה קצרה בעברית, משפט אחד עד שניים>"}
+5. ניתוב צוות: ניקיון/מגבות/עלמה → עלמה | תיקון/נזילה/תקלה/קובי → קובי | חשמל/נורה/קצר/אבי → אבי
+6. אם חסר מספר חדר → כתבי בcontent "חדר לא צוין" ואל תבקשי הבהרה.
+7. שפה: עברית כשפונים בעברית, English when addressed in English."""
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
 STAFF_KEYWORDS = {
@@ -142,32 +131,43 @@ else:
 _GEMINI_MODELS = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
 
 
-def _gemini_generate(prompt: str) -> str:
+def _gemini_generate(prompt: str, timeout: int = 25) -> str:
     """
     Unified Gemini call using google-generativeai (classic SDK).
     Tries each model in _GEMINI_MODELS until one works.
+    Hard-caps each attempt at `timeout` seconds so a hanging HTTP call
+    never stalls a Flask/Gunicorn worker indefinitely.
     Raises on hard failure so caller can serve a friendly offline message.
     """
     import traceback as _tb
+    import concurrent.futures
 
     if not _USE_NEW_GENAI:
         raise RuntimeError("[Gemini] google-generativeai not installed — run: pip install google-generativeai")
+
+    def _call_model(model_name):
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=MAYA_SYSTEM_INSTRUCTION,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.35,
+                max_output_tokens=512,
+            ),
+        )
+        resp = model.generate_content(prompt)
+        return (resp.text or "").strip()
 
     last_exc = None
     for model_name in _GEMINI_MODELS:
         try:
             print("--- API CALL START ---")
             print(f"[Gemini] → calling {model_name} …")
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=MAYA_SYSTEM_INSTRUCTION,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.35,
-                    max_output_tokens=512,
-                ),
-            )
-            resp = model.generate_content(prompt)
-            text = (resp.text or "").strip()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _exec:
+                future = _exec.submit(_call_model, model_name)
+                try:
+                    text = future.result(timeout=timeout)
+                except concurrent.futures.TimeoutError:
+                    raise TimeoutError(f"[Gemini] {model_name} timed out after {timeout}s")
             print(f"[Gemini] ✅ {model_name} responded ({len(text)} chars)")
             return text
         except Exception as e:
@@ -180,7 +180,7 @@ def _gemini_generate(prompt: str) -> str:
                 continue   # model doesn't exist for this key, try next
             if "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
                 continue   # quota hit, try cheaper model
-            break  # auth/network error — no point retrying other models
+            break  # auth/network/timeout error — no point retrying other models
 
     raise last_exc or RuntimeError("[Gemini] All models failed")
 
@@ -4382,21 +4382,24 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
             history_text = "\nPrevious conversation:\n" + "\n".join(parts) + "\n\n"
 
     TASK_TRIGGERS = "תקלה|בעיה|דליפה|קצר|חשמל|ניקיון|תחזוקה|תקן|נשרף|נשרפה|מנורה|fix|repair|clean|broken|leak|electrical|lamp|bulb"
-    lang_hint = "Reply in the SAME language as the user's last message." if history_text else "If user wrote in Hebrew, reply in Hebrew. If in English, reply in English."
-    prompt = f"""{history_text}Current: User said: "{command}"
+    # Extract first property name for context (used inside the task JSON)
+    _first_prop = "Chandler"
+    if rooms:
+        _first_prop = (rooms[0].get("name") or "Chandler")
+    prompt = f"""{history_text}בקשה: "{command}"
 
-Context: {summary}
+החזירי JSON בלבד — ללא טקסט נוסף, ללא רשימות נכסים, ללא רשימות צוות.
 
-{lang_hint} NEVER reply with "לא הצלחתי להבין" or "I don't understand". Always process the request.
-RULES (never break):
-- Staff mapping (Hebrew names in JSON): נקיון/ניקיון/עלמה → staffName "עלמה" | תיקון/נזילה/תקלה → staffName "קובי" | חשמל → staffName "אבי"
-- If user mentions ANY problem (יש תקלה, נזילה, ניקיון, fix, etc.) → return add_task. When unsure → קובי.
-- Return ONLY JSON. Never raw property data unless user asks "summary" or "דוח".
-- Extract room number into content. propertyName: Chandler or first from context.
-- Return ONLY this JSON, nothing else. Use staffName: עלמה | קובי | אבי (Hebrew):
-{{"action": "add_task", "task": {{"staffName": "קובי", "content": "תקלה - " + user request, "propertyName": "Chandler", "status": "Pending"}}}}
+אם זו בקשת משימה (ניקיון/תיקון/תקלה/שליחת עובד/חדר):
+{{"action":"add_task","task":{{"staffName":"קובי","content":"{command}","propertyName":"{_first_prop}","status":"Pending"}}}}
 
-Only if user asks a simple question (not a task): {{"action": "info", "message": "..."}}"""
+אם זו שאלה פשוטה בלבד:
+{{"action":"info","message":"<תשובה קצרה — משפט אחד>"}}
+
+כללים:
+- staffName: עלמה (ניקיון/מגבות) | קובי (תיקון/נזילה/תקלה) | אבי (חשמל/נורה/קצר)
+- content: תיאור קצר הכולל מספר חדר אם צוין
+- אסור לרשום נכסים/צוות/מאפיינים אלא אם ביקשו "דוח" או "רשימת נכסים" במפורש"""
 
     try:
         text = _gemini_generate(prompt)
