@@ -2,6 +2,7 @@ import React from 'react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MayaChat from '../maya/MayaChat';
+import AccessibilityWidget from '../accessibility/AccessibilityWidget';
 import useStore from '../../store/useStore';
 
 const Layout = ({ activeView, setActiveView, children }) => {
@@ -22,6 +23,8 @@ const Layout = ({ activeView, setActiveView, children }) => {
       </main>
       {/* Maya WhatsApp UI - always mounted when Layout is shown */}
       <MayaChat />
+      {/* Accessibility Widget — Israeli law (WCAG 2.1 AA) */}
+      <AccessibilityWidget />
       <div className="bg-effects">
         <div className="bg-gradient-1" />
         <div className="bg-gradient-2" />

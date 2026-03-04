@@ -17,19 +17,24 @@ const _hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 const _isLocalhost  = _hostname === 'localhost' || _hostname === '127.0.0.1';
 const _isRender     = _hostname.endsWith('.onrender.com');
 
-const _envUrl =
-  typeof process !== 'undefined' && process.env?.REACT_APP_API_URL
-    ? String(process.env.REACT_APP_API_URL).replace(/\/$/, '')
-    : null;
+// Build-time value: non-empty string that is NOT just whitespace
+const _envUrl = (() => {
+  if (typeof process === 'undefined') return null;
+  const raw = process.env?.REACT_APP_API_URL;
+  if (!raw || !raw.trim() || raw.trim() === '""') return null;
+  return raw.trim().replace(/\/$/, '');
+})();
 
 export const API_URL =
-  _envUrl                           // build-time value wins when set and non-empty
-    ? _envUrl
-    : _isRender                     // runtime: any *.onrender.com page
-    ? _PRODUCTION_API
-    : _isLocalhost                  // runtime: local machine
-    ? _LOCAL_API
-    : _PRODUCTION_API;              // unknown host — assume production
+  _envUrl        ? _envUrl         // .env / render.yaml wins when genuinely set
+  : _isRender    ? _PRODUCTION_API // runtime: *.onrender.com → backend
+  : _isLocalhost ? _LOCAL_API      // runtime: local dev
+  :                _PRODUCTION_API; // unknown → assume production
+
+// Always log so it's visible in browser console during debugging
+if (typeof window !== 'undefined') {
+  console.log(`[EasyHost] API_URL resolved → ${API_URL} (hostname: ${_hostname})`);
+}
 
 const getApiBase = () => API_URL;
 const _base = getApiBase();

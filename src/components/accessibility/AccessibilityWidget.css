@@ -1,0 +1,140 @@
+/* ── Accessibility Widget — floating panel ── */
+
+.a11y-widget {
+  position: fixed;
+  bottom: 90px;      /* sits above the Maya FAB */
+  left: 16px;
+  z-index: 10000;
+  direction: rtl;
+  font-family: inherit;
+}
+
+/* The trigger button */
+.a11y-trigger {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #075E54;
+  color: #ffffff;
+  border: 2px solid #25D366;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 18px rgba(7, 94, 84, 0.55);
+  transition: transform 0.2s, box-shadow 0.2s;
+  font-size: 20px;
+  line-height: 1;
+}
+.a11y-trigger:hover  { transform: scale(1.08); box-shadow: 0 6px 24px rgba(7,94,84,0.7); }
+.a11y-trigger:focus  { outline: 3px solid #25D366; outline-offset: 3px; }
+
+/* Panel */
+.a11y-panel {
+  position: absolute;
+  bottom: 56px;
+  left: 0;
+  width: 240px;
+  background: #ffffff;
+  border: 2px solid #075E54;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+  overflow: hidden;
+  animation: a11ySlideUp 0.18s ease;
+}
+
+@keyframes a11ySlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.a11y-panel-header {
+  background: #075E54;
+  color: #ffffff;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.a11y-options {
+  padding: 8px 0;
+}
+
+.a11y-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+  min-height: 44px;
+}
+.a11y-option:hover  { background: #f0fdf4; }
+.a11y-option:focus  { outline: 2px solid #25D366; outline-offset: -2px; }
+
+.a11y-option-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #111827;
+}
+
+/* Toggle pill */
+.a11y-toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #d1d5db;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.a11y-toggle.on { background: #25D366; }
+.a11y-toggle::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  top: 2px;
+  left: 2px;
+  transition: left 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.a11y-toggle.on::after { left: 20px; }
+
+.a11y-panel-footer {
+  border-top: 1px solid #e5e7eb;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
+}
+
+/* Reset button */
+.a11y-reset {
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 0;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 0.15s;
+}
+.a11y-reset:hover { background: #e5e7eb; }

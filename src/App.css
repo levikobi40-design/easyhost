@@ -409,23 +409,31 @@ select {
   min-width: 44px;
 }
 
-/* ── WCAG AA contrast — text on dark glass surfaces ── */
-/* Muted helper text: rgba(255,255,255,0.35) fails AA.
-   Raise to at least 0.6 for 4.5:1 against #0d1117 backgrounds */
-.msg-meta,
+/* ── WCAG AA contrast — muted text on dark glass surfaces ── */
+/* Only raise opacity of truly low-contrast muted helpers.
+   Never override chat bubble text — those have their own light backgrounds. */
 .maya-hdr-status,
 .nav-label,
 .sidebar-footer .security-badge span {
   color: rgba(255, 255, 255, 0.72) !important;
 }
 
-/* Ensure primary body text on dark cards meets AA */
-.msg-bubble p,
-.nav-item,
-.wv-action-btn,
-.wp-btn span {
-  color: #ffffff;
-}
+/* ── Accessibility: high-contrast mode (toggled by AccessibilityWidget) ── */
+html.a11y-high-contrast .msg-bubble      { background: #ffffff !important; color: #000000 !important; }
+html.a11y-high-contrast .msg-bubble.user { background: #cce5ff !important; color: #000000 !important; }
+html.a11y-high-contrast .msg-meta        { color: #333333 !important; }
+html.a11y-high-contrast .nav-item        { color: #ffffff !important; }
+html.a11y-high-contrast .main-content    { background: #ffffff !important; color: #000000 !important; }
+
+/* ── Accessibility: large-text mode ── */
+html.a11y-large-text                     { font-size: 120% !important; }
+html.a11y-large-text .nav-label,
+html.a11y-large-text .msg-bubble p       { font-size: 1.1rem !important; }
+
+/* ── Accessibility: reduce-motion mode ── */
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after         { animation: none !important; transition: none !important; }
 
 /* ── Keyboard-navigable task rows ── */
 .task-row:focus,

@@ -794,10 +794,13 @@ DISPATCH_INTERVAL = int(os.getenv("DISPATCH_INTERVAL_SECONDS", "60"))
 DISPATCH_ENABLED = True
 UPLOAD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__) or ".", "uploads"))
 UPLOAD_STATIC = os.path.join(UPLOAD_ROOT, "shared")
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
-os.makedirs(UPLOAD_ROOT, exist_ok=True)
-os.makedirs(UPLOAD_STATIC, exist_ok=True)
-os.makedirs(os.path.join(UPLOAD_ROOT, "default", "properties"), exist_ok=True)
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:1000").rstrip("/")
+try:
+    os.makedirs(UPLOAD_ROOT, exist_ok=True)
+    os.makedirs(UPLOAD_STATIC, exist_ok=True)
+    os.makedirs(os.path.join(UPLOAD_ROOT, "default", "properties"), exist_ok=True)
+except OSError as _e:
+    print(f"[uploads] Warning: could not create upload dirs: {_e}")
 
 STAFF_EVENT_QUEUES = {}
 STAFF_EVENT_LOCK = threading.Lock()

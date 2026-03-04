@@ -38,6 +38,8 @@ services:
         value: "1"
       - key: REACT_APP_API_URL
         value: "https://easyhost-backend.onrender.com"
+      - key: API_BASE_URL
+        value: "https://easyhost-backend.onrender.com"
       - key: DISABLE_ESLINT_PLUGIN
         value: "true"
       - key: CI
