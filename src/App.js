@@ -123,6 +123,7 @@ function App() {
 
   return (
     <div dir={isRTL ? 'rtl' : 'ltr'}>
+      <a href="#main-content" className="skip-link">דלג לתוכן הראשי</a>
       {isWorkerRoute ? (
         <WorkerView />
       ) : hasHydrated ? (

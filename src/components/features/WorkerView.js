@@ -172,12 +172,24 @@ function TaskCard({ task, workerName, onStatusChange, compact = false }) {
       ) : (
         <div className="wv-actions-row" style={{ margin: '0.75rem 0.75rem 0.85rem' }}>
           {!['Accepted', 'accepted'].includes(status) && (
-            <button className="wv-action-btn wv-btn-accept" onClick={() => handleAction('Accepted')} disabled={busy}>
-              {busy ? <Loader2 size={18} className="wv-spin" /> : <><span className="wv-btn-icon">✅</span>קבלת משימה</>}
+            <button
+              className="wv-action-btn wv-btn-accept"
+              onClick={() => handleAction('Accepted')}
+              disabled={busy}
+              aria-label="קבל משימה — סמן כמתקדמת"
+              aria-busy={busy}
+            >
+              {busy ? <Loader2 size={18} className="wv-spin" aria-hidden="true" /> : <><span className="wv-btn-icon" aria-hidden="true">✅</span>קבלת משימה</>}
             </button>
           )}
-          <button className="wv-action-btn wv-btn-done" onClick={() => handleAction('Done')} disabled={busy}>
-            {busy ? <Loader2 size={18} className="wv-spin" /> : <><span className="wv-btn-icon">🏁</span>סיום</>}
+          <button
+            className="wv-action-btn wv-btn-done"
+            onClick={() => handleAction('Done')}
+            disabled={busy}
+            aria-label="סיים משימה — סמן כבוצע"
+            aria-busy={busy}
+          >
+            {busy ? <Loader2 size={18} className="wv-spin" aria-hidden="true" /> : <><span className="wv-btn-icon" aria-hidden="true">🏁</span>סיום</>}
           </button>
         </div>
       )}

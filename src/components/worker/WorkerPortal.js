@@ -144,8 +144,10 @@ const WorkerPortal = () => {
             className="wp-btn wp-btn-accept"
             onClick={() => updateStatus('Seen')}
             disabled={busy}
+            aria-label="קבל משימה — אשר שראית את המשימה"
+            aria-busy={busy}
           >
-            {busy ? <Loader2 size={24} className="wp-spin" /> : <CheckCircle size={28} />}
+            {busy ? <Loader2 size={24} className="wp-spin" aria-hidden="true" /> : <CheckCircle size={28} aria-hidden="true" />}
             <span>✅ קבלת משימה</span>
           </button>
         )}
@@ -155,8 +157,10 @@ const WorkerPortal = () => {
             className="wp-btn wp-btn-complete"
             onClick={() => updateStatus('Done')}
             disabled={busy}
+            aria-label="סיים משימה — סמן כבוצע"
+            aria-busy={busy}
           >
-            {busy ? <Loader2 size={24} className="wp-spin" /> : <Flag size={28} />}
+            {busy ? <Loader2 size={24} className="wp-spin" aria-hidden="true" /> : <Flag size={28} aria-hidden="true" />}
             <span>🏁 סיום משימה</span>
           </button>
         )}

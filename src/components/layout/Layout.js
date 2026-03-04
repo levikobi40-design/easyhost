@@ -14,7 +14,7 @@ const Layout = ({ activeView, setActiveView, children }) => {
       className={`app-enterprise ${sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed'} ${isRTL ? 'layout-rtl' : ''}`}
     >
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
-      <main className="main-content">
+      <main id="main-content" className="main-content">
         <TopBar />
         <div className="view-container" key={`view-${activeView}`}>
           {children}

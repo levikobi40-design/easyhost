@@ -139,12 +139,16 @@ function FeedTab() {
             fontWeight: 800, fontSize: 12, padding: '2px 11px', borderRadius: 20,
           }}>{tasks.length} ✓</span>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34d399', display: 'inline-block', animation: 'mpPulse 2s infinite' }} />
-          <button onClick={() => load()} style={{
-            background: 'rgba(255,255,255,0.08)', border: 'none', color: 'rgba(255,255,255,0.6)',
-            width: 28, height: 28, borderRadius: '50%', cursor: 'pointer', fontSize: 14,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ display: 'inline-block', animation: spin ? 'mpSpin .6s linear infinite' : 'none' }}>↻</span>
+          <button
+            onClick={() => load()}
+            aria-label="רענן רשימת משימות"
+            style={{
+              background: 'rgba(255,255,255,0.08)', border: 'none', color: 'rgba(255,255,255,0.6)',
+              width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', fontSize: 14,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <span aria-hidden="true" style={{ display: 'inline-block', animation: spin ? 'mpSpin .6s linear infinite' : 'none' }}>↻</span>
           </button>
         </div>
       </div>
@@ -367,24 +371,36 @@ export default function ManagerPipeline() {
           background: 'rgba(7,94,84,0.32)',
           borderBottom: '1px solid rgba(255,255,255,0.08)',
         }}>
-          <div style={{ display: 'flex', gap: 6, paddingBottom: 14 }}>
+          <div role="tablist" aria-label="לשוניות לוח בקרה" style={{ display: 'flex', gap: 6, paddingBottom: 14 }}>
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                flex: 1, padding: '8px 0',
-                background: tab === t.id
-                  ? 'linear-gradient(135deg,#075E54,#25D366)'
-                  : 'rgba(255,255,255,0.07)',
-                border: `1px solid ${tab === t.id ? '#25D366' : 'rgba(255,255,255,0.1)'}`,
-                borderRadius: 12, color: '#fff', fontWeight: 700, fontSize: 12,
-                cursor: 'pointer', transition: 'all .2s',
-              }}>{t.label}</button>
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                aria-controls={`tabpanel-${t.id}`}
+                id={`tab-${t.id}`}
+                onClick={() => setTab(t.id)}
+                style={{
+                  flex: 1, padding: '8px 0',
+                  background: tab === t.id
+                    ? 'linear-gradient(135deg,#075E54,#25D366)'
+                    : 'rgba(255,255,255,0.07)',
+                  border: `1px solid ${tab === t.id ? '#25D366' : 'rgba(255,255,255,0.1)'}`,
+                  borderRadius: 12, color: '#fff', fontWeight: 700, fontSize: 12,
+                  cursor: 'pointer', transition: 'all .2s',
+                }}
+              >{t.label}</button>
             ))}
           </div>
         </div>
 
         {/* Tab content */}
-        {tab === 'feed'         && <FeedTab />}
-        {tab === 'productivity' && <ProductivityTab />}
+        <div role="tabpanel" id="tabpanel-feed" aria-labelledby="tab-feed" hidden={tab !== 'feed'}>
+          {tab === 'feed' && <FeedTab />}
+        </div>
+        <div role="tabpanel" id="tabpanel-productivity" aria-labelledby="tab-productivity" hidden={tab !== 'productivity'}>
+          {tab === 'productivity' && <ProductivityTab />}
+        </div>
       </div>
     </>
   );

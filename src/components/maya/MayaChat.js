@@ -335,7 +335,13 @@ export default function MayaChat() {
           border:8px solid #333
          ══════════════════════════════════════ */}
       {mayaChatOpen && (
-        <div className="maya-phone" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div
+          className="maya-phone"
+          dir={isRTL ? 'rtl' : 'ltr'}
+          role="dialog"
+          aria-modal="true"
+          aria-label="מאיה — AI Assistant"
+        >
 
           {/* ── HEADER  position:absolute top:0 height:60px z-index:1000 ── */}
           <div className="maya-header">
@@ -373,15 +379,16 @@ export default function MayaChat() {
           <div className="maya-body">
 
             {/* Staff shortcut chips */}
-            <div className="maya-quick-bar">
+            <div className="maya-quick-bar" role="toolbar" aria-label="פעולות מהירות">
               {quickActions.map((a) => (
                 <button
                   key={a.id}
                   type="button"
                   className="maya-quick-chip"
                   onClick={() => handleQuickAction(a.command)}
+                  aria-label={a.label}
                 >
-                  <a.icon size={12} />
+                  <a.icon size={12} aria-hidden="true" />
                   <span>{a.label}</span>
                 </button>
               ))}
@@ -433,15 +440,16 @@ export default function MayaChat() {
             </div>
 
             {/* Guest chips */}
-            <div className="maya-guest-chips">
+            <div className="maya-guest-chips" role="toolbar" aria-label="הצעות פקודה">
               {guestChips.map((c) => (
                 <button
                   key={c.label}
                   type="button"
                   className="maya-guest-chip"
                   onClick={() => handleQuickAction(c.cmd)}
+                  aria-label={`שלח: ${c.label}`}
                 >
-                  {c.emoji} {c.label}
+                  <span aria-hidden="true">{c.emoji}</span> {c.label}
                 </button>
               ))}
             </div>
@@ -513,10 +521,12 @@ export default function MayaChat() {
         type="button"
         onClick={() => toggleMayaChat?.()}
         className="maya-fab"
-        aria-label="Toggle Maya"
+        aria-label={mayaChatOpen ? 'סגור את מאיה' : 'פתח את מאיה — AI Assistant'}
+        aria-expanded={mayaChatOpen}
+        aria-haspopup="dialog"
       >
-        {mayaChatOpen ? <X size={25} /> : <MessageCircle size={25} />}
-        <div className="maya-fab-ring" />
+        {mayaChatOpen ? <X size={25} aria-hidden="true" /> : <MessageCircle size={25} aria-hidden="true" />}
+        <div className="maya-fab-ring" aria-hidden="true" />
       </button>
 
     </div>

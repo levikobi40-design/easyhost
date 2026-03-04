@@ -351,3 +351,96 @@
     padding: 10px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   ACCESSIBILITY — WCAG AA  (added globally)
+   ═══════════════════════════════════════════════════════ */
+
+/* Skip-to-main-content link — visible only on keyboard focus */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.6rem 1.2rem;
+  background: #075E54;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid #25D366;
+  outline-offset: 2px;
+}
+
+/* ── Focus ring — keyboard users get a clear indicator ── */
+:focus-visible {
+  outline: 3px solid #25D366 !important;
+  outline-offset: 3px !important;
+  border-radius: 4px;
+}
+
+/* Remove focus ring for mouse/touch users (pointer devices) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Minimum 44×44 px touch targets (WCAG 2.5.5) ── */
+button,
+[role="button"],
+a,
+input[type="checkbox"],
+input[type="radio"],
+select {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Icon-only small buttons that intentionally stay compact
+   (e.g. sidebar toggle, message-send) get at least 44px via padding */
+.sidebar-toggle,
+.maya-send-btn,
+.maya-fab {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── WCAG AA contrast — text on dark glass surfaces ── */
+/* Muted helper text: rgba(255,255,255,0.35) fails AA.
+   Raise to at least 0.6 for 4.5:1 against #0d1117 backgrounds */
+.msg-meta,
+.maya-hdr-status,
+.nav-label,
+.sidebar-footer .security-badge span {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+/* Ensure primary body text on dark cards meets AA */
+.msg-bubble p,
+.nav-item,
+.wv-action-btn,
+.wp-btn span {
+  color: #ffffff;
+}
+
+/* ── Keyboard-navigable task rows ── */
+.task-row:focus,
+[data-task-row]:focus {
+  outline: 3px solid #25D366;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ── High-contrast active nav indicator ── */
+.nav-item[aria-current="page"] {
+  background: rgba(37, 211, 102, 0.18) !important;
+  border-left: 3px solid #25D366;
+}
+[dir="rtl"] .nav-item[aria-current="page"] {
+  border-left: none;
+  border-right: 3px solid #25D366;
+}

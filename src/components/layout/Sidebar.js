@@ -70,14 +70,16 @@ const Sidebar = ({ activeView, setActiveView }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" aria-label={safeT('nav.mainNavigation') || 'ניווט ראשי'}>
         {visibleItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveView(item.id)}
             className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+            aria-label={safeT(item.labelKey)}
+            aria-current={activeView === item.id ? 'page' : undefined}
           >
-            <item.icon size={22} />
+            <item.icon size={22} aria-hidden="true" />
             <span
               className="nav-label"
               style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}
@@ -85,7 +87,7 @@ const Sidebar = ({ activeView, setActiveView }) => {
               {safeT(item.labelKey)}
             </span>
             {activeView === item.id && (
-              <div className="active-indicator" />
+              <div className="active-indicator" aria-hidden="true" />
             )}
           </button>
         ))}
@@ -101,6 +103,7 @@ const Sidebar = ({ activeView, setActiveView }) => {
         <button
           onClick={handleAIAssistantClick}
           className="ai-assistant-sidebar-btn"
+          aria-label={safeT('sidebar.aiAssistant') || 'AI Assistant — פתח בחלון חדש'}
         >
           <Sparkles size={20} />
           <span style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}>
@@ -114,6 +117,8 @@ const Sidebar = ({ activeView, setActiveView }) => {
       <button
         onClick={toggleSidebar}
         className="sidebar-toggle"
+        aria-label={sidebarOpen ? 'כווץ תפריט' : 'הרחב תפריט'}
+        aria-expanded={sidebarOpen}
       >
         {sidebarOpen ? (
           isRTL ? <ChevronRight size={18} /> : <ChevronLeft size={18} />

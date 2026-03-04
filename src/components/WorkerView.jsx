@@ -526,7 +526,12 @@ function FocusCard({ task, workerName, onDone, queueSize = 0 }) {
             <div style={{display:'flex', gap:10}}>
 
               {/* 🟠 Start Working — orange, left button */}
-              <button onClick={doStart} disabled={isL || isIP} style={{
+              <button
+                onClick={doStart}
+                disabled={isL || isIP}
+                aria-label={isIP ? 'משימה כבר בביצוע' : 'התחל ביצוע משימה'}
+                aria-busy={isL}
+                style={{
                 flex: isIP ? '0 0 44px' : 1,
                 padding:'15px 0',
                 background: isIP
@@ -551,7 +556,13 @@ function FocusCard({ task, workerName, onDone, queueSize = 0 }) {
               </button>
 
               {/* 🏁 Mark as Done — green, right button (main CTA) */}
-              <button ref={btnRef} onClick={doComplete} disabled={isL} style={{
+              <button
+                ref={btnRef}
+                onClick={doComplete}
+                disabled={isL}
+                aria-label="סיים משימה — סמן כבוצע"
+                aria-busy={isL}
+                style={{
                 flex:1, padding:'15px 0',
                 background: isL
                   ? 'rgba(37,211,102,0.3)'
