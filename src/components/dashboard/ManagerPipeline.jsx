@@ -271,6 +271,7 @@ function ProductivityTab() {
             </div>
           </div>
         ) : (
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -326,6 +327,7 @@ function ProductivityTab() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

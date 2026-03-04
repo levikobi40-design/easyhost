@@ -63,7 +63,7 @@ except Exception:
 # GEMINI AI — google-generativeai SDK (classic, stable)
 # Model priority: gemini-1.5-flash → gemini-1.5-pro → offline
 # ══════════════════════════════════════════════════════════════════
-_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY",)
+_GEMINI_API_KEY = os.getenv("AIzaSyD-PeQ0wUyvlouBVdxHEktl0EiwA_pK_qo",)
 _USE_NEW_GENAI  = False
 _GEMINI_CLIENT  = None   # kept for backwards-compat guards elsewhere
 
@@ -3019,6 +3019,45 @@ def auth_demo():
     return jsonify({"token": encode_jwt(payload), "tenant_id": tenant_id, "role": "owner"})
 
 
+@app.route("/api/auth/reset-password", methods=["POST", "OPTIONS"])
+def auth_reset_password():
+    """Reset password for existing user. Verifies email exists, updates password hash."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+    if not SessionLocal or not UserModel:
+        return jsonify({"error": "Auth unavailable"}), 500
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    new_password = data.get("new_password") or ""
+    if not email:
+        return jsonify({"error": "Email required"}), 400
+    if len(new_password) < 6:
+        return jsonify({"error": "New password must be at least 6 characters"}), 400
+    session = SessionLocal()
+    try:
+        user = session.query(UserModel).filter_by(email=email).first()
+        if not user:
+            return jsonify({"error": "Email not found. Please register."}), 404
+        user.password_hash = hash_password(new_password)
+        session.commit()
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": user.id,
+            "tenant_id": user.tenant_id,
+            "role": user.role,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(hours=JWT_EXP_HOURS)).timestamp()),
+        }
+        return jsonify({"token": encode_jwt(payload), "tenant_id": user.tenant_id, "role": user.role})
+    except Exception as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
 @app.route("/api/leads", methods=["GET"])
 @require_auth
 def get_leads():
@@ -4361,6 +4400,15 @@ Only if user asks a simple question (not a task): {{"action": "info", "message":
 
     try:
         text = _gemini_generate(prompt)
+
+        # Guard: empty response from Gemini — return error, never create a task
+        if not text or not text.strip():
+            return jsonify({
+                "success": False,
+                "message": "Gemini returned an empty response.",
+                "displayMessage": "מאיה לא קיבלה תשובה מה-AI. בדוק את ה-GEMINI_API_KEY ב-.env 🔴",
+            }), 200
+
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
@@ -4377,25 +4425,12 @@ Only if user asks a simple question (not a task): {{"action": "info", "message":
                     except json.JSONDecodeError:
                         pass
     except json.JSONDecodeError as e:
+        # Gemini returned non-JSON text — do NOT create a task, just surface the error
         print("[Gemini] maya-command JSON parse error:", e)
-        cmd_lower = (command or "").lower().strip()
-        task_kw = ["תקלה", "בעיה", "דליפה", "נזילה", "קצר", "חשמל", "ניקיון", "תחזוקה", "תקן", "נשרף", "נשרפה", "מנורה", "fix", "repair", "clean", "leak"]
-        if any(kw in (command or "") or kw in cmd_lower for kw in task_kw):
-            staff = "אבי" if any(x in (command or "") for x in ["קצר", "חשמל", "נשרף", "נשרפה", "מנורה"]) else "עלמה"
-            if any(x in (command or "") for x in ["ניקיון", "מגבת", "מנקה", "clean"]):
-                staff = "עלמה"
-            else:
-                staff = "קובי"
-            parsed_fb = {"action": "add_task", "task": {"staffName": staff, "content": (command or "תקלה")[:200], "propertyName": "Chandler", "status": "Pending"}}
-            task, err = _create_task_from_action(tenant_id, user_id, parsed_fb["task"], rooms, staff_by_property, command)
-            if task:
-                enqueue_twilio_task("notify_task", task=task)
-                sim_msg = "Message simulated successfully." if TWILIO_SIMULATE else "אני על זה! ההודעה תישלח לנייד בתור."
-                return jsonify({"success": True, "message": sim_msg, "displayMessage": sim_msg, "taskCreated": True, "task": task}), 200
         return jsonify({
             "success": False,
             "message": str(e),
-            "displayMessage": "לא הצלחתי להבין את התשובה. נסה שוב.",
+            "displayMessage": "מאיה קיבלה תשובה לא תקינה מה-AI. נסה שוב. 🔴",
         }), 200
     except Exception as e:
         import traceback as _tb_cmd
@@ -4406,15 +4441,17 @@ Only if user asks a simple question (not a task): {{"action": "info", "message":
         err_str = str(e).lower()
         print(f"Error: {e}")
         if "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
-            display_msg = "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴"
+            display_msg = "מאיה: מכסת ה-API של Gemini הסתיימה. המתן מספר דקות ונסה שוב. 🔴"
+        elif "leaked" in err_str or ("403" in err_str and "leak" in err_str):
+            display_msg = "מאיה: מפתח ה-GEMINI_API_KEY דלף ונחסם על ידי גוגל. צור מפתח חדש בכתובת aistudio.google.com/apikey 🔴"
+        elif any(x in err_str for x in ["401", "403", "permission", "api key", "auth"]):
+            display_msg = "מאיה: GEMINI_API_KEY שגוי או לא תקף. בדוק את קובץ .env 🔴"
         elif "not_found" in err_str or "404" in err_str:
-            display_msg = "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴"
-        elif any(x in err_str for x in ["401", "403", "permission", "key", "auth"]):
-            display_msg = "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴"
+            display_msg = "מאיה: המודל לא נמצא. ייתכן שהמפתח לא תומך בו. נסה מפתח חדש. 🔴"
         elif any(x in err_str for x in ["timeout", "connection", "network", "502", "503"]):
-            display_msg = "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴"
+            display_msg = "מאיה: בעיית חיבור לרשת. בדוק את החיבור לאינטרנט. 🔴"
         else:
-            display_msg = "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴"
+            display_msg = f"מאיה: שגיאת AI — {type(e).__name__}. בדוק את הטרמינל לפרטים. 🔴"
         return jsonify({
             "success": False,
             "message": str(e),
@@ -4424,11 +4461,15 @@ Only if user asks a simple question (not a task): {{"action": "info", "message":
     task_created = False
     task = None
 
-    # Task detection: נזילה, תקלה, ניקיון etc - always create task, never "don't understand"
+    # Only override Gemini's decision if:
+    # 1. Gemini returned a valid but non-task response (action == "info" or unknown)
+    # 2. AND the command clearly contains a task keyword
+    # 3. AND Gemini parsed something (parsed is not empty) — meaning Gemini did respond
+    # Never create tasks when parsed is empty (Gemini failed or returned nothing useful)
     cmd_lower = (command or "").lower().strip()
     task_keywords = ["תקלה", "בעיה", "דליפה", "נזילה", "קצר", "חשמל", "ניקיון", "תחזוקה", "תקן", "תתקן", "נשרף", "נשרפה", "מנורה", "מנקה", "לשלוח", "חדר", "fix", "repair", "clean", "broken", "leak"]
     is_task_like = any(kw in (command or "") or kw in cmd_lower for kw in task_keywords)
-    if is_task_like and parsed.get("action") != "add_task":
+    if parsed and is_task_like and parsed.get("action") not in ("add_task", "info"):
         staff = "אבי" if any(x in (command or "") for x in ["קצר", "חשמל", "electrical", "נשרף", "נשרפה", "מנורה"]) else "עלמה"
         if any(x in (command or "") for x in ["ניקיון", "מגבת", "מנקה", "clean", "cleaning"]):
             staff = "עלמה"

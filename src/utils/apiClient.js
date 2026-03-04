@@ -1,14 +1,28 @@
 /**
- * API URL: http://127.0.0.1:1000 - matches app.py default port.
- * Override with REACT_APP_API_URL in .env if needed.
+ * API URL resolution:
+ *  - Production (Render): REACT_APP_API_URL="" → relative URLs (/api/...)
+ *    Flask serves both frontend and backend on the same domain.
+ *  - Local dev: falls back to http://127.0.0.1:1000 (Python on port 1000)
+ *  - Override: set REACT_APP_API_URL in .env
  */
-export const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:1000';
-const getApiBase = () => {
-  if (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) {
-    return String(process.env.REACT_APP_API_URL).replace(/\/$/, '');
-  }
-  return API_URL;
-};
+const _isLocalhost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+const _envUrl =
+  typeof process !== 'undefined' && process.env?.REACT_APP_API_URL !== undefined
+    ? String(process.env.REACT_APP_API_URL).replace(/\/$/, '')
+    : null;
+
+// Empty string = same-origin (Render production). Localhost = explicit port.
+export const API_URL =
+  _envUrl !== null
+    ? _envUrl                        // .env or render.yaml value wins
+    : _isLocalhost
+    ? 'http://127.0.0.1:1000'        // local dev default
+    : '';                            // production: same-origin relative URLs
+
+const getApiBase = () => API_URL;
 const _base = getApiBase();
 
 const getAuthHeaders = () => {

@@ -51,6 +51,7 @@ function isInProgress(s = '') {
   return ['In_Progress','in_progress','in progress','InProgress',
           'Accepted','accepted','started','Started','working','Working'].includes(s);
 }
+// eslint-disable-next-line no-unused-vars
 function isDone(s = '') {
   return ['done','Done','completed','Completed','closed','Closed'].includes(s);
 }
