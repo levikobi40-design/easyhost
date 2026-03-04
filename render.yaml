@@ -37,7 +37,7 @@ services:
       - key: TWILIO_SIMULATE
         value: "1"
       - key: REACT_APP_API_URL
-        value: ""
+        value: "https://easyhost-backend.onrender.com"
       - key: DISABLE_ESLINT_PLUGIN
         value: "true"
       - key: CI

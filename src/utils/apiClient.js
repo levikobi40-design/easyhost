@@ -1,9 +1,10 @@
 /**
- * API URL resolution:
- *  - Production (Render): REACT_APP_API_URL="" → relative URLs (/api/...)
- *    Flask serves both frontend and backend on the same domain.
- *  - Local dev: falls back to http://127.0.0.1:1000 (Python on port 1000)
- *  - Override: set REACT_APP_API_URL in .env
+ * API URL resolution — set REACT_APP_API_URL in the right place:
+ *  - Local (.env):      REACT_APP_API_URL=http://127.0.0.1:1000
+ *  - Production (render.yaml): REACT_APP_API_URL=https://easyhost-backend.onrender.com
+ *
+ * React bakes this value in at build-time, so no runtime detection is needed.
+ * The localhost fallback below only activates if the variable is missing entirely.
  */
 const _isLocalhost =
   typeof window !== 'undefined' &&
@@ -14,13 +15,12 @@ const _envUrl =
     ? String(process.env.REACT_APP_API_URL).replace(/\/$/, '')
     : null;
 
-// Empty string = same-origin (Render production). Localhost = explicit port.
 export const API_URL =
   _envUrl !== null
-    ? _envUrl                        // .env or render.yaml value wins
+    ? _envUrl                          // always wins — set in .env or render.yaml
     : _isLocalhost
-    ? 'http://127.0.0.1:1000'        // local dev default
-    : '';                            // production: same-origin relative URLs
+    ? 'http://127.0.0.1:1000'          // safety fallback for local dev
+    : 'https://easyhost-backend.onrender.com'; // safety fallback for production
 
 const getApiBase = () => API_URL;
 const _base = getApiBase();
