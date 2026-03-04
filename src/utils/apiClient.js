@@ -1,23 +1,23 @@
 /**
- * API URL resolution — two layers so it works in every environment:
+ * API URL resolution — guaranteed correct in all environments.
  *
- * Layer 1 (build-time): REACT_APP_API_URL baked in by React during `npm build`
- *   - Local   (.env):        REACT_APP_API_URL=http://127.0.0.1:1000
- *   - Render  (render.yaml): REACT_APP_API_URL=https://easyhost-backend.onrender.com
+ * Priority order (highest first):
+ *   1. Running on *.onrender.com  → ALWAYS use production URL (hard override)
+ *   2. Build-time REACT_APP_API_URL baked in by `npm build`
+ *      - Local (.env):        http://127.0.0.1:1000
+ *      - Render (render.yaml): https://easyhost-backend.onrender.com
+ *   3. Runtime localhost detection → local dev URL
+ *   4. Fallback → production URL
  *
- * Layer 2 (runtime fallback): if the build-time value is missing or empty,
- *   detect the current hostname at runtime:
- *   - *.onrender.com  → https://easyhost-backend.onrender.com
- *   - localhost/127.* → http://127.0.0.1:1000
+ * Rule 1 ensures a stale Render-dashboard env var can NEVER route to localhost.
  */
 const _PRODUCTION_API = 'https://easyhost-backend.onrender.com';
 const _LOCAL_API      = 'http://127.0.0.1:1000';
 
-const _hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-const _isLocalhost  = _hostname === 'localhost' || _hostname === '127.0.0.1';
-const _isRender     = _hostname.endsWith('.onrender.com');
+const _hostname    = typeof window !== 'undefined' ? window.location.hostname : '';
+const _isLocalhost = _hostname === 'localhost' || _hostname === '127.0.0.1';
+const _isRender    = _hostname.endsWith('.onrender.com');
 
-// Build-time value: non-empty string that is NOT just whitespace
 const _envUrl = (() => {
   if (typeof process === 'undefined') return null;
   const raw = process.env?.REACT_APP_API_URL;
@@ -26,14 +26,13 @@ const _envUrl = (() => {
 })();
 
 export const API_URL =
-  _envUrl        ? _envUrl         // .env / render.yaml wins when genuinely set
-  : _isRender    ? _PRODUCTION_API // runtime: *.onrender.com → backend
-  : _isLocalhost ? _LOCAL_API      // runtime: local dev
-  :                _PRODUCTION_API; // unknown → assume production
+  _isRender    ? _PRODUCTION_API   // ← hard-pinned: Render host ALWAYS uses prod backend
+  : _envUrl    ? _envUrl           // build-time value (set in .env or render.yaml)
+  : _isLocalhost ? _LOCAL_API      // local dev safety net
+  :              _PRODUCTION_API;  // any other unknown host → prod
 
-// Always log so it's visible in browser console during debugging
 if (typeof window !== 'undefined') {
-  console.log(`[EasyHost] API_URL resolved → ${API_URL} (hostname: ${_hostname})`);
+  console.log(`[EasyHost] API_URL → ${API_URL}  (host: ${_hostname || 'SSR'})`);
 }
 
 const getApiBase = () => API_URL;

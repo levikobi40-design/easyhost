@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './AccessibilityWidget.css';
 
 const CLASSES = {
-  highContrast: 'a11y-high-contrast',
-  largeText:    'a11y-large-text',
-  reduceMotion: 'a11y-reduce-motion',
+  highContrast:   'a11y-high-contrast',
+  largeText:      'a11y-large-text',
+  underlineLinks: 'a11y-underline-links',
+  reduceMotion:   'a11y-reduce-motion',
 };
 
 const STORAGE_KEY = 'a11y-prefs';
@@ -66,9 +67,10 @@ export default function AccessibilityWidget() {
   }, []);
 
   const OPTIONS = [
-    { key: 'highContrast', label: 'ניגודיות גבוהה',    icon: '◑' },
-    { key: 'largeText',    label: 'טקסט גדול',          icon: 'A+' },
-    { key: 'reduceMotion', label: 'הפחת אנימציות',      icon: '⏸' },
+    { key: 'highContrast',   label: 'ניגודיות גבוהה',    icon: '◑'  },
+    { key: 'largeText',      label: 'טקסט גדול',          icon: 'A+' },
+    { key: 'underlineLinks', label: 'קו תחת קישורים',    icon: '🔗' },
+    { key: 'reduceMotion',   label: 'הפחת אנימציות',      icon: '⏸' },
   ];
 
   return (

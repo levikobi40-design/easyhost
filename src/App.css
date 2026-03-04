@@ -430,6 +430,10 @@ html.a11y-large-text                     { font-size: 120% !important; }
 html.a11y-large-text .nav-label,
 html.a11y-large-text .msg-bubble p       { font-size: 1.1rem !important; }
 
+/* ── Accessibility: underline-links mode ── */
+html.a11y-underline-links a,
+html.a11y-underline-links [role="link"]  { text-decoration: underline !important; }
+
 /* ── Accessibility: reduce-motion mode ── */
 html.a11y-reduce-motion *,
 html.a11y-reduce-motion *::before,

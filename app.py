@@ -63,9 +63,14 @@ except Exception:
 # GEMINI AI — google-generativeai SDK (classic, stable)
 # Model priority: gemini-1.5-flash → gemini-1.5-pro → offline
 # ══════════════════════════════════════════════════════════════════
-_GEMINI_API_KEY = os.getenv("AIzaSyD-PeQ0wUyvlouBVdxHEktl0EiwA_pK_qo")
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # set in .env locally / Render env-var in production
 _USE_NEW_GENAI  = False
 _GEMINI_CLIENT  = None   # kept for backwards-compat guards elsewhere
+
+if not _GEMINI_API_KEY:
+    print("[Gemini] ⚠️  GEMINI_API_KEY not set — Maya will return error messages. Add it in Render → Environment Variables.")
+else:
+    print(f"[Gemini] 🔑 GEMINI_API_KEY loaded (ends ...{_GEMINI_API_KEY[-6:]})")
 
 try:
     import google.generativeai as genai
@@ -4446,18 +4451,22 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
         print(f"{'='*60}\n")
         err_str = str(e).lower()
         print(f"Error: {e}")
-        if "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
+        if not _GEMINI_API_KEY:
+            display_msg = "מאיה: GEMINI_API_KEY חסר בסביבת הייצור. הוסף אותו ב-Render → Environment Variables. 🔴"
+        elif any(x in err_str for x in ["api_key_invalid", "invalid api key", "expired", "key expired"]):
+            display_msg = "מאיה: מפתח ה-GEMINI_API_KEY פג תוקף או לא תקין. צור מפתח חדש בכתובת aistudio.google.com/apikey 🔴"
+        elif "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
             display_msg = "מאיה: מכסת ה-API של Gemini הסתיימה. המתן מספר דקות ונסה שוב. 🔴"
         elif "leaked" in err_str or ("403" in err_str and "leak" in err_str):
             display_msg = "מאיה: מפתח ה-GEMINI_API_KEY דלף ונחסם על ידי גוגל. צור מפתח חדש בכתובת aistudio.google.com/apikey 🔴"
-        elif any(x in err_str for x in ["401", "403", "permission", "api key", "auth"]):
-            display_msg = "מאיה: GEMINI_API_KEY שגוי או לא תקף. בדוק את קובץ .env 🔴"
+        elif any(x in err_str for x in ["401", "403", "permission", "api key", "auth", "unauthenticated"]):
+            display_msg = "מאיה: GEMINI_API_KEY שגוי או לא תקף. בדוק את Render → Environment Variables. 🔴"
         elif "not_found" in err_str or "404" in err_str:
             display_msg = "מאיה: המודל לא נמצא. ייתכן שהמפתח לא תומך בו. נסה מפתח חדש. 🔴"
         elif any(x in err_str for x in ["timeout", "connection", "network", "502", "503"]):
             display_msg = "מאיה: בעיית חיבור לרשת. בדוק את החיבור לאינטרנט. 🔴"
         else:
-            display_msg = f"מאיה: שגיאת AI — {type(e).__name__}. בדוק את הטרמינל לפרטים. 🔴"
+            display_msg = f"מאיה: שגיאת AI — {type(e).__name__}. בדוק לוגים ב-Render. 🔴"
         return jsonify({
             "success": False,
             "message": str(e),
