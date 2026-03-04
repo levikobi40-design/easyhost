@@ -63,7 +63,7 @@ except Exception:
 # GEMINI AI — google-generativeai SDK (classic, stable)
 # Model priority: gemini-1.5-flash → gemini-1.5-pro → offline
 # ══════════════════════════════════════════════════════════════════
-_GEMINI_API_KEY = os.getenv("AIzaSyD-PeQ0wUyvlouBVdxHEktl0EiwA_pK_qo",)
+_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 _USE_NEW_GENAI  = False
 _GEMINI_CLIENT  = None   # kept for backwards-compat guards elsewhere
 

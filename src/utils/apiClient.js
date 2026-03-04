@@ -1,26 +1,35 @@
 /**
- * API URL resolution — set REACT_APP_API_URL in the right place:
- *  - Local (.env):      REACT_APP_API_URL=http://127.0.0.1:1000
- *  - Production (render.yaml): REACT_APP_API_URL=https://easyhost-backend.onrender.com
+ * API URL resolution — two layers so it works in every environment:
  *
- * React bakes this value in at build-time, so no runtime detection is needed.
- * The localhost fallback below only activates if the variable is missing entirely.
+ * Layer 1 (build-time): REACT_APP_API_URL baked in by React during `npm build`
+ *   - Local   (.env):        REACT_APP_API_URL=http://127.0.0.1:1000
+ *   - Render  (render.yaml): REACT_APP_API_URL=https://easyhost-backend.onrender.com
+ *
+ * Layer 2 (runtime fallback): if the build-time value is missing or empty,
+ *   detect the current hostname at runtime:
+ *   - *.onrender.com  → https://easyhost-backend.onrender.com
+ *   - localhost/127.* → http://127.0.0.1:1000
  */
-const _isLocalhost =
-  typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const _PRODUCTION_API = 'https://easyhost-backend.onrender.com';
+const _LOCAL_API      = 'http://127.0.0.1:1000';
+
+const _hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+const _isLocalhost  = _hostname === 'localhost' || _hostname === '127.0.0.1';
+const _isRender     = _hostname.endsWith('.onrender.com');
 
 const _envUrl =
-  typeof process !== 'undefined' && process.env?.REACT_APP_API_URL !== undefined
+  typeof process !== 'undefined' && process.env?.REACT_APP_API_URL
     ? String(process.env.REACT_APP_API_URL).replace(/\/$/, '')
     : null;
 
 export const API_URL =
-  _envUrl !== null
-    ? _envUrl                          // always wins — set in .env or render.yaml
-    : _isLocalhost
-    ? 'http://127.0.0.1:1000'          // safety fallback for local dev
-    : 'https://easyhost-backend.onrender.com'; // safety fallback for production
+  _envUrl                           // build-time value wins when set and non-empty
+    ? _envUrl
+    : _isRender                     // runtime: any *.onrender.com page
+    ? _PRODUCTION_API
+    : _isLocalhost                  // runtime: local machine
+    ? _LOCAL_API
+    : _PRODUCTION_API;              // unknown host — assume production
 
 const getApiBase = () => API_URL;
 const _base = getApiBase();
