@@ -7811,29 +7811,33 @@ def index():
     return render_template('index.html')
 
 
-if __name__ == "__main__":
-    _do_startup_init()
-    threading.Thread(target=_weekly_report_scheduler, daemon=True, name="WeeklyReportScheduler").start()
-    prop_rules = [r for r in app.url_map.iter_rules() if r.rule == "/api/properties"]
-    print("[hotel_dashboard] /api/properties url_map:", [f"{r.rule} {sorted(r.methods - {'HEAD'})}" for r in prop_rules])
-    print("[hotel_dashboard] AUTH_DISABLED:", AUTH_DISABLED)
-    port = int(os.environ.get("PORT", 1000))
-    app.run(host="0.0.0.0", port=port)
-
-
 def _do_startup_init():
     """
     Full startup bootstrap — schema creation, seed data, background threads.
-    Called from both the before_request hook (Gunicorn / Render) and __main__
-    (local dev).  Guarded by INIT_DONE so it runs exactly once per process.
+
+    Connects to Supabase (via SUPABASE_URL + SUPABASE_KEY env vars) or
+    PostgreSQL (via DATABASE_URL), falling back to local SQLite for dev.
+
+    Creates all tables (CREATE TABLE IF NOT EXISTS), seeds the 10 pilot
+    properties, and starts the guest-complaint + staff-response bots.
+
+    Guarded by INIT_DONE so this runs exactly once per process regardless
+    of how many Gunicorn workers or before_request calls trigger it.
     """
     global INIT_DONE
     with INIT_LOCK:
         if INIT_DONE:
             return
+        db_label = (
+            "Supabase PostgreSQL" if "supabase" in DATABASE_URL else
+            "PostgreSQL"          if _is_pg else
+            "SQLite (local)"
+        )
+        print(f"[startup] 🔌 Connecting to {db_label}…")
         _sim_log("🔌 Server starting — running startup init…", "info")
         if Base and ENGINE:
             init_db()              # CREATE TABLE IF NOT EXISTS for all models
+            print(f"[startup] ✅ Connected to {db_label} successfully — tables ready")
             ensure_default_tenants()
             ensure_demo_user()
             ensure_levikobi_user()
@@ -7847,15 +7851,28 @@ def _do_startup_init():
         start_dispatcher()
         start_calendar_syncer()
         _sim_log(
-            f"✅ Startup complete — DB: "
-            f"{'Supabase' if 'supabase' in DATABASE_URL else 'PostgreSQL' if _is_pg else 'SQLite'}",
+            f"✅ Startup complete — DB: {db_label}",
             "success",
         )
+        print(f"[startup] 🚀 Server ready on port {os.environ.get('PORT', 1000)}")
         INIT_DONE = True
 
 
 @app.before_request
 def init_background_tasks():
+    """Called by Gunicorn on the first HTTP request — runs _do_startup_init once."""
     _do_startup_init()
+
+
+if __name__ == "__main__":
+    # Running locally with: python app.py
+    # _do_startup_init is now defined above, so this call is safe.
+    _do_startup_init()
+    threading.Thread(target=_weekly_report_scheduler, daemon=True, name="WeeklyReportScheduler").start()
+    prop_rules = [r for r in app.url_map.iter_rules() if r.rule == "/api/properties"]
+    print("[hotel_dashboard] /api/properties url_map:", [f"{r.rule} {sorted(r.methods - {'HEAD'})}" for r in prop_rules])
+    print("[hotel_dashboard] AUTH_DISABLED:", AUTH_DISABLED)
+    port = int(os.environ.get("PORT", 1000))
+    app.run(host="0.0.0.0", port=port)
 
 
