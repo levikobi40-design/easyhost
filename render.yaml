@@ -4,9 +4,9 @@ services:
     runtime: python
     plan: free
     buildCommand: "npm install && CI=false node ./node_modules/react-scripts/bin/react-scripts.js build && pip install -r requirements.txt"
-    # init_supabase.py runs FIRST: tests connection, creates tables, seeds data.
-    # Then Gunicorn starts. Set --workers 1 so only one process shares the pool.
-    startCommand: "python init_supabase.py && gunicorn app:app --workers 1 --timeout 120"
+    # Gunicorn always starts — DB init runs eagerly inside app.py at import time.
+    # Visit /init-db in the browser to manually force schema creation + seed data.
+    startCommand: "gunicorn app:app --workers 1 --timeout 120"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.6"
@@ -69,3 +69,7 @@ services:
         value: "false"
       - key: JWT_SECRET
         generateValue: true
+      - key: ALLOW_DEMO_AUTH
+        value: "true"
+      - key: AUTH_DISABLED
+        value: "true"

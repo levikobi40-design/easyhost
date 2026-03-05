@@ -117,19 +117,19 @@ for attempt in range(1, retries + 1):
         print(f"[init_supabase] ⚠️  Attempt {attempt}/{retries} failed: {e}")
         if attempt == retries:
             print()
-            print("[init_supabase] ❌  Could not connect to the database after "
-                  f"{retries} attempts.")
+            print("[init_supabase] ⚠️  Could not connect to the database after "
+                  f"{retries} attempts — Gunicorn will start anyway.")
+            print("[init_supabase]    The app will retry on first HTTP request.")
             if is_supabase:
                 print()
                 print("  Troubleshooting checklist:")
                 print("  1. SUPABASE_KEY  → must be the DATABASE PASSWORD")
                 print("     (Supabase → Project Settings → Database → Password)")
                 print("  2. SUPABASE_URL  → must be https://PROJECT_REF.supabase.co")
-                print("  3. The Supabase project must NOT be paused (free tier pauses")
-                print("     after 1 week of inactivity — click 'Restore' in dashboard)")
-                print("  4. Or set DATABASE_URL directly to the full connection string")
-                print("     from Supabase → Settings → Database → Connection string (URI)")
-            sys.exit(1)
+                print("  3. Visit /init-db in the browser to manually trigger init")
+            # Do NOT sys.exit(1) — let Gunicorn start regardless
+            print()
+            sys.exit(0)
         time.sleep(3)
 
 # ── 3. Create all tables ────────────────────────────────────────────────────

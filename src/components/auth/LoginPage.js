@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { loginAuth, registerAuth } from '../../services/api';
+import React, { useState, useEffect } from 'react';
+import { loginAuth, registerAuth, getDemoAuthToken } from '../../services/api';
 import useStore from '../../store/useStore';
 import './Login.css';
 
@@ -42,6 +42,19 @@ export default function LoginPage() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
 
+  // ── Restore session from localStorage on mount ───────────────────────────
+  // If the user previously logged in, skip the login screen immediately.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOGIN_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved?.token) {
+        applyAuth(saved.token, saved.tenantId, saved.role, setAuthToken, setActiveTenantId, setRole);
+      }
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Saved after successful registration — shown to user
   const [savedEmail, setSavedEmail]   = useState('');
   const [savedPassword, setSavedPassword] = useState('');
@@ -67,8 +80,8 @@ export default function LoginPage() {
       const msg = err?.message || '';
       if (msg.includes('Invalid') || msg.includes('401')) {
         setError('Incorrect email or password. Please try again.');
-      } else if (msg.includes('fetch') || msg.includes('Failed') || msg.includes('network')) {
-        setError('Cannot reach the server. Make sure the backend is running.');
+      } else if (msg.toLowerCase().includes('fetch') || msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_')) {
+        setError('Cannot reach the server. If you are on a demo, use ⚡ Demo Access below.');
       } else {
         setError(msg || 'Sign-in error. Please try again.');
       }
@@ -101,8 +114,8 @@ export default function LoginPage() {
           setError('This email is already registered. Switch to Sign In and try again.');
           setView('login');
         }
-      } else if (msg.includes('fetch') || msg.includes('Failed')) {
-        setError('Cannot reach the server. Make sure the backend is running.');
+      } else if (msg.toLowerCase().includes('fetch') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        setError('Cannot reach the server. Use ⚡ Demo Access below to continue offline.');
       } else {
         setError(msg || 'Registration error. Please try again.');
       }
@@ -111,10 +124,23 @@ export default function LoginPage() {
     }
   };
 
-  // ── Dev bypass ───────────────────────────────────────────────────────────
-  const handleDevLogin = () => {
-    const token = 'dev-bypass-' + Date.now();
-    applyAuth(token, 'default', 'admin', setAuthToken, setActiveTenantId, setRole);
+  // ── Demo / Guest access ───────────────────────────────────────────────────
+  // 1. Try /api/auth/demo (no DB needed — just issues a JWT on the server)
+  // 2. If the backend is unreachable, fall back to a local offline admin session
+  const handleDevLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getDemoAuthToken('demo');
+      applyAuth(data.token, data.tenant_id || 'demo', data.role || 'admin',
+                setAuthToken, setActiveTenantId, setRole);
+    } catch {
+      // Backend unreachable — use local offline session so the demo still works
+      const offlineToken = 'demo-offline-' + Date.now();
+      applyAuth(offlineToken, 'demo', 'admin', setAuthToken, setActiveTenantId, setRole);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── Enter dashboard from success screen ─────────────────────────────────
@@ -282,11 +308,12 @@ export default function LoginPage() {
 
               {/* Quick access */}
               <button
-                className="lp-btn lp-btn--ghost lp-btn--wide"
+                className="lp-btn lp-btn--demo lp-btn--wide"
                 onClick={handleDevLogin}
-                title="Instant access without registration"
+                disabled={loading}
+                title="Enter the live demo as admin — no sign-up needed"
               >
-                ⚡ Demo Access (no sign-up)
+                {loading ? '⏳ Connecting…' : '⚡ Enter Demo (no sign-up)'}
               </button>
             </>
           )}
