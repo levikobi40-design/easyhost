@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard, Users, MessageCircle,
   Building2, Shield, ChevronLeft,
-  ChevronRight, Sparkles, ExternalLink, Home, CalendarCheck
+  ChevronRight, Sparkles, ExternalLink, Home, CalendarCheck, Zap
 } from 'lucide-react';
 import useTranslations from '../../hooks/useTranslations';
 import useStore from '../../store/useStore';
@@ -13,12 +13,13 @@ import './Sidebar.css';
 
 const menuItems = [
   { id: 'dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
-  { id: 'premium', icon: Building2, labelKey: 'nav.premium' },
-  { id: 'properties', icon: Home, labelKey: 'nav.properties' },
-  { id: 'tasks', icon: CalendarCheck, labelKey: 'nav.tasks' },
-  { id: 'crm', icon: Users, labelKey: 'nav.crm' },
-  { id: 'operator', icon: MessageCircle, labelKey: 'nav.operator' },
-  { id: 'field', icon: MessageCircle, labelKey: 'nav.field' },
+  { id: 'premium',   icon: Building2,       labelKey: 'nav.premium' },
+  { id: 'properties',icon: Home,            labelKey: 'nav.properties' },
+  { id: 'tasks',     icon: CalendarCheck,   labelKey: 'nav.tasks' },
+  { id: 'crm',       icon: Users,           labelKey: 'nav.crm' },
+  { id: 'operator',  icon: MessageCircle,   labelKey: 'nav.operator' },
+  { id: 'field',     icon: MessageCircle,   labelKey: 'nav.field' },
+  { id: 'godmode',   icon: Zap,             labelKey: 'nav.godMode', adminOnly: true },
 ];
 
 const Sidebar = ({ activeView, setActiveView }) => {
@@ -28,10 +29,10 @@ const Sidebar = ({ activeView, setActiveView }) => {
   const safeT = typeof t === 'function' ? t : (k) => k;
 
   const roleNav = {
-    host: ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
-    admin: ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
+    host:     ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
+    admin:    ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'godmode'],
     operator: ['operator'],
-    field: ['field'],
+    field:    ['field'],
   };
 
   const visibleItems = menuItems.filter((item) =>
@@ -75,8 +76,8 @@ const Sidebar = ({ activeView, setActiveView }) => {
           <button
             key={item.id}
             onClick={() => setActiveView(item.id)}
-            className={`nav-item ${activeView === item.id ? 'active' : ''}`}
-            aria-label={safeT(item.labelKey)}
+            className={`nav-item ${activeView === item.id ? 'active' : ''}${item.id === 'godmode' ? ' nav-item-godmode' : ''}`}
+            aria-label={safeT(item.labelKey) || item.id}
             aria-current={activeView === item.id ? 'page' : undefined}
           >
             <item.icon size={22} aria-hidden="true" />

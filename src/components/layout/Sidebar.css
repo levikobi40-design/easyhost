@@ -344,3 +344,19 @@
     display: none;
   }
 }
+
+/* ── God Mode nav item — gold glow ────────────────────────── */
+.nav-item-godmode {
+  background: linear-gradient(135deg, rgba(234,179,8,0.1), rgba(245,158,11,0.08)) !important;
+  border: 1px solid rgba(234,179,8,0.2) !important;
+  color: #fbbf24 !important;
+  position: relative;
+}
+.nav-item-godmode:hover {
+  background: linear-gradient(135deg, rgba(234,179,8,0.18), rgba(245,158,11,0.15)) !important;
+  border-color: rgba(234,179,8,0.35) !important;
+}
+.nav-item-godmode.active {
+  background: linear-gradient(135deg, rgba(234,179,8,0.25), rgba(245,158,11,0.2)) !important;
+  box-shadow: 0 0 12px rgba(234,179,8,0.2) !important;
+}

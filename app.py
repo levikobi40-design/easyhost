@@ -866,6 +866,60 @@ OBJECTION_ARGUMENTS = {
 
 OBJECTION_SUCCESS = {key: {"yes": 0, "no": 0} for key in OBJECTION_ARGUMENTS}
 
+# ── PILOT DEMO SIMULATION ─────────────────────────────────────────────────────
+DEMO_STOP_EVENT  = threading.Event()
+DEMO_ACTIVE      = False
+DEMO_LOCK        = threading.Lock()
+
+MOCK_STAFF_NAMES = ["Mock Alma", "Mock Kobi", "Mock Avi"]
+MOCK_STAFF = [
+    {"name": "Mock Alma", "role": "Cleaning",    "emoji": "🧹", "phone": "+1-555-0101"},
+    {"name": "Mock Kobi", "role": "Maintenance",  "emoji": "🔧", "phone": "+1-555-0102"},
+    {"name": "Mock Avi",  "role": "Electrician",  "emoji": "⚡", "phone": "+1-555-0103"},
+]
+
+DEMO_COMPLAINTS = [
+    ("Towels needed urgently",              "Mock Alma"),
+    ("Bathroom deep clean required",        "Mock Alma"),
+    ("Leaky faucet in bathroom",            "Mock Kobi"),
+    ("AC unit not cooling properly",        "Mock Kobi"),
+    ("Broken TV remote",                    "Mock Kobi"),
+    ("WiFi router needs reset",             "Mock Kobi"),
+    ("Bedroom light bulb burnt out",        "Mock Avi"),
+    ("Electrical outlet not working",       "Mock Avi"),
+    ("Kitchen pipe dripping",               "Mock Kobi"),
+    ("Need extra towels and pillows",       "Mock Alma"),
+    ("Refrigerator making loud noise",      "Mock Kobi"),
+    ("Front door lock feels stiff",         "Mock Kobi"),
+    ("Bathroom power outlet broken",        "Mock Avi"),
+    ("Shower drain clogged",               "Mock Kobi"),
+    ("Welcome amenities kit incomplete",    "Mock Alma"),
+    ("Dishwasher not completing cycle",     "Mock Kobi"),
+    ("Smoke detector beeping low battery", "Mock Avi"),
+    ("Guest requests extra blankets",       "Mock Alma"),
+    ("Balcony door handle loose",           "Mock Kobi"),
+    ("Microwave not heating food",          "Mock Kobi"),
+]
+
+DEMO_PILOT_PROPERTY_NAMES = [
+    "John's Beach House",       "John's Downtown Loft",
+    "John's Mountain Cabin",    "John's City Studio",
+    "John's Rooftop Penthouse", "Sarah's Poolside Villa",
+    "Sarah's Garden Suite",     "Sarah's Harbor View",
+    "Sarah's Cozy Cottage",     "Sarah's Modern Flat",
+]
+
+DEMO_PLACEHOLDER_IMAGE = "https://picsum.photos/seed/easyhost-demo/400/300"
+
+DEMO_COMPLETION_NOTES = [
+    "Task completed ✅ — area inspected and all clear.",
+    "Fixed and tested — confirmed working.",
+    "Done! Guest notified and area cleaned.",
+    "Resolved — no further action needed.",
+    "Completed — quality checked before leaving.",
+    "All done! Photos uploaded to the task record.",
+]
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -2780,6 +2834,234 @@ def force_seed_sample_tasks(session=None):
             sess.close()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  PILOT DEMO — Seed, Simulation, Mock Staff
+# ══════════════════════════════════════════════════════════════════════════════
+
+def seed_pilot_demo():
+    """Create 10 demo properties (5 John / 5 Sarah), demo owner accounts, and mock staff."""
+    if not all([SessionLocal, ManualRoomModel, PropertyStaffModel, UserModel]):
+        return
+    session = SessionLocal()
+    try:
+        # ── Demo owner user accounts ──────────────────────────────────────────
+        owner_map = {}
+        for email, name in [("john@easyhost.demo", "John"), ("sarah@easyhost.demo", "Sarah")]:
+            existing = session.query(UserModel).filter_by(email=email).first()
+            if not existing:
+                uid = str(uuid.uuid4())
+                session.add(UserModel(
+                    id=uid, tenant_id=DEFAULT_TENANT_ID, email=email,
+                    password_hash=generate_password_hash("demo123", method="pbkdf2:sha256"),
+                    role="host", created_at=now_iso(),
+                ))
+                owner_map[name] = uid
+            else:
+                owner_map[name] = existing.id
+        session.commit()
+
+        # ── 10 pilot properties ───────────────────────────────────────────────
+        pilot_defs = [
+            ("John",  "John's Beach House",       "Beachfront 3BR villa",              6, 250),
+            ("John",  "John's Downtown Loft",     "Modern loft in the city centre",    2, 150),
+            ("John",  "John's Mountain Cabin",    "Cozy mountain retreat",             4, 180),
+            ("John",  "John's City Studio",       "Compact studio, business district", 2,  90),
+            ("John",  "John's Rooftop Penthouse", "Luxury penthouse, panoramic views", 8, 400),
+            ("Sarah", "Sarah's Poolside Villa",   "5-star villa with private pool",    8, 350),
+            ("Sarah", "Sarah's Garden Suite",     "Tranquil garden apartment",         3, 120),
+            ("Sarah", "Sarah's Harbor View",      "Waterfront apartment, harbour views",4, 200),
+            ("Sarah", "Sarah's Cozy Cottage",     "Charming countryside cottage",      4, 140),
+            ("Sarah", "Sarah's Modern Flat",      "Sleek flat near airport",           2, 110),
+        ]
+        for owner_name, pname, desc, guests, _price in pilot_defs:
+            if session.query(ManualRoomModel).filter_by(tenant_id=DEFAULT_TENANT_ID, name=pname).first():
+                continue
+            session.add(ManualRoomModel(
+                id=str(uuid.uuid4()), tenant_id=DEFAULT_TENANT_ID,
+                owner_id=owner_map.get(owner_name),
+                name=pname, description=desc, status="active", created_at=now_iso(),
+                max_guests=guests, bedrooms=max(1, guests // 2),
+                beds=max(1, guests // 2), bathrooms=max(1, guests // 3),
+            ))
+        session.commit()
+
+        # ── Mock staff for every pilot property ───────────────────────────────
+        for pname in DEMO_PILOT_PROPERTY_NAMES:
+            prop = session.query(ManualRoomModel).filter_by(
+                tenant_id=DEFAULT_TENANT_ID, name=pname
+            ).first()
+            if not prop:
+                continue
+            for ms in MOCK_STAFF:
+                if not session.query(PropertyStaffModel).filter_by(
+                    property_id=prop.id, name=ms["name"]
+                ).first():
+                    session.add(PropertyStaffModel(
+                        id=str(uuid.uuid4()), property_id=prop.id,
+                        name=ms["name"], role=ms["role"], phone_number=ms["phone"],
+                    ))
+        session.commit()
+        print("[seed_pilot_demo] ✅ Pilot demo ready: 10 properties + mock staff seeded")
+    except Exception as e:
+        session.rollback()
+        print(f"[seed_pilot_demo] Error: {e}")
+    finally:
+        session.close()
+
+
+def _get_pilot_properties(session):
+    """Return ManualRoomModel rows for the 10 pilot demo properties."""
+    rows = session.query(ManualRoomModel).filter(
+        ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+    ).all()
+    if not rows:  # fallback: any active properties in this tenant
+        rows = session.query(ManualRoomModel).filter_by(
+            tenant_id=DEFAULT_TENANT_ID
+        ).limit(10).all()
+    return rows
+
+
+def _generate_demo_complaints(count=5):
+    """Insert `count` random guest complaints as Pending tasks for demo properties."""
+    if not SessionLocal or not PropertyTaskModel or not ManualRoomModel:
+        return 0
+    session = SessionLocal()
+    try:
+        props = _get_pilot_properties(session)
+        if not props:
+            return 0
+        sample = random.sample(DEMO_COMPLAINTS, min(count, len(DEMO_COMPLAINTS)))
+        created = 0
+        for desc, staff_name in sample:
+            prop     = random.choice(props)
+            room_num = random.randint(101, 509)
+            ms       = next((m for m in MOCK_STAFF if m["name"] == staff_name), MOCK_STAFF[0])
+            task_id  = str(uuid.uuid4())
+            full_desc = f"Room {room_num}: {desc}"
+            session.add(PropertyTaskModel(
+                id=task_id, property_id=prop.id,
+                staff_id="", assigned_to="",
+                description=full_desc, status="Pending", created_at=now_iso(),
+                property_name=prop.name, staff_name=staff_name, staff_phone=ms["phone"],
+            ))
+            _ACTIVITY_LOG.append({
+                "id": str(uuid.uuid4()),
+                "ts": int(time.time() * 1000),
+                "type": "task_created",
+                "text": f"🚨 {prop.name}: {full_desc}",
+                "task": {
+                    "id": task_id, "description": full_desc,
+                    "property_name": prop.name, "staff_name": staff_name,
+                },
+            })
+            created += 1
+        session.commit()
+        print(f"[GuestSim] Generated {created} complaints")
+        return created
+    except Exception as e:
+        session.rollback()
+        print(f"[GuestSim] Error: {e}")
+        return 0
+    finally:
+        session.close()
+
+
+def _mock_staff_auto_respond():
+    """Auto-complete mock-staff tasks that have been Pending for >2 minutes."""
+    if not SessionLocal or not PropertyTaskModel:
+        return
+    session = SessionLocal()
+    try:
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        pending = session.query(PropertyTaskModel).filter(
+            PropertyTaskModel.status == "Pending",
+            PropertyTaskModel.staff_name.in_(MOCK_STAFF_NAMES),
+            PropertyTaskModel.created_at <= cutoff_iso,
+        ).all()
+        for task in pending:
+            ms   = next((m for m in MOCK_STAFF if m["name"] == task.staff_name), MOCK_STAFF[0])
+            note = random.choice(DEMO_COMPLETION_NOTES)
+            task.status       = "Done"
+            task.completed_at = now_iso()
+            task.worker_notes = note
+            task.photo_url    = DEMO_PLACEHOLDER_IMAGE
+            _ACTIVITY_LOG.append({
+                "id":   str(uuid.uuid4()),
+                "ts":   int(time.time() * 1000),
+                "type": "task_created",
+                "text": f"{ms['emoji']} {task.staff_name} completed: {task.property_name} — {note}",
+                "task": {
+                    "id": task.id, "status": "Done",
+                    "staff_name": task.staff_name,
+                    "property_name": task.property_name,
+                    "description": task.description,
+                    "worker_notes": note,
+                    "photo_url": DEMO_PLACEHOLDER_IMAGE,
+                },
+            })
+        if pending:
+            session.commit()
+            print(f"[MockStaff] Auto-completed {len(pending)} tasks")
+    except Exception as e:
+        session.rollback()
+        print(f"[MockStaff] Error: {e}")
+    finally:
+        session.close()
+
+
+def _guest_simulation_loop():
+    """Background thread: generate 5 guest complaints every 10 minutes."""
+    import time as _t
+    print("[GuestSim] Thread started — complaints every 10 minutes")
+    while not DEMO_STOP_EVENT.is_set():
+        for _ in range(60):        # 60 × 10s = 600s = 10 min
+            if DEMO_STOP_EVENT.is_set():
+                return
+            _t.sleep(10)
+        try:
+            _generate_demo_complaints(5)
+        except Exception as e:
+            print(f"[GuestSim] Loop error: {e}")
+    print("[GuestSim] Thread stopped")
+
+
+def _mock_staff_loop():
+    """Background thread: auto-complete mock-staff tasks every 30 seconds."""
+    import time as _t
+    print("[MockStaff] Thread started — polling every 30 s")
+    while not DEMO_STOP_EVENT.is_set():
+        _t.sleep(30)
+        try:
+            _mock_staff_auto_respond()
+        except Exception as e:
+            print(f"[MockStaff] Loop error: {e}")
+    print("[MockStaff] Thread stopped")
+
+
+def start_pilot_simulation():
+    """Start guest simulation + mock staff auto-response threads. Idempotent."""
+    global DEMO_ACTIVE
+    with DEMO_LOCK:
+        if DEMO_ACTIVE:
+            return
+        DEMO_STOP_EVENT.clear()
+        threading.Thread(target=_generate_demo_complaints, args=(5,), daemon=True,
+                         name="DemoFirstBatch").start()
+        threading.Thread(target=_guest_simulation_loop, daemon=True, name="GuestSimLoop").start()
+        threading.Thread(target=_mock_staff_loop,       daemon=True, name="MockStaffLoop").start()
+        DEMO_ACTIVE = True
+    print("[Demo] Pilot simulation STARTED")
+
+
+def stop_pilot_simulation():
+    """Signal all simulation threads to stop."""
+    global DEMO_ACTIVE
+    with DEMO_LOCK:
+        DEMO_STOP_EVENT.set()
+        DEMO_ACTIVE = False
+    print("[Demo] Pilot simulation STOPPED")
+
+
 def get_tenant_ids():
     if SessionLocal and TenantModel:
         session = SessionLocal()
@@ -2946,6 +3228,147 @@ def activity_feed():
     now_ms = int(time.time() * 1000)
     events = [e for e in _ACTIVITY_LOG if e.get("ts", 0) > since_ms]
     return jsonify({"events": list(events), "server_ts": now_ms})
+
+
+@app.route("/api/demo/status", methods=["GET"])
+def demo_status():
+    """Return current pilot simulation status."""
+    return jsonify({"active": DEMO_ACTIVE, "mock_staff": MOCK_STAFF_NAMES})
+
+
+@app.route("/api/demo/toggle", methods=["POST"])
+def demo_toggle():
+    """Start or stop the pilot simulation. Body: { action: 'start'|'stop'|'reset' }"""
+    data   = request.get_json(silent=True) or {}
+    action = data.get("action", "start")
+    if action == "stop":
+        stop_pilot_simulation()
+        return jsonify({"ok": True, "active": False})
+    if action == "reset":
+        stop_pilot_simulation()
+        if SessionLocal and PropertyTaskModel:
+            session = SessionLocal()
+            try:
+                session.query(PropertyTaskModel).filter(
+                    PropertyTaskModel.staff_name.in_(MOCK_STAFF_NAMES)
+                ).delete(synchronize_session=False)
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                print(f"[Demo reset] Error: {e}")
+            finally:
+                session.close()
+        return jsonify({"ok": True, "active": False, "reset": True})
+    # default: start
+    start_pilot_simulation()
+    return jsonify({"ok": True, "active": True})
+
+
+@app.route("/api/god-mode/overview", methods=["GET"])
+def god_mode_overview():
+    """
+    Master God-Mode overview: all pilot properties with task counts,
+    recent pending tasks, recent mock-staff completions, and live stats.
+    """
+    if not SessionLocal or not ManualRoomModel or not PropertyTaskModel:
+        return jsonify({"properties": [], "pending_tasks": [], "completions": [], "stats": {}, "demo_active": DEMO_ACTIVE})
+
+    session = SessionLocal()
+    try:
+        # ── All pilot properties ──────────────────────────────────────────────
+        props     = _get_pilot_properties(session)
+        prop_ids  = [p.id for p in props]
+
+        # Load task counts per property
+        from sqlalchemy import func as _func
+        pending_counts = {
+            row[0]: row[1]
+            for row in session.query(
+                PropertyTaskModel.property_id, _func.count(PropertyTaskModel.id)
+            ).filter(
+                PropertyTaskModel.property_id.in_(prop_ids),
+                PropertyTaskModel.status == "Pending",
+            ).group_by(PropertyTaskModel.property_id).all()
+        }
+        done_counts = {
+            row[0]: row[1]
+            for row in session.query(
+                PropertyTaskModel.property_id, _func.count(PropertyTaskModel.id)
+            ).filter(
+                PropertyTaskModel.property_id.in_(prop_ids),
+                PropertyTaskModel.status == "Done",
+            ).group_by(PropertyTaskModel.property_id).all()
+        }
+
+        # Build owner map: owner_id → email (to derive first name)
+        owner_cache = {}
+        if UserModel:
+            for p in props:
+                if p.owner_id and p.owner_id not in owner_cache:
+                    u = session.query(UserModel).filter_by(id=p.owner_id).first()
+                    if u:
+                        owner_cache[p.owner_id] = u.email.split("@")[0].capitalize()
+
+        properties_out = []
+        for p in props:
+            pid = p.id
+            owner_name = owner_cache.get(p.owner_id, "Unknown")
+            pending = pending_counts.get(pid, 0)
+            done    = done_counts.get(pid, 0)
+            status  = "busy" if pending > 2 else ("active" if pending > 0 else "clear")
+            properties_out.append({
+                "id": pid, "name": p.name, "owner": owner_name,
+                "pending": pending, "done": done, "status": status,
+            })
+
+        # ── Recent pending tasks (last 30) ────────────────────────────────────
+        pending_tasks = session.query(PropertyTaskModel).filter(
+            PropertyTaskModel.property_id.in_(prop_ids),
+            PropertyTaskModel.status == "Pending",
+        ).order_by(PropertyTaskModel.created_at.desc()).limit(30).all()
+
+        pending_out = [{
+            "id": t.id, "property_name": t.property_name or "—",
+            "description": t.description or "—", "staff_name": t.staff_name or "—",
+            "created_at": t.created_at,
+        } for t in pending_tasks]
+
+        # ── Recent mock-staff completions (last 20) ───────────────────────────
+        completions = session.query(PropertyTaskModel).filter(
+            PropertyTaskModel.staff_name.in_(MOCK_STAFF_NAMES),
+            PropertyTaskModel.status == "Done",
+        ).order_by(PropertyTaskModel.completed_at.desc()).limit(20).all()
+
+        completions_out = [{
+            "id": t.id, "property_name": t.property_name or "—",
+            "description": t.description or "—", "staff_name": t.staff_name or "—",
+            "worker_notes": t.worker_notes or "Completed",
+            "completed_at": t.completed_at,
+            "photo_url": t.photo_url or "",
+        } for t in completions]
+
+        # ── Overall stats ─────────────────────────────────────────────────────
+        total_pending = sum(pending_counts.values())
+        total_done    = sum(done_counts.values())
+        stats = {
+            "total_properties": len(props),
+            "active_tasks":     total_pending,
+            "completed_tasks":  total_done,
+            "mock_staff_count": len(MOCK_STAFF),
+        }
+
+        return jsonify({
+            "properties":   properties_out,
+            "pending_tasks": pending_out,
+            "completions":  completions_out,
+            "stats":        stats,
+            "demo_active":  DEMO_ACTIVE,
+        })
+    except Exception as e:
+        print(f"[god_mode_overview] Error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
 
 
 @app.route("/api/completed-today", methods=["GET", "OPTIONS"])
@@ -7017,6 +7440,7 @@ if __name__ == "__main__":
     start_dispatcher()
     start_calendar_syncer()
     threading.Thread(target=_weekly_report_scheduler, daemon=True, name="WeeklyReportScheduler").start()
+    seed_pilot_demo()
     prop_rules = [r for r in app.url_map.iter_rules() if r.rule == "/api/properties"]
     print("[hotel_dashboard] /api/properties url_map:", [f"{r.rule} {sorted(r.methods - {'HEAD'})}" for r in prop_rules])
     print("[hotel_dashboard] AUTH_DISABLED:", AUTH_DISABLED)
@@ -7037,6 +7461,7 @@ def init_background_tasks():
             ensure_levikobi_user()
             ensure_admin_from_env()
             seed_dashboard_data()
+            seed_pilot_demo()
             load_leads_from_db()
         seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
         start_message_workers()

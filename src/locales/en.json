@@ -15,7 +15,8 @@
     "operator": "Lead Monitor",
     "analytics": "Analytics",
     "field": "Field Ops",
-    "enterprise": "Enterprise"
+    "enterprise": "Enterprise",
+    "godMode": "God Mode"
   },
   "languages": {
     "he": "Hebrew",

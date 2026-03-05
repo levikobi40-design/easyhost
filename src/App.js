@@ -10,6 +10,7 @@ import EnterpriseDashboard from './components/dashboard/EnterpriseDashboard';
 import TaskCalendar from './components/dashboard/TaskCalendar';
 import PremiumDashboard from './components/dashboard/PremiumDashboard';
 import PropertiesDashboard from './components/dashboard/PropertiesDashboard';
+import GodModeDashboard from './components/dashboard/GodModeDashboard';
 import LeadsCRM from './components/crm/LeadsCRM';
 import FieldView from './components/features/FieldView';
 import WorkerView from './components/WorkerView';
@@ -97,10 +98,10 @@ function App() {
 
   useEffect(() => {
     const roleViews = {
-      host: ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
-      admin: ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
+      host:     ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
+      admin:    ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'godmode'],
       operator: ['operator'],
-      field: ['field'],
+      field:    ['field'],
     };
     const allowed = roleViews[role] || ['dashboard'];
     if (!allowed.includes(activeView)) {
@@ -129,10 +130,11 @@ function App() {
         return <FieldView key="field-view" />;
       case 'host':
       default:
-        if (activeView === 'crm') return <LeadsCRM key="host-crm" />;
-        if (activeView === 'premium') return <PremiumDashboard key="host-premium" />;
+        if (activeView === 'crm')        return <LeadsCRM key="host-crm" />;
+        if (activeView === 'premium')    return <PremiumDashboard key="host-premium" />;
         if (activeView === 'properties') return <PropertiesDashboard key="host-properties" />;
-        if (activeView === 'tasks') return <TaskCalendar key="host-tasks" />;
+        if (activeView === 'tasks')      return <TaskCalendar key="host-tasks" />;
+        if (activeView === 'godmode')    return <GodModeDashboard key="godmode" />;
         return <EnterpriseDashboard key="host-dashboard" />;
     }
   };
