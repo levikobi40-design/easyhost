@@ -262,6 +262,34 @@ def add_cors_headers(response):
     return response
 
 
+# ── Image compression helper ────────────────────────────────────────────────
+def _compress_image(file_stream, max_px=1200, quality=78):
+    """
+    Compress an uploaded image for fast mobile loading.
+    - Resizes so the longer edge ≤ max_px (default 1200 px)
+    - Saves as JPEG at quality=78 (good balance of size vs. clarity)
+    - Returns (bytes, 'jpg') ready to write to disk
+    Falls back to original bytes if Pillow is not available.
+    """
+    try:
+        from PIL import Image as _PILImage
+        import io as _io
+        img = _PILImage.open(file_stream)
+        img = img.convert("RGB")          # strip alpha / normalise colour mode
+        w, h = img.size
+        if max(w, h) > max_px:
+            ratio  = max_px / max(w, h)
+            img    = img.resize((int(w * ratio), int(h * ratio)), _PILImage.LANCZOS)
+        buf = _io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        buf.seek(0)
+        return buf.read(), "jpg"
+    except Exception as _ce:
+        print(f"[compress_image] PIL unavailable or failed ({_ce}), saving original")
+        file_stream.seek(0)
+        return file_stream.read(), None   # None ext = keep original ext
+
+
 # Serve uploaded files - must be early to avoid being shadowed
 UPLOAD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__) or ".", "uploads"))
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
@@ -278,7 +306,9 @@ def serve_uploads(filename):
         return jsonify({"error": "File not found"}), 404
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///leads.db")
+# Absolute path ensures SQLite file stays in the project folder on every restart
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(_APP_DIR, 'leads.db')}")
 # Render provides postgres:// but SQLAlchemy requires postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -474,6 +504,7 @@ if create_engine and sessionmaker and declarative_base:
         completed_at = Column(String)        # ISO when worker marked done
         duration_minutes = Column(String)    # float stored as string for SQLite compat
         worker_notes = Column(Text)          # Optional notes the worker adds
+        photo_url = Column(String)           # Image linked to this task (uploaded on creation)
 
     class WorkerStatsModel(Base):
         """Aggregated per-worker daily performance — updated by the Performance Agent."""
@@ -750,7 +781,8 @@ if create_engine and sessionmaker and declarative_base:
             except Exception as e:
                 print("[ensure_property_tasks_table] Note:", e)
             for col in ["property_name", "staff_name", "staff_phone", "staff_id",
-                        "started_at", "completed_at", "duration_minutes", "worker_notes"]:
+                        "started_at", "completed_at", "duration_minutes", "worker_notes",
+                        "photo_url"]:
                 try:
                     connection.execute(text(f"ALTER TABLE property_tasks ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
                 except Exception:
@@ -2529,6 +2561,44 @@ def ensure_levikobi_user():
         session.close()
 
 
+def ensure_admin_from_env():
+    """
+    Create / update admin user from ADMIN_EMAIL + ADMIN_PASSWORD env vars.
+    Set these in Render → Environment Variables to configure the demo password
+    without touching code.
+    Falls back to levikobi40@gmail.com / 123456 if env vars are absent.
+    """
+    admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    admin_pass  = os.getenv("ADMIN_PASSWORD", "").strip()
+    if not admin_email or not admin_pass:
+        return  # nothing to do — levikobi user already seeded separately
+    if not SessionLocal or not UserModel:
+        return
+    session = SessionLocal()
+    try:
+        pw_hash = generate_password_hash(admin_pass, method="pbkdf2:sha256")
+        existing = session.query(UserModel).filter_by(email=admin_email).first()
+        if existing:
+            existing.password_hash = pw_hash
+            existing.role = "admin"
+        else:
+            session.add(UserModel(
+                id=str(uuid.uuid4()),
+                tenant_id=DEFAULT_TENANT_ID,
+                email=admin_email,
+                password_hash=pw_hash,
+                role="admin",
+                created_at=now_iso(),
+            ))
+        session.commit()
+        print(f"[ensure_admin_from_env] Admin user ready: {admin_email}")
+    except Exception as e:
+        session.rollback()
+        print(f"[ensure_admin_from_env] Error: {e}")
+    finally:
+        session.close()
+
+
 def seed_dashboard_data():
     """Seed properties (Alma, Chandler), 3 staff, and 5 sample tasks for Task Calendar."""
     if not all([SessionLocal, ManualRoomModel, PropertyStaffModel, PropertyTaskModel]):
@@ -3298,12 +3368,14 @@ def upload_images():
         if not ct.startswith("image/"):
             return jsonify({"error": f"Invalid file type: {f.filename}", "urls": []}), 400
 
-        ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
+        data, new_ext = _compress_image(f.stream)
+        ext = new_ext or (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg")
         if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
             ext = "jpg"
         unique_name = f"{uuid.uuid4().hex}.{ext}"
         file_path = os.path.join(UPLOAD_STATIC, unique_name)
-        f.save(file_path)
+        with open(file_path, "wb") as _fh:
+            _fh.write(data)
         url = f"{API_BASE_URL}/uploads/shared/{unique_name}"
         uploaded_urls.append(url)
 
@@ -3323,10 +3395,13 @@ def room_photo_upload():
     os.makedirs(UPLOAD_ROOT, exist_ok=True)
     tenant_dir = os.path.join(UPLOAD_ROOT, tenant_id, "properties")
     os.makedirs(tenant_dir, exist_ok=True)
-    filename = secure_filename(file.filename)
-    unique_name = f"prop-{uuid.uuid4().hex}-{filename}"
+    data, new_ext = _compress_image(file.stream)
+    orig_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    ext = new_ext or orig_ext
+    unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
     file_path = os.path.join(tenant_dir, unique_name)
-    file.save(file_path)
+    with open(file_path, "wb") as _fh:
+        _fh.write(data)
     photo_url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
     return jsonify({"ok": True, "photo_url": photo_url})
 
@@ -4414,10 +4489,11 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
 
         # Guard: empty response from Gemini — return error, never create a task
         if not text or not text.strip():
+            print("[Maya] Gemini returned empty response")
             return jsonify({
                 "success": False,
                 "message": "Gemini returned an empty response.",
-                "displayMessage": "מאיה לא קיבלה תשובה מה-AI. בדוק את ה-GEMINI_API_KEY ב-.env 🔴",
+                "displayMessage": "מאיה בהפסקה קצרה, נסו שוב עוד דקה 🕐",
             }), 200
 
         if text.startswith("```"):
@@ -4436,12 +4512,11 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
                     except json.JSONDecodeError:
                         pass
     except json.JSONDecodeError as e:
-        # Gemini returned non-JSON text — do NOT create a task, just surface the error
         print("[Gemini] maya-command JSON parse error:", e)
         return jsonify({
             "success": False,
             "message": str(e),
-            "displayMessage": "מאיה קיבלה תשובה לא תקינה מה-AI. נסה שוב. 🔴",
+            "displayMessage": "מאיה בהפסקה קצרה, נסו שוב עוד דקה 🕐",
         }), 200
     except Exception as e:
         import traceback as _tb_cmd
@@ -4450,23 +4525,9 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
         _tb_cmd.print_exc()
         print(f"{'='*60}\n")
         err_str = str(e).lower()
-        print(f"Error: {e}")
-        if not _GEMINI_API_KEY:
-            display_msg = "מאיה: GEMINI_API_KEY חסר בסביבת הייצור. הוסף אותו ב-Render → Environment Variables. 🔴"
-        elif any(x in err_str for x in ["api_key_invalid", "invalid api key", "expired", "key expired"]):
-            display_msg = "מאיה: מפתח ה-GEMINI_API_KEY פג תוקף או לא תקין. צור מפתח חדש בכתובת aistudio.google.com/apikey 🔴"
-        elif "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
-            display_msg = "מאיה: מכסת ה-API של Gemini הסתיימה. המתן מספר דקות ונסה שוב. 🔴"
-        elif "leaked" in err_str or ("403" in err_str and "leak" in err_str):
-            display_msg = "מאיה: מפתח ה-GEMINI_API_KEY דלף ונחסם על ידי גוגל. צור מפתח חדש בכתובת aistudio.google.com/apikey 🔴"
-        elif any(x in err_str for x in ["401", "403", "permission", "api key", "auth", "unauthenticated"]):
-            display_msg = "מאיה: GEMINI_API_KEY שגוי או לא תקף. בדוק את Render → Environment Variables. 🔴"
-        elif "not_found" in err_str or "404" in err_str:
-            display_msg = "מאיה: המודל לא נמצא. ייתכן שהמפתח לא תומך בו. נסה מפתח חדש. 🔴"
-        elif any(x in err_str for x in ["timeout", "connection", "network", "502", "503"]):
-            display_msg = "מאיה: בעיית חיבור לרשת. בדוק את החיבור לאינטרנט. 🔴"
-        else:
-            display_msg = f"מאיה: שגיאת AI — {type(e).__name__}. בדוק לוגים ב-Render. 🔴"
+        # Log full technical details to server — show only friendly message to user
+        print(f"[Maya] Gemini error ({type(e).__name__}): {e}")
+        display_msg = "מאיה בהפסקה קצרה, נסו שוב עוד דקה 🕐"
         return jsonify({
             "success": False,
             "message": str(e),
@@ -4674,6 +4735,7 @@ def property_tasks_api():
                     "staff_name":       staff_name or "Unknown",
                     "staff_phone":      staff_phone,
                     "property_context": ctx,
+                    "photo_url":        getattr(r, "photo_url", None) or "",
                     "actions":          STAFF_ACTIONS,
                 })
 
@@ -4693,6 +4755,7 @@ def property_tasks_api():
         staff_name = data.get("staff_name") or ""
         staff_phone = data.get("staff_phone") or ""
         property_context = data.get("property_context") or ""
+        photo_url = data.get("photo_url") or ""
 
         task_id = str(uuid.uuid4())
         created = now_iso()
@@ -4733,6 +4796,7 @@ def property_tasks_api():
             property_name=property_name,
             staff_name=staff_name,
             staff_phone=staff_phone,
+            photo_url=photo_url,
         )
         session.add(task)
         session.commit()
@@ -4747,6 +4811,7 @@ def property_tasks_api():
             "property_name": property_name,
             "staff_name": staff_name,
             "staff_phone": staff_phone,
+            "photo_url": photo_url,
             "queued": queued_msg is not None,
             "queued_message": queued_msg,
             "actions": STAFF_ACTIONS,
@@ -6944,6 +7009,7 @@ if __name__ == "__main__":
         ensure_default_tenants()
         ensure_demo_user()
         ensure_levikobi_user()
+        ensure_admin_from_env()
         load_leads_from_db()
     seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
     start_message_workers()
@@ -6969,6 +7035,7 @@ def init_background_tasks():
             ensure_default_tenants()
             ensure_demo_user()
             ensure_levikobi_user()
+            ensure_admin_from_env()
             seed_dashboard_data()
             load_leads_from_db()
         seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)

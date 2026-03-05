@@ -404,3 +404,64 @@
   border-radius: 0.5rem;
   cursor: pointer;
 }
+
+/* ── Property filter dropdown ─────────────────────────────── */
+.task-property-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.task-property-select-icon {
+  position: absolute;
+  left: 0.6rem;
+  pointer-events: none;
+  color: #6b7280;
+  z-index: 1;
+}
+
+.task-property-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.45rem 2rem 0.45rem 1.8rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  background: #ffffff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  min-width: 160px;
+  transition: border-color 0.15s;
+  direction: rtl;
+}
+
+.task-property-select:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+/* ── Task photo thumbnail ─────────────────────────────────── */
+.task-photo-link {
+  display: block;
+  margin-top: 0.5rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  width: fit-content;
+}
+
+.task-photo-thumb {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  transition: opacity 0.2s;
+}
+
+.task-photo-link:hover .task-photo-thumb {
+  opacity: 0.85;
+}

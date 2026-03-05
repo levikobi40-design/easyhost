@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CalendarCheck, Phone, MessageCircle, FileText } from 'lucide-react';
+import { CalendarCheck, Phone, MessageCircle, FileText, ChevronDown } from 'lucide-react';
 import { toWhatsAppPhone, getTaskWhatsAppPhone } from '../../utils/phone';
-import { getPropertyTasks, updatePropertyTaskStatus, sendMayaCommand } from '../../services/api';
+import { getPropertyTasks, updatePropertyTaskStatus, sendMayaCommand, getProperties } from '../../services/api';
 import TaskListErrorBoundary from '../common/TaskListErrorBoundary';
 import useStore from '../../store/useStore';
 import { maya } from '../../services/agentOrchestrator';
@@ -39,6 +39,8 @@ export default function TaskCalendar() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // 'all' | 'pending' | 'completed'
+  const [propertyFilter, setPropertyFilter] = useState('all'); // 'all' | property name
+  const [properties, setProperties] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [managementLoading, setManagementLoading] = useState(false);
   const loadRef = useRef(0);
@@ -67,6 +69,13 @@ export default function TaskCalendar() {
       cancelled = true;
     };
   }, []);
+
+  // Load property list for the filter dropdown
+  useEffect(() => {
+    getProperties()
+      .then((list) => setProperties(Array.isArray(list) ? list : []))
+      .catch(() => setProperties([]));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   useEffect(() => {
@@ -151,8 +160,14 @@ export default function TaskCalendar() {
   };
 
   const filteredTasks = (tasks ?? []).filter((t) => {
-    if (filter === 'pending') return !isDone(t);
-    if (filter === 'completed') return isDone(t);
+    // Status filter
+    if (filter === 'pending' && isDone(t)) return false;
+    if (filter === 'completed' && !isDone(t)) return false;
+    // Property filter
+    if (propertyFilter !== 'all') {
+      const pName = (t.property_name ?? t.propertyName ?? '').toString().trim();
+      if (pName !== propertyFilter) return false;
+    }
     return true;
   });
 
@@ -244,6 +259,34 @@ export default function TaskCalendar() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Property dropdown */}
+          <div className="task-property-select-wrap">
+            <ChevronDown size={14} className="task-property-select-icon" aria-hidden="true" />
+            <select
+              className="task-property-select"
+              value={propertyFilter}
+              onChange={(e) => setPropertyFilter(e.target.value)}
+              aria-label="סנן לפי נכס"
+            >
+              <option value="all">כל הנכסים</option>
+              {properties.map((p) => (
+                <option key={p.id ?? p.name} value={(p.name ?? '').toString()}>
+                  {p.name}
+                </option>
+              ))}
+              {/* Also show any property names found in tasks but not in the properties list */}
+              {[...new Set((tasks ?? [])
+                .map((t) => (t.property_name ?? t.propertyName ?? '').toString().trim())
+                .filter(Boolean)
+              )]
+                .filter((n) => !properties.some((p) => p.name === n))
+                .map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))
+              }
+            </select>
+          </div>
+
           <div className="task-calendar-filters">
             <button
               type="button"
@@ -317,6 +360,23 @@ export default function TaskCalendar() {
               <p className="task-description">{safeStr(t.description) || safeStr(t.title) || safeStr(t.content) || ''}</p>
               {safeStr(t.property_context) && (
                 <p className="text-xs text-gray-500 mt-0.5">{safeStr(t.property_context)}</p>
+              )}
+              {t.photo_url && (
+                <a
+                  href={t.photo_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="task-photo-link"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="צפה בתמונת המשימה"
+                >
+                  <img
+                    src={t.photo_url}
+                    alt="תמונת משימה"
+                    className="task-photo-thumb"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                </a>
               )}
               <div className="task-meta">
                 {(t.property_name ?? t.propertyName) && (
