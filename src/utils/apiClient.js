@@ -11,7 +11,7 @@
  *
  * Rule 1 ensures a stale Render-dashboard env var can NEVER route to localhost.
  */
-const _PRODUCTION_API = 'https://easyhost-backend.onrender.com';
+const _PRODUCTION_API = 'https://easyhost.onrender.com';
 const _LOCAL_API      = 'http://127.0.0.1:1000';
 
 const _hostname    = typeof window !== 'undefined' ? window.location.hostname : '';

@@ -3495,6 +3495,93 @@ def demo_toggle():
     return jsonify({"ok": True, "active": True})
 
 
+@app.route("/init-db", methods=["GET"])
+def init_db_browser():
+    """
+    Browser-friendly one-shot endpoint.
+    Visit https://easyhost-backend.onrender.com/init-db to:
+      1. Create all tables in Supabase (CREATE TABLE IF NOT EXISTS)
+      2. Seed 10 pilot properties + mock staff
+      3. Start the simulation bots
+      4. Return a plain-text summary so you can see it immediately in the browser
+    """
+    lines = []
+
+    def log(msg):
+        lines.append(msg)
+        print(msg)
+
+    # ── 1. Schema ────────────────────────────────────────────────────────────
+    db_label = (
+        "Supabase PostgreSQL" if "supabase" in DATABASE_URL else
+        "PostgreSQL"          if _is_pg else
+        "SQLite"
+    )
+    log(f"[init-db] Connecting to {db_label}…")
+    if ENGINE and Base:
+        try:
+            # Quick connection test
+            from sqlalchemy import text as _text
+            with ENGINE.connect() as _c:
+                _c.execute(_text("SELECT 1"))
+            log(f"[init-db] ✅ Connected to {db_label} successfully")
+        except Exception as ce:
+            log(f"[init-db] ❌ Connection failed: {ce}")
+            return (
+                f"❌ Cannot connect to {db_label}.\n\n"
+                f"Error: {ce}\n\n"
+                "Check SUPABASE_URL and SUPABASE_KEY (must be DATABASE password, not JWT key).",
+                500,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
+        try:
+            init_db()
+            log("[init-db] ✅ All tables created (CREATE TABLE IF NOT EXISTS)")
+        except Exception as e:
+            log(f"[init-db] ❌ Schema error: {e}")
+    else:
+        log("[init-db] ⚠️  Database engine not available — check SQLAlchemy install")
+
+    # ── 2. Seed 10 pilot properties ──────────────────────────────────────────
+    prop_count = 0
+    try:
+        seed_pilot_demo()
+        if SessionLocal and ManualRoomModel:
+            s = SessionLocal()
+            try:
+                prop_count = s.query(ManualRoomModel).filter(
+                    ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+                ).count()
+            finally:
+                s.close()
+        log(f"[init-db] ✅ {prop_count} pilot properties in database")
+    except Exception as e:
+        log(f"[init-db] ⚠️  Seed warning: {e}")
+
+    # ── 3. Start simulation bots ─────────────────────────────────────────────
+    try:
+        if not DEMO_ACTIVE:
+            start_pilot_simulation()
+            log("[init-db] ✅ Simulation bots started (guest complaints + staff responses)")
+        else:
+            log("[init-db] ℹ️  Simulation bots already running")
+    except Exception as e:
+        log(f"[init-db] ⚠️  Bot start warning: {e}")
+
+    # ── 4. Response ──────────────────────────────────────────────────────────
+    summary = "\n".join(lines)
+    body = (
+        f"🏨 Pilot Ready!\n"
+        f"{'=' * 50}\n"
+        f"Database  : {db_label}\n"
+        f"Properties: {prop_count} pilot properties seeded\n"
+        f"Bots      : {'LIVE' if DEMO_ACTIVE else 'started'}\n"
+        f"{'=' * 50}\n\n"
+        f"Log:\n{summary}\n"
+    )
+    return body, 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
 @app.route("/api/demo/run-pilot", methods=["POST", "GET"])
 def run_pilot_endpoint():
     """
