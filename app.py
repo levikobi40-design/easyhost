@@ -938,6 +938,23 @@ else:
     WorkerPerformanceModel  = None
     DamageReportModel       = None
 
+# ── Eager schema init ────────────────────────────────────────────────────────
+# This runs at module import time (when Gunicorn loads app.py), so Supabase
+# tables exist before the first HTTP request arrives.  Seed data and background
+# threads are handled later by _do_startup_init() via the before_request hook.
+if ENGINE and Base:
+    try:
+        _db_label_eager = (
+            "Supabase PostgreSQL" if "supabase" in DATABASE_URL else
+            "PostgreSQL"          if _is_pg else
+            "SQLite"
+        )
+        print(f"[app.py] ⚡ Eager schema init on {_db_label_eager}…")
+        Base.metadata.create_all(ENGINE)
+        print(f"[app.py] ✅ Connected to {_db_label_eager} successfully — tables ready")
+    except Exception as _eager_err:
+        print(f"[app.py] ⚠️  Eager schema init failed (will retry on first request): {_eager_err}")
+
 LEADS = []
 LEADS_BY_ID = {}
 LEARNING_LOG = []

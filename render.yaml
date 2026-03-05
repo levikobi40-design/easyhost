@@ -4,16 +4,27 @@ services:
     runtime: python
     plan: free
     buildCommand: "npm install && CI=false node ./node_modules/react-scripts/bin/react-scripts.js build && pip install -r requirements.txt"
-    startCommand: "gunicorn app:app --timeout 120 --workers 2"
+    # init_supabase.py runs FIRST: tests connection, creates tables, seeds data.
+    # Then Gunicorn starts. Set --workers 1 so only one process shares the pool.
+    startCommand: "python init_supabase.py && gunicorn app:app --workers 1 --timeout 120"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.6"
       - key: NODE_VERSION
         value: "22"
 
-      # ── Database — set this to your Supabase connection string ──────────
-      # Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
-      # Get it from: Supabase Dashboard → Project Settings → Database → Connection string (URI)
+      # ── Supabase credentials ─────────────────────────────────────────────
+      # SUPABASE_URL  → https://YOUR_PROJECT_REF.supabase.co
+      #                 (Supabase Dashboard → Project Settings → General → Reference ID)
+      # SUPABASE_KEY  → the DATABASE PASSWORD  ← NOT the JWT API key!
+      #                 (Supabase Dashboard → Project Settings → Database → Database password)
+      # Alternatively, set DATABASE_URL to the full connection URI:
+      #   postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      # Optional: override with a full Supabase connection URI if preferred
       - key: DATABASE_URL
         sync: false
 
