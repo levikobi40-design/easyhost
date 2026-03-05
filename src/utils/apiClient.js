@@ -1,115 +1,113 @@
 /**
- * API URL resolution — guaranteed correct in all environments.
+ * apiClient.js — single source of truth for the backend URL.
  *
- * Priority order (highest first):
- *   1. Running on *.onrender.com  → ALWAYS use production URL (hard override)
- *   2. Build-time REACT_APP_API_URL baked in by `npm build`
- *      - Local (.env):        http://127.0.0.1:1000
- *      - Render (render.yaml): https://easyhost-backend.onrender.com
- *   3. Runtime localhost detection → local dev URL
- *   4. Fallback → production URL
+ * Resolution order (first match wins):
+ *   1. Running on *.onrender.com            → https://easyhost.onrender.com  (hard-pinned)
+ *   2. REACT_APP_API_URL env var is set      → use that value
+ *   3. Running on localhost / 127.0.0.1      → http://localhost:1000
+ *   4. Any other host                        → https://easyhost.onrender.com  (safe fallback)
  *
- * Rule 1 ensures a stale Render-dashboard env var can NEVER route to localhost.
+ * Local dev:  npm start  →  http://localhost:3000  →  API goes to http://localhost:1000
+ * Production: Render      →  https://easyhost.onrender.com (frontend + backend same domain)
  */
-const _PRODUCTION_API = 'https://easyhost.onrender.com';
-const _LOCAL_API      = 'http://127.0.0.1:1000';
+
+const PRODUCTION_URL = 'https://easyhost.onrender.com';
+const LOCAL_URL      = 'http://localhost:1000';
 
 const _hostname    = typeof window !== 'undefined' ? window.location.hostname : '';
 const _isLocalhost = _hostname === 'localhost' || _hostname === '127.0.0.1';
 const _isRender    = _hostname.endsWith('.onrender.com');
 
+// REACT_APP_API_URL is baked in at build time by Create React App from .env
 const _envUrl = (() => {
-  if (typeof process === 'undefined') return null;
-  const raw = process.env?.REACT_APP_API_URL;
-  if (!raw || !raw.trim() || raw.trim() === '""') return null;
-  return raw.trim().replace(/\/$/, '');
+  try {
+    const raw = process.env?.REACT_APP_API_URL;
+    if (!raw || !raw.trim() || raw.trim() === '""') return null;
+    return raw.trim().replace(/\/$/, '');
+  } catch { return null; }
 })();
 
-export const API_URL =
-  _isRender    ? _PRODUCTION_API   // ← hard-pinned: Render host ALWAYS uses prod backend
-  : _envUrl    ? _envUrl           // build-time value (set in .env or render.yaml)
-  : _isLocalhost ? _LOCAL_API      // local dev safety net
-  :              _PRODUCTION_API;  // any other unknown host → prod
+export const API_URL = (() => {
+  if (_isRender)    return PRODUCTION_URL;   // always prod when on Render
+  if (_envUrl)      return _envUrl;          // .env override (local dev)
+  if (_isLocalhost) return LOCAL_URL;        // localhost safety net
+  return PRODUCTION_URL;                     // unknown host → prod
+})();
 
+// Log exactly which URL is being used — check browser console to verify
 if (typeof window !== 'undefined') {
-  console.log(`[EasyHost] API_URL → ${API_URL}  (host: ${_hostname || 'SSR'})`);
+  const env = _isRender ? 'production (Render)' : _isLocalhost ? 'local dev' : 'unknown';
+  console.log(`%c[EasyHost] API → ${API_URL}  (${env})`, 'color:#6366f1;font-weight:bold');
 }
 
-const getApiBase = () => API_URL;
-const _base = getApiBase();
-
+// ── Auth helpers ────────────────────────────────────────────────────────────
 const getAuthHeaders = () => {
   try {
     const raw = localStorage.getItem('hotel-enterprise-storage');
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    const token = parsed?.state?.authToken;
+    const token    = parsed?.state?.authToken;
     const tenantId = parsed?.state?.activeTenantId;
-    const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
+    const headers  = {};
+    if (token)    headers.Authorization = `Bearer ${token}`;
     if (tenantId) headers['X-Tenant-Id'] = tenantId;
     return headers;
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 };
 
-/**
- * Central fetch helper - uses API_URL (current host:5000 for cross-device access)
- * On error: logs full error to console and throws with clear message
- */
+// ── Core fetch wrapper ───────────────────────────────────────────────────────
 export const apiRequest = async (path, options = {}) => {
-  const base = typeof window !== 'undefined' ? getApiBase() : _base;
-  const url = path.startsWith('http') ? path : `${base}${path}`;
+  const url = path.startsWith('http') ? path : `${API_URL}${path}`;
   const { method = 'GET', body, headers = {}, ...rest } = options;
+
   const finalHeaders = {
     'Content-Type': 'application/json',
     ...getAuthHeaders(),
     ...headers,
   };
-  if (body && typeof body === 'object' && !(body instanceof FormData)) {
-    try {
-      rest.body = JSON.stringify(body);
-    } catch (e) {
-      rest.body = body;
-    }
+
+  // Don't set Content-Type for FormData — browser sets it with boundary
+  if (body instanceof FormData) {
+    delete finalHeaders['Content-Type'];
+    rest.body = body;
+  } else if (body && typeof body === 'object') {
+    rest.body = JSON.stringify(body);
   } else if (body) {
     rest.body = body;
-    delete finalHeaders['Content-Type'];
   }
+
   try {
-    const response = await fetch(url, {
-      method,
-      headers: finalHeaders,
-      ...rest,
-    });
+    const response = await fetch(url, { method, headers: finalHeaders, ...rest });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const err = new Error(data.error || data.message || `HTTP ${response.status}`);
       err.status = response.status;
-      err.data = data;
+      err.data   = data;
       throw err;
     }
     return data;
   } catch (error) {
-    console.error('[API Error] Full details:', {
-      url,
-      method,
-      message: error?.message,
-      status: error?.status,
-      responseData: error?.data,
-      stack: error?.stack,
-    });
-    throw error;
+    if (error.status) throw error; // already a structured API error
+    // Network error — give a clear message
+    const netErr = new Error(
+      `Cannot reach server at ${API_URL}. ` +
+      (_isLocalhost
+        ? 'Make sure the Python backend is running: python app.py'
+        : 'The Render service may be starting up — try again in 30 seconds.')
+    );
+    netErr.isNetworkError = true;
+    console.error('[EasyHost] Network error:', url, error.message);
+    throw netErr;
   }
 };
 
-export const apiGet = (path) => apiRequest(path, { method: 'GET' });
-export const apiPost = (path, body) => apiRequest(path, { method: 'POST', body });
-export const apiPut = (path, body) => apiRequest(path, { method: 'PUT', body });
-export const apiPatch = (path, body) => apiRequest(path, { method: 'PATCH', body });
-export const apiDelete = (path) => apiRequest(path, { method: 'DELETE' });
+// ── Shorthand helpers ────────────────────────────────────────────────────────
+export const apiGet    = (path)        => apiRequest(path, { method: 'GET' });
+export const apiPost   = (path, body)  => apiRequest(path, { method: 'POST',  body });
+export const apiPut    = (path, body)  => apiRequest(path, { method: 'PUT',   body });
+export const apiPatch  = (path, body)  => apiRequest(path, { method: 'PATCH', body });
+export const apiDelete = (path)        => apiRequest(path, { method: 'DELETE' });
 
-export const getAPIUrl = () => getApiBase();
+export const getAPIUrl    = () => API_URL;
 export const API_BASE_URL = API_URL;
 export default apiRequest;

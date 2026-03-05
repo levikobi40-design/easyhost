@@ -73,6 +73,8 @@ services:
         value: "https://easyhost.onrender.com"
       - key: API_BASE_URL
         value: "https://easyhost.onrender.com"
+      # The above values are baked into the React build at compile time.
+      # apiClient.js also hard-pins to the production URL when running on *.onrender.com.
       - key: DISABLE_ESLINT_PLUGIN
         value: "true"
       - key: CI
