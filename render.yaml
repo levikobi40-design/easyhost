@@ -14,17 +14,27 @@ services:
         value: "22"
 
       # ── Supabase credentials ─────────────────────────────────────────────
-      # SUPABASE_URL  → https://YOUR_PROJECT_REF.supabase.co
-      #                 (Supabase Dashboard → Project Settings → General → Reference ID)
-      # SUPABASE_KEY  → the DATABASE PASSWORD  ← NOT the JWT API key!
-      #                 (Supabase Dashboard → Project Settings → Database → Database password)
-      # Alternatively, set DATABASE_URL to the full connection URI:
-      #   postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+      # Three separate values — all are different:
+      #
+      # SUPABASE_URL         → https://PROJECT_REF.supabase.co
+      #                        (Supabase → Settings → General)
+      #
+      # SUPABASE_KEY         → service-role/secret key  (starts with sb_secret_ or eyJ)
+      #                        (Supabase → Settings → API → "secret" key)
+      #                        Used for REST API calls only
+      #
+      # SUPABASE_DB_PASSWORD → the PostgreSQL database password  ← THIS is what SQLAlchemy needs
+      #                        (Supabase → Settings → Database → Database Password)
+      #                        Click "Reset" to get a new one if you forgot it
+      #
+      # Alternatively, skip all three and just set DATABASE_URL to the full URI:
+      #   postgresql://postgres.PROJECT_REF:DB_PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      # Optional: override with a full Supabase connection URI if preferred
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
       - key: DATABASE_URL
         sync: false
 
