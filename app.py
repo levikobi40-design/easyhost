@@ -393,10 +393,25 @@ def _build_database_url() -> str:
         return raw
 
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
+    db_password  = os.getenv("SUPABASE_DB_PASSWORD", "").strip()
+
+    # Detect unfilled placeholder values — treat them as "not set"
+    _PLACEHOLDERS = {"YOUR_PROJECT_REF", "YOUR_KEY_HERE", "YOUR_DATABASE_PASSWORD",
+                     "YOUR_DB_PASSWORD", "sb_secret_YOUR_KEY_HERE"}
+    def _is_placeholder(val: str) -> bool:
+        return not val or any(p in val for p in _PLACEHOLDERS)
+
+    if _is_placeholder(supabase_url):
+        supabase_url = ""
+    if _is_placeholder(supabase_key):
+        supabase_key = ""
+    if _is_placeholder(db_password):
+        db_password = ""
+
     m = re.match(r'https?://([^.]+)\.supabase\.co', supabase_url) if supabase_url else None
 
     # ── 2. SUPABASE_URL + SUPABASE_DB_PASSWORD ──────────────────────────────
-    db_password = os.getenv("SUPABASE_DB_PASSWORD", "").strip()
     if m and db_password:
         project_ref = m.group(1)
         url = (
@@ -406,12 +421,9 @@ def _build_database_url() -> str:
         print(f"[DB] ✅ Supabase (SUPABASE_DB_PASSWORD) — project: {project_ref}")
         return url
 
-    # ── 3. SUPABASE_URL + SUPABASE_KEY — forced, no SQLite fallback ─────────
-    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
+    # ── 3. SUPABASE_URL + SUPABASE_KEY ──────────────────────────────────────
     if m and supabase_key:
         project_ref = m.group(1)
-        # Use SUPABASE_KEY exactly as provided — no filtering or blocking.
-        # Connection format: direct Supabase host with SSL.
         url = (
             f"postgresql://postgres:{supabase_key}"
             f"@db.{project_ref}.supabase.co:5432/postgres?sslmode=require"
@@ -419,16 +431,10 @@ def _build_database_url() -> str:
         print(f"[DB] ✅ Supabase (SUPABASE_KEY) — project: {project_ref}")
         return url
 
-    # ── 4. SQLite — only reached when NO Supabase credentials are set at all ─
-    if supabase_url:
-        # URL is set but no key — raise a clear error rather than silently using SQLite
-        raise RuntimeError(
-            "[DB] ❌  SUPABASE_URL is set but neither SUPABASE_KEY nor "
-            "SUPABASE_DB_PASSWORD is provided.\n"
-            "  Add one of these to your .env (or Render env vars):\n"
-            "    SUPABASE_KEY=<your key from Supabase → Settings → API>\n"
-            "    SUPABASE_DB_PASSWORD=<your DB password from Supabase → Settings → Database>"
-        )
+    if supabase_url and not supabase_key and not db_password:
+        print("[DB] ⚠️  SUPABASE_URL is set but credentials are missing or placeholders.")
+        print("[DB]    Update .env: replace YOUR_PROJECT_REF / YOUR_KEY_HERE with real values.")
+        print("[DB]    Falling back to SQLite for now.")
 
     sqlite_path = os.path.join(_APP_DIR, "leads.db")
     print(f"[DB] 📁 Using local SQLite: {sqlite_path}  "
@@ -7919,24 +7925,29 @@ def _do_startup_init():
         print(f"[startup] 🔌 Connecting to {db_label}…")
         _sim_log("🔌 Server starting — running startup init…", "info")
         if Base and ENGINE:
-            init_db()              # CREATE TABLE IF NOT EXISTS for all models
-            print(f"[startup] ✅ Connected to {db_label} successfully — tables ready")
-            ensure_default_tenants()
-            ensure_demo_user()
-            ensure_levikobi_user()
-            ensure_admin_from_env()
-            seed_dashboard_data()
-            seed_pilot_demo()      # 10 pilot properties + mock staff
-            load_leads_from_db()
-        seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
+            try:
+                init_db()
+                print(f"[startup] ✅ Connected to {db_label} successfully — tables ready")
+                ensure_default_tenants()
+                ensure_demo_user()
+                ensure_levikobi_user()
+                ensure_admin_from_env()
+                seed_dashboard_data()
+                seed_pilot_demo()
+                load_leads_from_db()
+            except Exception as _db_err:
+                print(f"[startup] ⚠️  DB init failed ({db_label}): {_db_err}")
+                print("[startup]    Server will start anyway — visit /db-status for details.")
+                print("[startup]    If using Supabase: fill in real credentials in .env")
+        try:
+            seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
+        except Exception:
+            pass
         start_message_workers()
         start_scanner()
         start_dispatcher()
         start_calendar_syncer()
-        _sim_log(
-            f"✅ Startup complete — DB: {db_label}",
-            "success",
-        )
+        _sim_log(f"✅ Startup complete — DB: {db_label}", "success")
         print(f"[startup] 🚀 Server ready on port {os.environ.get('PORT', 1000)}")
         INIT_DONE = True
 
