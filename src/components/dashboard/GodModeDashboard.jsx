@@ -173,6 +173,21 @@ export default function GodModeDashboard() {
     }
   };
 
+  const runPilot = async () => {
+    setSimBusy(true);
+    try {
+      const base = API();
+      const res  = await fetch(`${base}/api/demo/run-pilot`, { method: 'POST' });
+      const json = await res.json();
+      await fetchOverview();
+      alert(json.message || '✅ Pilot simulation running');
+    } catch (e) {
+      alert(`❌ Error: ${e.message}`);
+    } finally {
+      setSimBusy(false);
+    }
+  };
+
   const johnProps  = (data?.properties || []).filter(p => p.owner === 'John');
   const sarahProps = (data?.properties || []).filter(p => p.owner === 'Sarah');
   const stats      = data?.stats || {};
@@ -193,13 +208,21 @@ export default function GodModeDashboard() {
           )}
         </div>
         <div className="gm-sim-controls">
+          <button
+            className="gm-btn gm-btn-run"
+            onClick={runPilot}
+            disabled={simBusy}
+            title="Seed 10 properties + start bots (runPilotSimulation)"
+          >
+            <Zap size={14} /> Run Pilot
+          </button>
           {simActive ? (
             <button
               className="gm-btn gm-btn-stop"
               onClick={() => toggleSim('stop')}
               disabled={simBusy}
             >
-              <Square size={14} /> Stop Simulation
+              <Square size={14} /> Stop Bots
             </button>
           ) : (
             <button
@@ -207,19 +230,19 @@ export default function GodModeDashboard() {
               onClick={() => toggleSim('start')}
               disabled={simBusy}
             >
-              <Play size={14} /> Start Simulation
+              <Play size={14} /> Start Bots
             </button>
           )}
           <button
             className="gm-btn gm-btn-reset"
             onClick={() => toggleSim('reset')}
             disabled={simBusy}
-            title="Clear all mock-staff tasks"
+            title="Clear all mock-staff tasks and stop bots"
           >
             <RotateCcw size={14} /> Reset
           </button>
           <div className={`gm-sim-status ${simActive ? 'active' : 'idle'}`}>
-            <Activity size={13} /> {simActive ? 'SIM LIVE' : 'SIM OFF'}
+            <Activity size={13} /> {simActive ? 'BOTS LIVE' : 'BOTS OFF'}
           </div>
         </div>
       </div>

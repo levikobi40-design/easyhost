@@ -368,12 +368,54 @@ def serve_uploads(filename):
         return jsonify({"error": "File not found"}), 404
 
 
-# Absolute path ensures SQLite file stays in the project folder on every restart
+# ── Database URL resolution (priority: DATABASE_URL > SUPABASE_URL+KEY > SQLite) ─────
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(_APP_DIR, 'leads.db')}")
-# Render provides postgres:// but SQLAlchemy requires postgresql://
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+def _build_database_url() -> str:
+    """
+    Resolve the database connection URL in priority order:
+      1. DATABASE_URL env var (explicit, any provider)
+      2. SUPABASE_URL + SUPABASE_KEY  → build postgresql:// connection string
+      3. Local SQLite fallback (development only)
+
+    Supabase free-tier note:
+      SUPABASE_URL  = https://PROJECT_REF.supabase.co
+      SUPABASE_KEY  = database password (set in Render env vars)
+      → connects via db.PROJECT_REF.supabase.co:5432 with SSL
+    """
+    raw = os.getenv("DATABASE_URL", "").strip()
+    if raw and not raw.startswith("sqlite"):
+        # Render / other providers may supply postgres:// — normalise prefix
+        if raw.startswith("postgres://"):
+            raw = raw.replace("postgres://", "postgresql://", 1)
+        # Append SSL requirement if missing (needed for Supabase / Render PG)
+        if "?" not in raw and "supabase" in raw.lower():
+            raw += "?sslmode=require"
+        print(f"[DB] Using DATABASE_URL from environment ({raw[:raw.index('@') if '@' in raw else 40]}…)")
+        return raw
+
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
+    if supabase_url and supabase_key:
+        m = re.match(r'https?://([^.]+)\.supabase\.co', supabase_url)
+        if m:
+            project_ref = m.group(1)
+            url = (
+                f"postgresql://postgres:{supabase_key}"
+                f"@db.{project_ref}.supabase.co:5432/postgres?sslmode=require"
+            )
+            print(f"[DB] 🟢 Connecting to Supabase — project: {project_ref}")
+            return url
+        else:
+            print("[DB] ⚠️  SUPABASE_URL format not recognised. Expected https://PROJECT.supabase.co")
+
+    sqlite_path = os.path.join(_APP_DIR, "leads.db")
+    print(f"[DB] 📁 Using local SQLite: {sqlite_path}")
+    return f"sqlite:///{sqlite_path}"
+
+
+DATABASE_URL = _build_database_url()
+
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ISSUER = os.getenv("JWT_ISSUER", "easyhost")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "easyhost-dashboard")
@@ -387,15 +429,29 @@ ENGINE = None
 SessionLocal = None
 Base = None
 
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+_is_pg     = DATABASE_URL.startswith("postgresql")
+
 if create_engine and sessionmaker and declarative_base:
-    connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-    ENGINE = create_engine(
-        DATABASE_URL,
-        connect_args=connect_args,
-        pool_pre_ping=True,
-        pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
-    )
+
+    # SQLite: single-thread lock needed; PostgreSQL: no extra connect args
+    _connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
+    if _is_sqlite:
+        # SQLite doesn't use a real connection pool
+        ENGINE = create_engine(DATABASE_URL, connect_args=_connect_args)
+    else:
+        # PostgreSQL — conservative pool for Supabase free tier (max 60 connections).
+        # pool_recycle prevents stale connections after periods of inactivity.
+        ENGINE = create_engine(
+            DATABASE_URL,
+            connect_args=_connect_args,
+            pool_pre_ping=True,                        # test connection before use
+            pool_size=int(os.getenv("DB_POOL_SIZE", "3")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "7")),
+            pool_timeout=30,                           # wait max 30 s for a slot
+            pool_recycle=300,                          # recycle connections every 5 min
+        )
     SessionLocal = sessionmaker(bind=ENGINE)
     Base = declarative_base()
 
@@ -768,11 +824,25 @@ if create_engine and sessionmaker and declarative_base:
                         pass
 
     def init_db():
-        Base.metadata.create_all(ENGINE)
-        ensure_users_table()
-        ensure_staff_schema()
-        ensure_property_staff_table()
-        ensure_property_tasks_table()
+        """
+        Create all ORM-mapped tables (CREATE TABLE IF NOT EXISTS) and run
+        any necessary column migrations.  Safe to call multiple times.
+        """
+        db_label = (
+            "Supabase PostgreSQL"  if "supabase" in DATABASE_URL else
+            "PostgreSQL"           if _is_pg else
+            "SQLite"
+        )
+        print(f"[init_db] Initialising schema on {db_label}…")
+        try:
+            Base.metadata.create_all(ENGINE)
+            ensure_users_table()
+            ensure_staff_schema()
+            ensure_property_staff_table()
+            ensure_property_tasks_table()
+            print(f"[init_db] ✅ Schema ready on {db_label}")
+        except Exception as _ie:
+            print(f"[init_db] ❌ Schema init error: {_ie}")
 
     def ensure_users_table():
         """Create users table if it doesn't exist. id (UUID), email (unique), password_hash, created_at."""
@@ -3145,6 +3215,67 @@ def stop_pilot_simulation():
     print("[Demo] Pilot simulation STOPPED")
 
 
+def runPilotSimulation() -> dict:
+    """
+    Full pilot simulation bootstrap — call once to:
+      1. Ensure schema exists on Supabase / PostgreSQL
+      2. Seed 10 pilot properties (5 × John, 5 × Sarah) + mock staff
+      3. Start the guest-complaint injection loop (every 15 min)
+      4. Start the mock-staff auto-response loop (5 min response time)
+
+    Idempotent — safe to call multiple times; already-existing data is skipped.
+    Returns a dict summarising what was done.
+    """
+    result: dict = {
+        "schema_created": False,
+        "properties_seeded": 0,
+        "simulation_started": False,
+        "already_active": DEMO_ACTIVE,
+        "db_url_type": (
+            "supabase" if "supabase" in DATABASE_URL else
+            "postgres"  if _is_pg                     else
+            "sqlite"
+        ),
+    }
+
+    # 1 — schema
+    if Base and ENGINE:
+        try:
+            init_db()
+            result["schema_created"] = True
+        except Exception as e:
+            result["schema_error"] = str(e)
+
+    # 2 — seed
+    try:
+        seed_pilot_demo()
+        # Count how many pilot properties exist after seeding
+        if SessionLocal and ManualRoomModel:
+            s = SessionLocal()
+            try:
+                result["properties_seeded"] = s.query(ManualRoomModel).filter(
+                    ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+                ).count()
+            finally:
+                s.close()
+    except Exception as e:
+        result["seed_error"] = str(e)
+
+    # 3+4 — start simulation loops
+    if not DEMO_ACTIVE:
+        start_pilot_simulation()
+        result["simulation_started"] = True
+    else:
+        result["simulation_started"] = False   # already running
+
+    _sim_log(
+        f"🏁 runPilotSimulation() complete — "
+        f"{result['properties_seeded']} properties · bots {'active' if DEMO_ACTIVE else 'FAILED to start'}",
+        "success",
+    )
+    return result
+
+
 def get_tenant_ids():
     if SessionLocal and TenantModel:
         session = SessionLocal()
@@ -3345,6 +3476,43 @@ def demo_toggle():
     # default: start
     start_pilot_simulation()
     return jsonify({"ok": True, "active": True})
+
+
+@app.route("/api/demo/run-pilot", methods=["POST", "GET"])
+def run_pilot_endpoint():
+    """
+    One-click pilot simulation launcher.
+    POST (or GET) → runs runPilotSimulation() and returns a JSON status report.
+
+    Also accepts an optional query param:
+      ?reset=1  → stop + wipe mock-staff tasks before restarting
+    """
+    if request.args.get("reset") == "1":
+        stop_pilot_simulation()
+        if SessionLocal and PropertyTaskModel:
+            session = SessionLocal()
+            try:
+                session.query(PropertyTaskModel).filter(
+                    PropertyTaskModel.staff_name.in_(MOCK_STAFF_NAMES)
+                ).delete(synchronize_session=False)
+                session.commit()
+                _sim_log("🔄 Reset: cleared all mock-staff tasks", "warn")
+            except Exception as e:
+                session.rollback()
+            finally:
+                session.close()
+
+    report = runPilotSimulation()
+    return jsonify({
+        "ok":    True,
+        "report": report,
+        "message": (
+            f"✅ runPilotSimulation() complete — "
+            f"{report.get('properties_seeded', 0)} pilot properties on "
+            f"{report.get('db_url_type','unknown')} — "
+            f"simulation {'already active' if report.get('already_active') else 'started'}"
+        ),
+    })
 
 
 @app.route("/api/sim-log", methods=["GET"])
@@ -7540,20 +7708,8 @@ def index():
 
 
 if __name__ == "__main__":
-    if Base and ENGINE:
-        init_db()
-        ensure_default_tenants()
-        ensure_demo_user()
-        ensure_levikobi_user()
-        ensure_admin_from_env()
-        load_leads_from_db()
-    seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
-    start_message_workers()
-    start_scanner()
-    start_dispatcher()
-    start_calendar_syncer()
+    _do_startup_init()
     threading.Thread(target=_weekly_report_scheduler, daemon=True, name="WeeklyReportScheduler").start()
-    seed_pilot_demo()
     prop_rules = [r for r in app.url_map.iter_rules() if r.rule == "/api/properties"]
     print("[hotel_dashboard] /api/properties url_map:", [f"{r.rule} {sorted(r.methods - {'HEAD'})}" for r in prop_rules])
     print("[hotel_dashboard] AUTH_DISABLED:", AUTH_DISABLED)
@@ -7561,26 +7717,41 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port)
 
 
-@app.before_request
-def init_background_tasks():
+def _do_startup_init():
+    """
+    Full startup bootstrap — schema creation, seed data, background threads.
+    Called from both the before_request hook (Gunicorn / Render) and __main__
+    (local dev).  Guarded by INIT_DONE so it runs exactly once per process.
+    """
     global INIT_DONE
     with INIT_LOCK:
         if INIT_DONE:
             return
+        _sim_log("🔌 Server starting — running startup init…", "info")
         if Base and ENGINE:
-            init_db()
+            init_db()              # CREATE TABLE IF NOT EXISTS for all models
             ensure_default_tenants()
             ensure_demo_user()
             ensure_levikobi_user()
             ensure_admin_from_env()
             seed_dashboard_data()
-            seed_pilot_demo()
+            seed_pilot_demo()      # 10 pilot properties + mock staff
             load_leads_from_db()
         seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
         start_message_workers()
         start_scanner()
         start_dispatcher()
         start_calendar_syncer()
+        _sim_log(
+            f"✅ Startup complete — DB: "
+            f"{'Supabase' if 'supabase' in DATABASE_URL else 'PostgreSQL' if _is_pg else 'SQLite'}",
+            "success",
+        )
         INIT_DONE = True
+
+
+@app.before_request
+def init_background_tasks():
+    _do_startup_init()
 
 

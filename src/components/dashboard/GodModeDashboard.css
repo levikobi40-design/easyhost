@@ -97,6 +97,14 @@
 
 .gm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.gm-btn-run {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(168,85,247,0.4);
+  font-weight: 800;
+}
+.gm-btn-run:hover:not(:disabled) { filter: brightness(1.12); }
+
 .gm-btn-start {
   background: linear-gradient(135deg, #16a34a, #22c55e);
   color: #fff;
