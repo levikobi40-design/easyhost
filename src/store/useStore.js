@@ -33,7 +33,7 @@ export const useStore = create(
       setStaffProfile: (profile) => set({ staffProfile: profile }),
       
       // Language
-      lang: 'he',
+      lang: 'en',
       setLang: (lang) => {
         const market = get().market === 'IL' ? 'IL' : 'US';
         const allowed = market === 'IL' ? ['he', 'th', 'hi'] : ['en', 'he', 'es'];

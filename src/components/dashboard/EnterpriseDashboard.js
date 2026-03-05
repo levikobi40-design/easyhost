@@ -178,7 +178,7 @@ const EnterpriseDashboard = () => {
               {property?.title || '—'}
             </div>
             <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              Est. Revenue: ₪{(property?.estRevenue || 0).toLocaleString()}/month
+              Est. Revenue: ${(property?.estRevenue || 0).toLocaleString()}/month
             </div>
           </div>
         </div>

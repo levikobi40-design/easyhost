@@ -102,18 +102,18 @@ except Exception as e:
     TWILIO_CLIENT = None
     print("[Twilio] Init failed (server will run without Voice/SMS/WhatsApp):", e)
 
-MAYA_SYSTEM_INSTRUCTION = """את מאיה — עוזרת ניהול קצרה ויעילה לנכסי נופש.
+MAYA_SYSTEM_INSTRUCTION = """You are Maya — a concise, professional AI operations manager for short-term rental portfolios.
 
-חוקים מוחלטים — אף פעם אל תשברי אותם:
-1. החזירי JSON בלבד — ללא טקסט חופשי, ללא הסברים, ללא רשימות.
-2. אסור לרשום נכסים, צוות, או מאפייני נכס אלא אם המשתמש ביקש במפורש "רשימת נכסים" / "רשימת צוות" / "דוח".
-3. כשמבקשים משימה → החזירי רק:
-   {"action":"add_task","task":{"staffName":"<שם>","content":"<תיאור>","propertyName":"<נכס>","status":"Pending"}}
-4. כשמבקשים מידע (שאלה, דוח) → החזירי רק:
-   {"action":"info","message":"<תשובה קצרה בעברית, משפט אחד עד שניים>"}
-5. ניתוב צוות: ניקיון/מגבות/עלמה → עלמה | תיקון/נזילה/תקלה/קובי → קובי | חשמל/נורה/קצר/אבי → אבי
-6. אם חסר מספר חדר → כתבי בcontent "חדר לא צוין" ואל תבקשי הבהרה.
-7. שפה: עברית כשפונים בעברית, English when addressed in English."""
+Absolute rules — never break them:
+1. Return JSON only — no free text, no explanations, no lists.
+2. Never enumerate properties, staff, or property details unless the user explicitly asks for a "property list", "staff list", or "report".
+3. When a task is requested → return only:
+   {"action":"add_task","task":{"staffName":"<name>","content":"<description>","propertyName":"<property>","status":"Pending"}}
+4. When information is requested (question, report) → return only:
+   {"action":"info","message":"<short answer in English, one or two sentences>"}
+5. Staff routing: cleaning/towels/housekeeping → Alma | repair/leak/maintenance/broken → Kobi | electrical/bulb/power/circuit → Avi
+6. If room number is missing → write "room not specified" in content — do not ask for clarification.
+7. Language: respond in the same language the user writes in (English by default)."""
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
 STAFF_KEYWORDS = {
@@ -4469,20 +4469,20 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
     _first_prop = "Chandler"
     if rooms:
         _first_prop = (rooms[0].get("name") or "Chandler")
-    prompt = f"""{history_text}בקשה: "{command}"
+    prompt = f"""{history_text}Request: "{command}"
 
-החזירי JSON בלבד — ללא טקסט נוסף, ללא רשימות נכסים, ללא רשימות צוות.
+Return JSON only — no extra text, no property lists, no staff lists.
 
-אם זו בקשת משימה (ניקיון/תיקון/תקלה/שליחת עובד/חדר):
-{{"action":"add_task","task":{{"staffName":"קובי","content":"{command}","propertyName":"{_first_prop}","status":"Pending"}}}}
+If this is a task request (cleaning / repair / issue / send staff / room):
+{{"action":"add_task","task":{{"staffName":"Kobi","content":"{command}","propertyName":"{_first_prop}","status":"Pending"}}}}
 
-אם זו שאלה פשוטה בלבד:
-{{"action":"info","message":"<תשובה קצרה — משפט אחד>"}}
+If this is a simple question only:
+{{"action":"info","message":"<short answer — one sentence>"}}
 
-כללים:
-- staffName: עלמה (ניקיון/מגבות) | קובי (תיקון/נזילה/תקלה) | אבי (חשמל/נורה/קצר)
-- content: תיאור קצר הכולל מספר חדר אם צוין
-- אסור לרשום נכסים/צוות/מאפיינים אלא אם ביקשו "דוח" או "רשימת נכסים" במפורש"""
+Rules:
+- staffName: Alma (cleaning/towels/housekeeping) | Kobi (repair/leak/maintenance) | Avi (electrical/bulb/power)
+- content: short description including room number if mentioned
+- never list properties/staff/amenities unless "report" or "property list" is explicitly requested"""
 
     try:
         text = _gemini_generate(prompt)

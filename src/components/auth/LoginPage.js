@@ -57,8 +57,8 @@ export default function LoginPage() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email.trim()) { setError('נא להזין אימייל'); return; }
-    if (!password)     { setError('נא להזין סיסמה'); return; }
+    if (!email.trim()) { setError('Please enter your email.'); return; }
+    if (!password)     { setError('Please enter your password.'); return; }
     setLoading(true);
     try {
       const data = await loginAuth(email.trim().toLowerCase(), password);
@@ -66,11 +66,11 @@ export default function LoginPage() {
     } catch (err) {
       const msg = err?.message || '';
       if (msg.includes('Invalid') || msg.includes('401')) {
-        setError('אימייל או סיסמה שגויים. נסה שוב.');
+        setError('Incorrect email or password. Please try again.');
       } else if (msg.includes('fetch') || msg.includes('Failed') || msg.includes('network')) {
-        setError('לא ניתן להתחבר לשרת. וודא ש-Python רץ.');
+        setError('Cannot reach the server. Make sure the backend is running.');
       } else {
-        setError(msg || 'שגיאת כניסה');
+        setError(msg || 'Sign-in error. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -81,33 +81,30 @@ export default function LoginPage() {
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email.trim())       { setError('נא להזין אימייל'); return; }
-    if (password.length < 6) { setError('הסיסמה חייבת לפחות 6 תווים'); return; }
-    if (password !== confirmPw) { setError('הסיסמאות אינן תואמות'); return; }
+    if (!email.trim())       { setError('Please enter your email.'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (password !== confirmPw) { setError('Passwords do not match.'); return; }
     setLoading(true);
     try {
       const data = await registerAuth(email.trim().toLowerCase(), password);
-      // Save credentials for display
       setSavedEmail(email.trim().toLowerCase());
       setSavedPassword(password);
-      // Apply auth immediately
       applyAuth(data.token, data.tenant_id, data.role, setAuthToken, setActiveTenantId, setRole);
       setView('success');
     } catch (err) {
       const msg = err?.message || '';
       if (msg.includes('already') || msg.includes('409')) {
-        // Auto-try login
         try {
           const data = await loginAuth(email.trim().toLowerCase(), password);
           applyAuth(data.token, data.tenant_id, data.role, setAuthToken, setActiveTenantId, setRole);
         } catch {
-          setError('האימייל כבר רשום. עבור ל"כניסה" ונסה שוב.');
+          setError('This email is already registered. Switch to Sign In and try again.');
           setView('login');
         }
       } else if (msg.includes('fetch') || msg.includes('Failed')) {
-        setError('לא ניתן להגיע לשרת. וודא ש-Python רץ.');
+        setError('Cannot reach the server. Make sure the backend is running.');
       } else {
-        setError(msg || 'שגיאת הרשמה');
+        setError(msg || 'Registration error. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -134,13 +131,35 @@ export default function LoginPage() {
         <div className="lp-brand">
           <div className="lp-brand-icon">🏨</div>
           <h1 className="lp-brand-name">EasyHost</h1>
-          <p className="lp-brand-tagline">מערכת ניהול נכסים חכמה</p>
+          <p className="lp-brand-headline">The AI Force Multiplier for<br />Short-Term Rentals.</p>
+          <p className="lp-brand-tagline">Stop managing tasks. Start scaling your empire with Maya, your 24/7 AI manager.</p>
         </div>
+
         <ul className="lp-features">
-          {['✅ ניהול נכסים ומשימות', '🤖 AI מאיה — עוזרת חכמה', '📊 דוחות ואנליטיקה', '💬 WhatsApp אוטומטי'].map(f => (
-            <li key={f} className="lp-feature-item">{f}</li>
+          {[
+            '✅ Property &amp; task management',
+            '🤖 Maya AI — your 24/7 ops manager',
+            '📊 Reports &amp; analytics',
+            '💬 Automated WhatsApp dispatch',
+          ].map(f => (
+            <li key={f} className="lp-feature-item" dangerouslySetInnerHTML={{ __html: f }} />
           ))}
         </ul>
+
+        {/* Testimonial */}
+        <blockquote className="lp-testimonial">
+          <p className="lp-testimonial-quote">
+            "Maya handles my entire morning briefing automatically. It's like having a full-time ops manager for the cost of a coffee."
+          </p>
+          <footer className="lp-testimonial-author">
+            <span className="lp-testimonial-avatar">RD</span>
+            <div>
+              <strong>Robert D.</strong>
+              <span>Luxury Portfolio Manager · Miami, FL</span>
+            </div>
+          </footer>
+        </blockquote>
+
         <div className="lp-left-footer">v2.0 · EasyHost Dashboard</div>
       </div>
 
@@ -152,30 +171,30 @@ export default function LoginPage() {
           {view === 'success' && (
             <div className="lp-success-wrap">
               <div className="lp-success-icon">🎉</div>
-              <h2 className="lp-success-title">ההרשמה הצליחה!</h2>
-              <p className="lp-success-sub">שמור את פרטי הכניסה שלך:</p>
+              <h2 className="lp-success-title">You're in!</h2>
+              <p className="lp-success-sub">Save your login credentials:</p>
 
               <div className="lp-cred-card">
                 <div className="lp-cred-row">
-                  <span className="lp-cred-label">📧 אימייל</span>
+                  <span className="lp-cred-label">📧 Email</span>
                   <span className="lp-cred-val">{savedEmail}</span>
-                  <button className="lp-copy-btn" onClick={() => copyToClipboard(savedEmail, 'email')}>
+                  <button className="lp-copy-btn" onClick={() => copyToClipboard(savedEmail, 'email')} aria-label="Copy email">
                     {copied === 'email' ? '✅' : '📋'}
                   </button>
                 </div>
                 <div className="lp-cred-row">
-                  <span className="lp-cred-label">🔑 סיסמה</span>
+                  <span className="lp-cred-label">🔑 Password</span>
                   <span className="lp-cred-val">{savedPassword}</span>
-                  <button className="lp-copy-btn" onClick={() => copyToClipboard(savedPassword, 'pw')}>
+                  <button className="lp-copy-btn" onClick={() => copyToClipboard(savedPassword, 'pw')} aria-label="Copy password">
                     {copied === 'pw' ? '✅' : '📋'}
                   </button>
                 </div>
               </div>
 
-              <p className="lp-success-note">⚠️ שמור את הפרטים האלו — לא ניתן לשחזר סיסמה</p>
+              <p className="lp-success-note">⚠️ Store these credentials — passwords cannot be recovered.</p>
 
               <button className="lp-btn lp-btn--primary lp-btn--wide" onClick={handleEnterDashboard}>
-                🚀 כנס לדאשבורד עכשיו
+                🚀 Enter Dashboard
               </button>
             </div>
           )}
@@ -185,27 +204,27 @@ export default function LoginPage() {
             <>
               <div className="lp-form-header">
                 <h2 className="lp-form-title">
-                  {view === 'login' ? 'ברוך הבא 👋' : 'צור חשבון חדש ✨'}
+                  {view === 'login' ? 'Welcome back 👋' : 'Create your account ✨'}
                 </h2>
                 <p className="lp-form-sub">
-                  {view === 'login' ? 'הכנס פרטים כדי להמשיך' : 'הרשמה מהירה וחינמית'}
+                  {view === 'login' ? 'Enter your details to continue' : 'Free to start — no credit card required'}
                 </p>
               </div>
 
               {/* Tab switcher */}
               <div className="lp-tabs">
                 <button className={`lp-tab ${view === 'login' ? 'active' : ''}`} onClick={() => { setView('login'); setError(''); }}>
-                  כניסה
+                  Sign In
                 </button>
                 <button className={`lp-tab ${view === 'register' ? 'active' : ''}`} onClick={() => { setView('register'); setError(''); }}>
-                  הרשמה
+                  Sign Up
                 </button>
               </div>
 
               {/* Form */}
               <form onSubmit={view === 'login' ? handleLogin : handleRegister} noValidate>
                 <div className="lp-field">
-                  <label className="lp-label">📧 אימייל</label>
+                  <label className="lp-label">📧 Email</label>
                   <input
                     className="lp-input"
                     type="email"
@@ -218,11 +237,11 @@ export default function LoginPage() {
                 </div>
 
                 <div className="lp-field">
-                  <label className="lp-label">🔑 סיסמה</label>
+                  <label className="lp-label">🔑 Password</label>
                   <input
                     className="lp-input"
                     type="password"
-                    placeholder={view === 'register' ? 'לפחות 6 תווים' : 'הסיסמה שלך'}
+                    placeholder={view === 'register' ? 'At least 6 characters' : 'Your password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     dir="ltr"
@@ -232,11 +251,11 @@ export default function LoginPage() {
 
                 {view === 'register' && (
                   <div className="lp-field">
-                    <label className="lp-label">🔑 אימות סיסמה</label>
+                    <label className="lp-label">🔑 Confirm Password</label>
                     <input
                       className="lp-input"
                       type="password"
-                      placeholder="חזור על הסיסמה"
+                      placeholder="Repeat your password"
                       value={confirmPw}
                       onChange={e => setConfirmPw(e.target.value)}
                       dir="ltr"
@@ -253,21 +272,21 @@ export default function LoginPage() {
 
                 <button type="submit" className="lp-btn lp-btn--primary lp-btn--wide" disabled={loading}>
                   {loading
-                    ? <span className="lp-spinner">⏳ מעבד...</span>
-                    : view === 'login' ? '🔑 כניסה' : '✅ הרשמה וכניסה'}
+                    ? <span className="lp-spinner">⏳ Processing…</span>
+                    : view === 'login' ? '🔑 Sign In' : '✅ Create Account'}
                 </button>
               </form>
 
               {/* Divider */}
-              <div className="lp-divider"><span>או</span></div>
+              <div className="lp-divider"><span>or</span></div>
 
               {/* Quick access */}
               <button
                 className="lp-btn lp-btn--ghost lp-btn--wide"
                 onClick={handleDevLogin}
-                title="כניסה מיידית ללא שרת"
+                title="Instant access without registration"
               >
-                ⚡ כניסה מיידית (ללא הרשמה)
+                ⚡ Demo Access (no sign-up)
               </button>
             </>
           )}

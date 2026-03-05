@@ -35,8 +35,8 @@ export default function PropertySuitesView({ suites, onAddSuite }) {
               </div>
 
               <div className="text-left">
-                <span className="text-xl font-black text-gray-900">₪{suite.price ?? parsePrice(suite.description)}</span>
-                <p className="text-[10px] text-gray-400 font-bold uppercase">ללילה</p>
+                <span className="text-xl font-black text-gray-900">${suite.price ?? parsePrice(suite.description)}</span>
+                <p className="text-[10px] text-gray-400 font-bold uppercase">/ night</p>
               </div>
             </div>
           ))

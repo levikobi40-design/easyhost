@@ -1182,7 +1182,7 @@ export const getDashboardSummary = async () => {
     return await response.json();
   } catch (error) {
     console.error('Error fetching dashboard summary:', error);
-    return { revenue: '0₪', active_tasks_count: 0, upcoming: [], status: 'Unavailable' };
+    return { revenue: '$0', active_tasks_count: 0, upcoming: [], status: 'Unavailable' };
   }
 };
 
@@ -1228,7 +1228,7 @@ export const getFinancialSummary = async () => {
     return await response.json();
   } catch (error) {
     console.error('Error fetching financial summary:', error);
-    return { avg_ltv: '₪0', conversion_rate: '0%', projected_revenue: '₪0' };
+    return { avg_ltv: '$0', conversion_rate: '0%', projected_revenue: '$0' };
   }
 };
 

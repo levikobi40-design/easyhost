@@ -93,7 +93,7 @@ const PropertyCard = ({ property, onDelete, onEdit, onManage, imageRefreshKey = 
       <div className="p-4">
         <div className="flex justify-between items-start gap-2 mb-1">
           <h3 className="property-card-title text-base font-bold text-gray-900 flex-1">{property.name}</h3>
-          <span className="text-gray-900 font-bold shrink-0">₪{property.price}<span className="text-gray-500 font-normal text-sm"> / לילה</span></span>
+          <span className="text-gray-900 font-bold shrink-0">${property.price}<span className="text-gray-500 font-normal text-sm"> / night</span></span>
         </div>
         <div className="flex items-center gap-2 text-gray-500 text-xs mb-3">
           <Users size={12} />

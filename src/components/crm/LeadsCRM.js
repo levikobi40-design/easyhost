@@ -117,7 +117,7 @@ const LeadsCRM = () => {
         const data = await getFinancialSummary();
         if (isActive) setFinancials(data);
       } catch (e) {
-        if (isActive) setFinancials({ avg_ltv: '₪0', conversion_rate: '0%', projected_revenue: '₪0' });
+        if (isActive) setFinancials({ avg_ltv: '$0', conversion_rate: '0%', projected_revenue: '$0' });
       }
     };
     loadFinancials();
@@ -295,7 +295,7 @@ const LeadsCRM = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
         <FinancialStat
           label="LTV ממוצע"
-          value={financials?.avg_ltv ?? '₪0'}
+          value={financials?.avg_ltv ?? '$0'}
           trend=""
           icon={Users}
         />
@@ -307,13 +307,13 @@ const LeadsCRM = () => {
         />
         <FinancialStat
           label="רווח תפעולי"
-          value={financials?.projected_revenue ?? '₪0'}
+          value={financials?.projected_revenue ?? '$0'}
           trend=""
           icon={BarChart3}
         />
         <FinancialStat
           label="עלות ניקיון ממוצעת"
-          value="₪350"
+          value="$350"
           trend="-2%"
           icon={Activity}
         />
@@ -415,7 +415,7 @@ const LeadsCRM = () => {
                         {getStatusLabel(lead.status).toUpperCase()}
                       </span>
                     </td>
-                    <td className="p-6 font-black">₪{Number(lead.value || 0).toLocaleString()}</td>
+                    <td className="p-6 font-black">${Number(lead.value || 0).toLocaleString()}</td>
                     <td className="p-2">
                       <button
                         type="button"
@@ -458,7 +458,7 @@ const LeadsCRM = () => {
         </div>
         <div className="crm-stat glass-card">
           <span className="stat-value" style={{ color: '#10b981' }}>
-            ₪{leadsWithFallback.reduce((sum, l) => sum + l.value, 0).toLocaleString()}
+            ${leadsWithFallback.reduce((sum, l) => sum + l.value, 0).toLocaleString()}
           </span>
           <span className="stat-label">{t('leadsCRM.stats.totalValue')}</span>
         </div>
@@ -531,7 +531,7 @@ const LeadsCRM = () => {
                   </div>
                   <div className="lead-meta-item">
                     <span className="meta-label">{t('leadsCRM.table.value')}</span>
-                    <span className="meta-value">₪{lead.value.toLocaleString()} <span className="per-night">{t('leadsCRM.perNight')}</span></span>
+                    <span className="meta-value">${lead.value.toLocaleString()} <span className="per-night">{t('leadsCRM.perNight')}</span></span>
                   </div>
                   <div className="lead-meta-item">
                     <span className="meta-label">{t('leadsCRM.table.rating')}</span>

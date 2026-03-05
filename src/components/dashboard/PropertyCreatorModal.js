@@ -80,7 +80,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
 
       const amenityList = (selectedAmenities || []).join(', ');
       const descParts = [];
-      if (price) descParts.push(`מחיר ללילה: ₪${price}`);
+      if (price) descParts.push(`Price per night: $${price}`);
       if (amenityList) descParts.push(`אמצעים: ${amenityList}`);
       const description = descParts.join(' | ') || 'נכס שנוצר ידנית';
 
@@ -161,7 +161,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
               type="text"
               style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
               className="p-4 rounded-2xl border border-gray-200 property-creator-input"
-              placeholder="שם הנכס (למשל: סוויטה על הים)"
+              placeholder="Property name (e.g. Beachfront Suite)"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -169,14 +169,14 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
               type="number"
               style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
               className="p-4 rounded-2xl border border-gray-200 property-creator-input"
-              placeholder="מחיר ללילה (₪)"
+              placeholder="Price per night ($)"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />
           </div>
           <div className="grid grid-cols-4 gap-3 mb-8">
             <div>
-              <label className="text-xs font-bold text-gray-600 block mb-1">אורחים</label>
+              <label className="text-xs font-bold text-gray-600 block mb-1">Guests</label>
               <input
                 type="number"
                 min={1}
@@ -187,7 +187,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-600 block mb-1">חדרים</label>
+              <label className="text-xs font-bold text-gray-600 block mb-1">Bedrooms</label>
               <input
                 type="number"
                 min={1}
@@ -198,7 +198,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-600 block mb-1">מיטות</label>
+              <label className="text-xs font-bold text-gray-600 block mb-1">Beds</label>
               <input
                 type="number"
                 min={1}
@@ -209,7 +209,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-600 block mb-1">אמבטיות</label>
+              <label className="text-xs font-bold text-gray-600 block mb-1">Bathrooms</label>
               <input
                 type="number"
                 min={1}
@@ -223,7 +223,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
 
           {/* רשימת צ'קבוקסים */}
           <div className="mb-8">
-            <p className="font-bold mb-4 text-sm text-gray-900">מה יש בנכס?</p>
+            <p className="font-bold mb-4 text-sm text-gray-900">Amenities</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {AMENITIES.map((item) => (
                 <label

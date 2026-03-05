@@ -8,8 +8,8 @@
 .lp-wrap {
   min-height: 100vh;
   display: flex;
-  font-family: 'Segoe UI', 'Arial Hebrew', 'Arial', sans-serif;
-  direction: rtl;
+  font-family: 'Segoe UI', 'Inter', 'Arial', sans-serif;
+  direction: ltr;
   background: #0f172a;
 }
 
@@ -62,11 +62,21 @@
   color: #fff;
   letter-spacing: -1px;
 }
+.lp-brand-headline {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+}
+
 .lp-brand-tagline {
   margin: 0;
-  font-size: 1.1rem;
-  color: rgba(255,255,255,0.7);
+  font-size: 1rem;
+  color: rgba(255,255,255,0.62);
   font-weight: 400;
+  line-height: 1.55;
 }
 
 .lp-features {
@@ -84,6 +94,58 @@
   font-weight: 500;
 }
 .lp-feature-item:last-child { border-bottom: none; }
+
+/* ── Testimonial ──────────────────────────────────────────── */
+.lp-testimonial {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  background: rgba(255,255,255,0.06);
+  border-left: 3px solid #6366f1;
+  border-radius: 0 12px 12px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.lp-testimonial-quote {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.82);
+  line-height: 1.6;
+  font-style: italic;
+}
+
+.lp-testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lp-testimonial-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #3b82f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.lp-testimonial-author strong {
+  display: block;
+  font-size: 0.88rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+.lp-testimonial-author span {
+  display: block;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.45);
+}
 
 .lp-left-footer {
   font-size: 0.78rem;
@@ -142,7 +204,6 @@
   border-radius: 9px;
   cursor: pointer;
   transition: all 0.2s;
-  direction: rtl;
 }
 .lp-tab.active {
   background: linear-gradient(135deg, #3b82f6, #6366f1);
@@ -205,7 +266,6 @@
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-  direction: rtl;
 }
 .lp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .lp-btn--wide { width: 100%; }
