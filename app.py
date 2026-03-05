@@ -19,6 +19,21 @@ import math
 # Frontend polls /api/activity-feed and shows these as Maya chat messages.
 _ACTIVITY_LOG: deque = deque(maxlen=80)
 
+# ── Simulation-only log — shown in the God Mode admin dashboard ───────────────
+# Each entry: { ts_ms, ts_str, level, message }
+_SIM_LOG: deque = deque(maxlen=200)
+
+def _sim_log(message: str, level: str = "info"):
+    """Append a timestamped entry to the simulation log."""
+    now_dt = datetime.now(timezone.utc)
+    _SIM_LOG.append({
+        "id":     str(uuid.uuid4()),
+        "ts_ms":  int(now_dt.timestamp() * 1000),
+        "ts_str": now_dt.strftime("%H:%M:%S"),
+        "level":  level,   # info | warn | success | error
+        "message": message,
+    })
+
 try:
     from dotenv import load_dotenv
     _app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -101,6 +116,53 @@ try:
 except Exception as e:
     TWILIO_CLIENT = None
     print("[Twilio] Init failed (server will run without Voice/SMS/WhatsApp):", e)
+
+# ── Cloudinary image hosting ──────────────────────────────────────────────────
+# When CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET are set,
+# all image uploads go to Cloudinary instead of the local filesystem.
+# This ensures images persist on Render's ephemeral file system.
+_CLOUDINARY_CONFIGURED = False
+try:
+    import cloudinary
+    import cloudinary.uploader as _cdn_uploader
+    _CDN_CLOUD = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    _CDN_KEY   = os.getenv("CLOUDINARY_API_KEY",    "").strip()
+    _CDN_SEC   = os.getenv("CLOUDINARY_API_SECRET", "").strip()
+    if _CDN_CLOUD and _CDN_KEY and _CDN_SEC:
+        cloudinary.config(
+            cloud_name=_CDN_CLOUD,
+            api_key=_CDN_KEY,
+            api_secret=_CDN_SEC,
+            secure=True,
+        )
+        _CLOUDINARY_CONFIGURED = True
+        print(f"[Cloudinary] ✅ Configured — cloud: {_CDN_CLOUD}")
+    else:
+        print("[Cloudinary] Not configured (CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET missing) — using local storage")
+except ImportError:
+    _cdn_uploader = None  # type: ignore
+    print("[Cloudinary] SDK not installed — using local storage")
+
+
+def _cloudinary_upload(data_bytes: bytes, folder: str = "easyhost") -> str:
+    """
+    Upload raw image bytes to Cloudinary and return the secure HTTPS URL.
+    Raises RuntimeError if Cloudinary is not configured.
+    Auto-transforms: resizes to max 1200px, quality=auto:good.
+    """
+    import io as _io
+    result = _cdn_uploader.upload(
+        _io.BytesIO(data_bytes),
+        folder=folder,
+        public_id=f"{folder}/{uuid.uuid4().hex}",
+        overwrite=True,
+        resource_type="image",
+        transformation=[
+            {"width": 1200, "height": 900, "crop": "limit", "quality": "auto:good"},
+        ],
+    )
+    return result["secure_url"]
+
 
 MAYA_SYSTEM_INSTRUCTION = """You are Maya — a concise, professional AI operations manager for short-term rental portfolios.
 
@@ -2959,6 +3021,7 @@ def _generate_demo_complaints(count=5):
         print(f"[GuestSim] Generated {created} complaints")
         return created
     except Exception as e:
+        _sim_log(f"❌ Error generating complaints: {e}", "error")
         session.rollback()
         print(f"[GuestSim] Error: {e}")
         return 0
@@ -2967,12 +3030,12 @@ def _generate_demo_complaints(count=5):
 
 
 def _mock_staff_auto_respond():
-    """Auto-complete mock-staff tasks that have been Pending for >2 minutes."""
+    """Auto-complete mock-staff tasks that have been Pending for >5 minutes."""
     if not SessionLocal or not PropertyTaskModel:
         return
     session = SessionLocal()
     try:
-        cutoff_iso = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         pending = session.query(PropertyTaskModel).filter(
             PropertyTaskModel.status == "Pending",
             PropertyTaskModel.staff_name.in_(MOCK_STAFF_NAMES),
@@ -3001,8 +3064,16 @@ def _mock_staff_auto_respond():
             })
         if pending:
             session.commit()
+            _sim_log(f"✅ Mock staff auto-completed {len(pending)} task(s)", "success")
+            for task in pending:
+                ms = next((m for m in MOCK_STAFF if m["name"] == task.staff_name), MOCK_STAFF[0])
+                _sim_log(
+                    f"  {ms['emoji']} {task.staff_name} → {task.property_name}: {task.description[:50]}",
+                    "success",
+                )
             print(f"[MockStaff] Auto-completed {len(pending)} tasks")
     except Exception as e:
+        _sim_log(f"❌ Mock staff error: {e}", "error")
         session.rollback()
         print(f"[MockStaff] Error: {e}")
     finally:
@@ -3010,31 +3081,38 @@ def _mock_staff_auto_respond():
 
 
 def _guest_simulation_loop():
-    """Background thread: generate 5 guest complaints every 10 minutes."""
+    """Background thread: generate 5 guest complaints every 15 minutes."""
     import time as _t
-    print("[GuestSim] Thread started — complaints every 10 minutes")
+    _sim_log("🚀 Guest simulation started — complaints every 15 minutes", "info")
+    print("[GuestSim] Thread started — complaints every 15 minutes")
     while not DEMO_STOP_EVENT.is_set():
-        for _ in range(60):        # 60 × 10s = 600s = 10 min
+        for _ in range(90):        # 90 × 10s = 900s = 15 min
             if DEMO_STOP_EVENT.is_set():
                 return
             _t.sleep(10)
         try:
-            _generate_demo_complaints(5)
+            count = _generate_demo_complaints(5)
+            _sim_log(f"💬 Injected {count} guest complaints into the database", "warn")
         except Exception as e:
+            _sim_log(f"❌ Guest sim error: {e}", "error")
             print(f"[GuestSim] Loop error: {e}")
+    _sim_log("⏹ Guest simulation stopped", "info")
     print("[GuestSim] Thread stopped")
 
 
 def _mock_staff_loop():
     """Background thread: auto-complete mock-staff tasks every 30 seconds."""
     import time as _t
+    _sim_log("🤖 Mock staff auto-responder started — polling every 30 s (5 min response time)", "info")
     print("[MockStaff] Thread started — polling every 30 s")
     while not DEMO_STOP_EVENT.is_set():
         _t.sleep(30)
         try:
             _mock_staff_auto_respond()
         except Exception as e:
+            _sim_log(f"❌ Mock staff loop error: {e}", "error")
             print(f"[MockStaff] Loop error: {e}")
+    _sim_log("⏹ Mock staff auto-responder stopped", "info")
     print("[MockStaff] Thread stopped")
 
 
@@ -3045,6 +3123,10 @@ def start_pilot_simulation():
         if DEMO_ACTIVE:
             return
         DEMO_STOP_EVENT.clear()
+        _sim_log("▶️  runPilotSimulation() — STARTED", "info")
+        _sim_log("   • 10 demo properties seeded across 2 owners (John & Sarah)", "info")
+        _sim_log("   • Guest complaints injected every 15 minutes (5 per batch)", "info")
+        _sim_log("   • Mock staff auto-respond after 5 minutes with photo proof", "info")
         threading.Thread(target=_generate_demo_complaints, args=(5,), daemon=True,
                          name="DemoFirstBatch").start()
         threading.Thread(target=_guest_simulation_loop, daemon=True, name="GuestSimLoop").start()
@@ -3059,6 +3141,7 @@ def stop_pilot_simulation():
     with DEMO_LOCK:
         DEMO_STOP_EVENT.set()
         DEMO_ACTIVE = False
+    _sim_log("⏹  runPilotSimulation() — STOPPED", "warn")
     print("[Demo] Pilot simulation STOPPED")
 
 
@@ -3262,6 +3345,18 @@ def demo_toggle():
     # default: start
     start_pilot_simulation()
     return jsonify({"ok": True, "active": True})
+
+
+@app.route("/api/sim-log", methods=["GET"])
+def sim_log_endpoint():
+    """
+    Real-time simulation activity log for the God Mode admin dashboard.
+    Returns the last N entries (newest first) from the _SIM_LOG deque.
+    Query param: ?limit=50
+    """
+    limit   = min(int(request.args.get("limit", 50)), 200)
+    entries = list(_SIM_LOG)[-limit:]
+    return jsonify({"entries": list(reversed(entries)), "count": len(_SIM_LOG)})
 
 
 @app.route("/api/god-mode/overview", methods=["GET"])
@@ -3774,8 +3869,8 @@ def get_manual_rooms():
 @require_auth
 def upload_images():
     """
-    העלאת תמונות גנרית – מקבל רשימת קבצים, מחזיר URLs.
-    Supports: files (multiple) or file (single). Only image/* allowed.
+    Generic image upload — accepts multiple files, returns URLs.
+    Routes to Cloudinary when configured, falls back to local storage.
     """
     files = request.files.getlist("files") or (
         [request.files["file"]] if request.files.get("file") else []
@@ -3792,6 +3887,16 @@ def upload_images():
             return jsonify({"error": f"Invalid file type: {f.filename}", "urls": []}), 400
 
         data, new_ext = _compress_image(f.stream)
+
+        if _CLOUDINARY_CONFIGURED:
+            try:
+                url = _cloudinary_upload(data, folder="easyhost/uploads")
+                uploaded_urls.append(url)
+                continue
+            except Exception as cdn_err:
+                print(f"[Cloudinary] Upload failed, falling back to local: {cdn_err}")
+
+        # ── Local fallback ────────────────────────────────────────────────
         ext = new_ext or (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg")
         if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
             ext = "jpg"
@@ -3799,8 +3904,7 @@ def upload_images():
         file_path = os.path.join(UPLOAD_STATIC, unique_name)
         with open(file_path, "wb") as _fh:
             _fh.write(data)
-        url = f"{API_BASE_URL}/uploads/shared/{unique_name}"
-        uploaded_urls.append(url)
+        uploaded_urls.append(f"{API_BASE_URL}/uploads/shared/{unique_name}")
 
     return jsonify({"urls": uploaded_urls})
 
@@ -3808,22 +3912,31 @@ def upload_images():
 @app.route("/api/rooms/manual/photo/upload", methods=["POST"])
 @require_auth
 def room_photo_upload():
-    """העלאת תמונה לנכס – מחזיר photo_url לשימוש ביצירת נכס"""
+    """Property photo upload — routes to Cloudinary when configured, else local."""
     tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
     if "photo" not in request.files:
         return jsonify({"error": "Missing file"}), 400
     file = request.files["photo"]
     if not file or not file.filename:
         return jsonify({"error": "Invalid file"}), 400
+
+    data, new_ext = _compress_image(file.stream)
+
+    if _CLOUDINARY_CONFIGURED:
+        try:
+            photo_url = _cloudinary_upload(data, folder=f"easyhost/properties/{tenant_id}")
+            return jsonify({"ok": True, "photo_url": photo_url})
+        except Exception as cdn_err:
+            print(f"[Cloudinary] Property photo upload failed, falling back to local: {cdn_err}")
+
+    # ── Local fallback ────────────────────────────────────────────────────────
     os.makedirs(UPLOAD_ROOT, exist_ok=True)
     tenant_dir = os.path.join(UPLOAD_ROOT, tenant_id, "properties")
     os.makedirs(tenant_dir, exist_ok=True)
-    data, new_ext = _compress_image(file.stream)
     orig_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
     ext = new_ext or orig_ext
     unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-    file_path = os.path.join(tenant_dir, unique_name)
-    with open(file_path, "wb") as _fh:
+    with open(os.path.join(tenant_dir, unique_name), "wb") as _fh:
         _fh.write(data)
     photo_url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
     return jsonify({"ok": True, "photo_url": photo_url})

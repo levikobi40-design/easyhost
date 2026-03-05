@@ -354,6 +354,64 @@
   font-size: 0.8rem;
 }
 
+/* ── Simulation Log Panel ─────────────────────────────────── */
+.gm-log-panel {
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.gm-log-live {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: #22c55e;
+  animation: gm-pulse-text 1.5s ease-in-out infinite;
+}
+@keyframes gm-pulse-text {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.gm-log-body {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.4rem 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.gm-log-empty {
+  padding: 1rem 1.25rem;
+  font-size: 0.77rem;
+  color: #475569;
+  font-family: inherit;
+}
+
+.gm-log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.18rem 1rem;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  transition: background 0.1s;
+}
+.gm-log-row:hover { background: rgba(255,255,255,0.03); }
+
+.gm-log-ts {
+  color: #334155;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.gm-log-msg {
+  flex: 1;
+  word-break: break-word;
+}
+
 /* ── Footer ─────────────────────────────────────────────── */
 .gm-footer {
   display: flex;

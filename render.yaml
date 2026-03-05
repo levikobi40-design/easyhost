@@ -1,9 +1,3 @@
-databases:
-  - name: easyhost-db
-    databaseName: easyhost
-    user: easyhost
-    plan: free
-
 services:
   - type: web
     name: easyhost
@@ -16,12 +10,28 @@ services:
         value: "3.11.6"
       - key: NODE_VERSION
         value: "22"
+
+      # ── Database — set this to your Supabase connection string ──────────
+      # Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+      # Get it from: Supabase Dashboard → Project Settings → Database → Connection string (URI)
       - key: DATABASE_URL
-        fromDatabase:
-          name: easyhost-db
-          property: connectionString
+        sync: false
+
+      # ── AI ───────────────────────────────────────────────────────────────
       - key: GEMINI_API_KEY
         sync: false
+
+      # ── Cloudinary image hosting ─────────────────────────────────────────
+      # Get free credentials at https://cloudinary.com/users/register_free
+      # Dashboard → API Keys → Copy Cloud Name / API Key / API Secret
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ── Twilio ───────────────────────────────────────────────────────────
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
@@ -36,6 +46,8 @@ services:
         sync: false
       - key: TWILIO_SIMULATE
         value: "1"
+
+      # ── Frontend / build ─────────────────────────────────────────────────
       - key: REACT_APP_API_URL
         value: "https://easyhost-backend.onrender.com"
       - key: API_BASE_URL

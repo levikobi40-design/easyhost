@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Activity, Play, Square, RotateCcw,
-  Building2, Clock, CheckCircle2, Users,
-  AlertCircle, Zap, RefreshCw,
+  Building2, CheckCircle2, Users,
+  AlertCircle, Zap, RefreshCw, Terminal,
 } from 'lucide-react';
 import './GodModeDashboard.css';
 
@@ -105,23 +105,41 @@ function CompletionRow({ c }) {
   );
 }
 
+const LOG_LEVEL_COLOR = {
+  info:    '#94a3b8',
+  warn:    '#fbbf24',
+  success: '#4ade80',
+  error:   '#f87171',
+};
+
 export default function GodModeDashboard() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [simBusy, setSimBusy] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
-  const timerRef = useRef(null);
+  const [simLog, setSimLog]   = useState([]);
+  const timerRef  = useRef(null);
+  const logEndRef = useRef(null);
 
   const fetchOverview = useCallback(async () => {
     try {
       const base = API();
-      const res  = await fetch(`${base}/api/god-mode/overview`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-      setLastRefresh(new Date());
-      setError(null);
+      const [ovRes, logRes] = await Promise.all([
+        fetch(`${base}/api/god-mode/overview`),
+        fetch(`${base}/api/sim-log?limit=60`),
+      ]);
+      if (ovRes.ok) {
+        setData(await ovRes.json());
+        setLastRefresh(new Date());
+        setError(null);
+      } else {
+        throw new Error(`HTTP ${ovRes.status}`);
+      }
+      if (logRes.ok) {
+        const logData = await logRes.json();
+        setSimLog(logData.entries || []);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -134,6 +152,11 @@ export default function GodModeDashboard() {
     timerRef.current = setInterval(fetchOverview, 5000);
     return () => clearInterval(timerRef.current);
   }, [fetchOverview]);
+
+  // Auto-scroll log to top (newest entries are shown first)
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [simLog]);
 
   const toggleSim = async (action) => {
     setSimBusy(true);
@@ -279,6 +302,35 @@ export default function GodModeDashboard() {
           </div>
         </div>
 
+      </div>
+
+      {/* ── Simulation Log Panel ── */}
+      <div className="gm-log-panel">
+        <div className="gm-panel-header" style={{ borderRadius: '0.75rem 0.75rem 0 0' }}>
+          <Terminal size={15} />
+          runPilotSimulation() — Activity Log
+          <span className="gm-panel-count">{simLog.length}</span>
+          <span className="gm-log-live">● LIVE</span>
+        </div>
+        <div className="gm-log-body">
+          {simLog.length === 0 && (
+            <div className="gm-log-empty">
+              No log entries yet. Start the simulation to see real-time activity.
+            </div>
+          )}
+          {simLog.map((entry) => (
+            <div key={entry.id} className="gm-log-row">
+              <span className="gm-log-ts">{entry.ts_str}</span>
+              <span
+                className="gm-log-msg"
+                style={{ color: LOG_LEVEL_COLOR[entry.level] || '#e2e8f0' }}
+              >
+                {entry.message}
+              </span>
+            </div>
+          ))}
+          <div ref={logEndRef} />
+        </div>
       </div>
 
       {/* ── Footer legend ── */}
