@@ -70,7 +70,7 @@ export default function MayaChat() {
       connectedRef.current = true;
       addMayaMessage({
         role: 'assistant',
-        content: 'קובי, אני מחוברת ומוכנה לעבודה! 🟢 איך אפשר לעזור?',
+        content: t('mayaChat.greeting'),
       });
     }
   }, [mayaChatOpen, addMayaMessage]);
@@ -95,7 +95,7 @@ export default function MayaChat() {
             // Show task confirmation + trigger table refresh
             addMayaMessage({
               role: 'assistant',
-              content: ev.text || '✅ משימה חדשה נוצרה',
+              content: ev.text || t('mayaChat.newTaskCreated'),
               data: { taskCreated: true, task: ev.task },
             });
             window.dispatchEvent(new CustomEvent('maya-task-created', {
@@ -107,7 +107,7 @@ export default function MayaChat() {
             // WhatsApp/SMS/Voice simulate messages — show as info bubble
             addMayaMessage({
               role: 'assistant',
-              content: ev.text || '📡 הודעה נשלחה',
+              content: ev.text || t('mayaChat.messageSent'),
               data: { simulated: true },
             });
           }
@@ -255,9 +255,7 @@ export default function MayaChat() {
       if (is429) setLast429(true);
       addMayaMessage({
         role: 'assistant',
-        content: is429
-          ? 'מאיה עמוסה כרגע (Google 429 — עומס זמני) 😮‍💨\nלחץ על כפתור "משימה ידנית" כדי לעקוף את ה-AI'
-          : 'קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴',
+        content: is429 ? t('mayaChat.error429') : t('mayaChat.errorServer'),
         isError: true,
       });
     } finally {
@@ -286,7 +284,7 @@ export default function MayaChat() {
         } catch {
           addMayaMessage({
             role: 'assistant',
-            content: 'קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴',
+            content: t('mayaChat.errorServer'),
             isError: true,
           });
         } finally {
@@ -313,10 +311,10 @@ export default function MayaChat() {
   ];
 
   const guestChips = [
-    { emoji: '🚿', label: 'מגבות',      cmd: 'אני צריך מגבות' },
-    { emoji: '🧼', label: 'ניקיון',      cmd: 'לשלוח מנקה לחדר שלי' },
-    { emoji: '🛠️', label: 'תקלה',       cmd: 'יש תקלה בחדר שלי' },
-    { emoji: '🧪', label: 'בדיקה',      cmd: '/test-task 102 ניקיון חדר' },
+    { emoji: '🚿', label: t('mayaChat.guestChips.towels'),   cmd: isRTL ? 'אני צריך מגבות'          : 'towels please' },
+    { emoji: '🧼', label: t('mayaChat.guestChips.cleaning'), cmd: isRTL ? 'לשלוח מנקה לחדר שלי'    : 'send a cleaner to my room' },
+    { emoji: '🛠️', label: t('mayaChat.guestChips.issue'),    cmd: isRTL ? 'יש תקלה בחדר שלי'       : 'there is an issue in my room' },
+    { emoji: '🧪', label: t('mayaChat.guestChips.test'),     cmd: '/test-task 102 cleaning' },
   ];
 
   return (
@@ -325,7 +323,7 @@ export default function MayaChat() {
       {/* ── Toast ── */}
       {toast && (
         <div className="maya-toast">
-          ✅ משימה חדשה ל-{toast.name} נשלחה! {toast.emoji}
+          {t('mayaChat.toast', { name: toast.name, emoji: toast.emoji })}
         </div>
       )}
 
@@ -340,7 +338,7 @@ export default function MayaChat() {
           dir={isRTL ? 'rtl' : 'ltr'}
           role="dialog"
           aria-modal="true"
-          aria-label="מאיה — AI Assistant"
+          aria-label={t('mayaChat.dialogLabel')}
         >
 
           {/* ── HEADER  position:absolute top:0 height:60px z-index:1000 ── */}
@@ -367,9 +365,9 @@ export default function MayaChat() {
 
               {/* Name + status */}
               <div className="maya-hdr-text">
-                <span className="maya-hdr-name">Maya · AI Concierge</span>
+                <span className="maya-hdr-name">{t('mayaChat.title')} · {t('mayaChat.role')}</span>
                 <span className="maya-hdr-status">
-                  {mayaOnline ? '🟢 Online' : '⏳ מתחברת...'}
+                  {mayaOnline ? t('mayaChat.status.online') : t('mayaChat.status.connecting')}
                 </span>
               </div>
             </div>
@@ -379,7 +377,7 @@ export default function MayaChat() {
           <div className="maya-body">
 
             {/* Staff shortcut chips */}
-            <div className="maya-quick-bar" role="toolbar" aria-label="פעולות מהירות">
+            <div className="maya-quick-bar" role="toolbar" aria-label={t('mayaChat.quickBar')}>
               {quickActions.map((a) => (
                 <button
                   key={a.id}
@@ -440,14 +438,14 @@ export default function MayaChat() {
             </div>
 
             {/* Guest chips */}
-            <div className="maya-guest-chips" role="toolbar" aria-label="הצעות פקודה">
+            <div className="maya-guest-chips" role="toolbar" aria-label={t('mayaChat.suggestionsBar')}>
               {guestChips.map((c) => (
                 <button
                   key={c.label}
                   type="button"
                   className="maya-guest-chip"
                   onClick={() => handleQuickAction(c.cmd)}
-                  aria-label={`שלח: ${c.label}`}
+                  aria-label={c.label}
                 >
                   <span aria-hidden="true">{c.emoji}</span> {c.label}
                 </button>
@@ -476,10 +474,10 @@ export default function MayaChat() {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   }}
                 >
-                  ⚡ עקוף AI — צור משימה ידנית עכשיו
+                  {t('mayaChat.bypassBtn')}
                 </button>
                 <div style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
-                  או הקלד /test-task [חדר] · /clean [חדר] · /towels [חדר] · /fix [חדר]
+                  {t('mayaChat.bypassHint')}
                 </div>
               </div>
             )}
@@ -521,7 +519,7 @@ export default function MayaChat() {
         type="button"
         onClick={() => toggleMayaChat?.()}
         className="maya-fab"
-        aria-label={mayaChatOpen ? 'סגור את מאיה' : 'פתח את מאיה — AI Assistant'}
+        aria-label={mayaChatOpen ? t('mayaChat.fabClose') : t('mayaChat.fabOpen')}
         aria-expanded={mayaChatOpen}
         aria-haspopup="dialog"
       >

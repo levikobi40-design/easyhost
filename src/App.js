@@ -69,11 +69,29 @@ function App() {
     }
   }, [i18n, isRTL, lang]);
 
+  // ── IP-based language detection — runs once per browser session ──────────
+  // Uses ipapi.co (free, no key required). Silently ignored on failure.
+  // Skip if the user already manually set a non-default language this session.
   useEffect(() => {
-    const marketKey = market === 'IL' ? 'IL' : 'US';
-    const allowed = marketKey === 'IL' ? ['he', 'th', 'hi'] : ['en', 'he', 'es'];
+    if (sessionStorage.getItem('ip_geo_done')) return;
+    sessionStorage.setItem('ip_geo_done', '1');
+    fetch('https://ipapi.co/json/', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.country_code === 'IL') {
+          setLang('he');
+        }
+        // Any other country → keep the default 'en'
+      })
+      .catch(() => {}); // silent — never crash on geo failure
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Market / lang guard ────────────────────────────────────────────────
+  useEffect(() => {
+    // Both US and IL markets now allow 'en' and 'he'; keep this guard permissive.
+    const allowed = ['en', 'he', 'es', 'th', 'hi'];
     if (!allowed.includes(lang)) {
-      setLang(allowed[0]);
+      setLang('en');
     }
   }, [market, lang, setLang]);
 
@@ -123,7 +141,7 @@ function App() {
 
   return (
     <div dir={isRTL ? 'rtl' : 'ltr'}>
-      <a href="#main-content" className="skip-link">דלג לתוכן הראשי</a>
+      <a href="#main-content" className="skip-link">{isRTL ? 'דלג לתוכן הראשי' : 'Skip to main content'}</a>
       {isWorkerRoute ? (
         <WorkerView />
       ) : hasHydrated ? (

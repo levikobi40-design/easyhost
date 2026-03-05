@@ -261,14 +261,37 @@
     }
   },
   "mayaChat": {
-    "title": "Maya",
-    "role": "מנהלת פרויקט בכירה",
-    "greeting": "שלום! אני Maya, מנהלת הפרויקט הבכירה שלך. איך אוכל לעזור היום?",
-    "askPlaceholder": "דבר עם מאיה...",
-    "hint": "Maya מנהלת 5 סוכנים חכמים שעובדים בשבילך",
+    "title": "מאיה",
+    "role": "מנהלת תפעול AI",
+    "greeting": "שלום! אני מאיה, מנהלת ה-AI שלך. כאן בשבילך 🟢",
+    "askPlaceholder": "שוחח עם מאיה...",
+    "hint": "מאיה מנהלת 5 סוכנים חכמים שעובדים בשבילך",
     "leadsFoundLabel": "לידים שנמצאו:",
     "proactiveOccupancy": "זיהיתי פער בהזמנות לשבוע הבא; האם להפעיל את סוכן השיווק לקמפיין Airbnb?",
-    "connectingMaya": "מתחבר ל-Maya... נסה שוב בעוד רגע.",
+    "connectingMaya": "מתחבר למאיה… נסה שוב בעוד רגע.",
+    "fabOpen": "פתח את מאיה — עוזרת AI",
+    "fabClose": "סגור את מאיה",
+    "quickBar": "פעולות מהירות",
+    "suggestionsBar": "הצעות פקודה",
+    "dialogLabel": "מאיה — עוזרת AI",
+    "status": {
+      "online": "🟢 מחוברת",
+      "connecting": "⏳ מתחברת…"
+    },
+    "toast": "✅ משימה חדשה ל-{{name}} נשלחה! {{emoji}}",
+    "guestChips": {
+      "towels":   "מגבות",
+      "cleaning": "ניקיון",
+      "issue":    "תקלה",
+      "test":     "בדיקה"
+    },
+    "bypassBtn": "⚡ עקוף AI — צור משימה ידנית עכשיו",
+    "bypassHint": "או הקלד /test-task [חדר] · /clean [חדר] · /towels [חדר] · /fix [חדר]",
+    "error429": "מאיה עמוסה כרגע (Google 429 — עומס זמני) 😮‍💨\nלחץ על כפתור 'משימה ידנית' כדי לעקוף את ה-AI",
+    "errorServer": "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴",
+    "errorNoServer": "לא ניתן להתחבר לשרת. תבדוק שה-Flask רץ.",
+    "newTaskCreated": "✅ משימה חדשה נוצרה",
+    "messageSent": "📡 הודעה נשלחה",
     "quickActions": {
       "scan": "סרוק לידים",
       "report": "דוח יומי",

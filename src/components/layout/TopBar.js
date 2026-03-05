@@ -7,19 +7,15 @@ import easyHostLogo from '../../assets/easyhost-logo.svg';
 import './TopBar.css';
 
 const TopBar = () => {
-  const { lang, setLang, role, setRole, toggleSidebar, tenants, activeTenantId, setActiveTenantId, market } = useStore();
+  const { lang, setLang, role, setRole, toggleSidebar, tenants, activeTenantId, setActiveTenantId } = useStore();
   const { t } = useTranslations();
 
-  const languages = market === 'IL'
-    ? [
-        { code: 'he', label: t('languages.he'), flag: '🇮🇱' },
-        { code: 'th', label: 'Thai', flag: '🇹🇭' },
-        { code: 'hi', label: 'Hindi', flag: '🇮🇳' },
-      ]
-    : [
-        { code: 'en', label: t('languages.en'), flag: '🇺🇸' },
-        { code: 'es', label: 'Spanish', flag: '🇪🇸' },
-      ];
+  // Always show the US / Israel pair regardless of market env var.
+  // IP detection in App.js auto-selects the right one on first visit.
+  const languages = [
+    { code: 'en', label: 'English', flag: '🇺🇸' },
+    { code: 'he', label: 'עברית',   flag: '🇮🇱' },
+  ];
 
   return (
     <header className="top-bar glass">
@@ -56,15 +52,19 @@ const TopBar = () => {
             ))}
           </select>
         </div>
-        {/* Language Selector */}
-        <div className="lang-selector">
+        {/* Language Selector — 🇺🇸 / 🇮🇱 pill toggle */}
+        <div className="lang-selector lang-pill" role="group" aria-label="Language selector">
           {languages.map((l) => (
             <button
               key={l.code}
               onClick={() => setLang(l.code)}
-              className={`lang-btn ${lang === l.code ? 'active' : ''}`}
+              className={`lang-btn${lang === l.code ? ' active' : ''}`}
+              title={l.label}
+              aria-pressed={lang === l.code}
+              aria-label={`Switch to ${l.label}`}
             >
-              {l.flag}
+              <span className="lang-flag">{l.flag}</span>
+              <span className="lang-label">{l.label}</span>
             </button>
           ))}
         </div>
