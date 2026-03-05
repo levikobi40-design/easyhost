@@ -373,25 +373,13 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def _build_database_url() -> str:
     """
-    Resolve the database connection URL in priority order:
+    Resolve the database connection URL. Priority order:
 
-      1. DATABASE_URL          — full PostgreSQL URI (highest priority, any provider)
-      2. SUPABASE_URL + SUPABASE_DB_PASSWORD
-                               — Supabase direct PostgreSQL connection
-                                 (SUPABASE_DB_PASSWORD = the DB password from
-                                  Supabase → Settings → Database → Database Password)
-      3. SUPABASE_URL + SUPABASE_KEY (only if SUPABASE_KEY is NOT a JWT / service-role key)
-                               — legacy / manual fallback
-      4. SQLite                — local development only
-
-    ─────────────────────────────────────────────────────────
-    ⚠️  Supabase credential types (they are DIFFERENT values):
-      SUPABASE_URL         = https://PROJECT_REF.supabase.co
-      SUPABASE_KEY         = service-role / secret key  ← for REST API only
-                             (starts with eyJ... or sb_secret_...)
-      SUPABASE_DB_PASSWORD = the actual PostgreSQL password ← for SQLAlchemy
-                             (set / reset at Supabase → Settings → Database)
-    ─────────────────────────────────────────────────────────
+      1. DATABASE_URL          — explicit full URI (any provider)
+      2. SUPABASE_URL + SUPABASE_DB_PASSWORD — direct Supabase PostgreSQL
+      3. SUPABASE_URL + SUPABASE_KEY         — forced Supabase connection
+                                               (SQLite disabled when these are set)
+      4. SQLite                — only used when NO Supabase credentials exist at all
     """
     # ── 1. Explicit DATABASE_URL ────────────────────────────────────────────
     raw = os.getenv("DATABASE_URL", "").strip()
@@ -407,56 +395,44 @@ def _build_database_url() -> str:
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
     m = re.match(r'https?://([^.]+)\.supabase\.co', supabase_url) if supabase_url else None
 
-    # ── 2. SUPABASE_URL + SUPABASE_DB_PASSWORD (preferred Supabase path) ────
+    # ── 2. SUPABASE_URL + SUPABASE_DB_PASSWORD ──────────────────────────────
     db_password = os.getenv("SUPABASE_DB_PASSWORD", "").strip()
     if m and db_password:
         project_ref = m.group(1)
         url = (
             f"postgresql://postgres.{project_ref}:{db_password}"
-            f"@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-            f"?sslmode=require"
+            f"@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
         )
-        print(f"[DB] ✅ Supabase Session Pooler — project: {project_ref}")
+        print(f"[DB] ✅ Supabase (SUPABASE_DB_PASSWORD) — project: {project_ref}")
         return url
 
-    # ── 3. SUPABASE_URL + SUPABASE_KEY (only if key looks like a DB password) ─
+    # ── 3. SUPABASE_URL + SUPABASE_KEY — forced, no SQLite fallback ─────────
     supabase_key = os.getenv("SUPABASE_KEY", "").strip()
     if m and supabase_key:
-        # JWT tokens and sb_secret_ keys are NOT PostgreSQL passwords.
-        # Warn the user rather than silently producing a broken connection.
-        is_jwt     = supabase_key.startswith("eyJ")
-        is_sb_key  = supabase_key.startswith("sb_secret") or supabase_key.startswith("sbp_")
-        if is_jwt or is_sb_key:
-            project_ref = m.group(1)
-            print("[DB] ⚠️  ─────────────────────────────────────────────────────")
-            print("[DB] ⚠️  SUPABASE_KEY looks like a service-role / API key,")
-            print("[DB] ⚠️  NOT a PostgreSQL database password.")
-            print("[DB] ⚠️  To connect to Supabase:")
-            print("[DB] ⚠️    Option A (recommended):")
-            print("[DB] ⚠️      Set SUPABASE_DB_PASSWORD to your DB password")
-            print("[DB] ⚠️      (Supabase → Settings → Database → Database Password)")
-            print("[DB] ⚠️    Option B:")
-            print("[DB] ⚠️      Set DATABASE_URL to the full connection string")
-            print("[DB] ⚠️      (Supabase → Settings → Database → Connection string → URI)")
-            print(f"[DB] ⚠️    Project ref detected: {project_ref}")
-            print("[DB] ⚠️  Falling back to SQLite until credentials are fixed.")
-            print("[DB] ⚠️  ─────────────────────────────────────────────────────")
-        else:
-            # Key looks like a plain password — try using it directly
-            project_ref = m.group(1)
-            url = (
-                f"postgresql://postgres:{supabase_key}"
-                f"@db.{project_ref}.supabase.co:5432/postgres?sslmode=require"
-            )
-            print(f"[DB] 🟡 Using SUPABASE_KEY as DB password — project: {project_ref}")
-            return url
+        project_ref = m.group(1)
+        # Use SUPABASE_KEY exactly as provided — no filtering or blocking.
+        # Connection format: direct Supabase host with SSL.
+        url = (
+            f"postgresql://postgres:{supabase_key}"
+            f"@db.{project_ref}.supabase.co:5432/postgres?sslmode=require"
+        )
+        print(f"[DB] ✅ Supabase (SUPABASE_KEY) — project: {project_ref}")
+        return url
 
-    # ── 4. SQLite fallback ─────────────────────────────────────────────────
+    # ── 4. SQLite — only reached when NO Supabase credentials are set at all ─
+    if supabase_url:
+        # URL is set but no key — raise a clear error rather than silently using SQLite
+        raise RuntimeError(
+            "[DB] ❌  SUPABASE_URL is set but neither SUPABASE_KEY nor "
+            "SUPABASE_DB_PASSWORD is provided.\n"
+            "  Add one of these to your .env (or Render env vars):\n"
+            "    SUPABASE_KEY=<your key from Supabase → Settings → API>\n"
+            "    SUPABASE_DB_PASSWORD=<your DB password from Supabase → Settings → Database>"
+        )
+
     sqlite_path = os.path.join(_APP_DIR, "leads.db")
-    print(f"[DB] 📁 No Supabase credentials found — using local SQLite: {sqlite_path}")
-    print("[DB]    To connect Supabase, add to .env or Render env vars:")
-    print("[DB]      SUPABASE_URL=https://YOUR_PROJECT.supabase.co")
-    print("[DB]      SUPABASE_DB_PASSWORD=your_database_password")
+    print(f"[DB] 📁 Using local SQLite: {sqlite_path}  "
+          f"(set SUPABASE_URL + SUPABASE_KEY in .env to use Supabase)")
     return f"sqlite:///{sqlite_path}"
 
 
