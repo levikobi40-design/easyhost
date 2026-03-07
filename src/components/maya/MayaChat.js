@@ -250,12 +250,30 @@ export default function MayaChat() {
     } catch (err) {
       setOnline(false);
       const errStr = String(err?.message || err || '').toLowerCase();
-      const is429  = errStr.includes('429') || errStr.includes('quota') ||
-                     errStr.includes('exhausted') || errStr.includes('resource');
+
+      const isKeyInvalid = errStr.includes('key_invalid') || errStr.includes('__key_invalid__') ||
+                           errStr.includes('api key not valid') || errStr.includes('api key invalid') ||
+                           errStr.includes('key has expired') || errStr.includes('api key expired') ||
+                           errStr.includes('unauthenticated') || errStr.includes('permission_denied');
+      const is429 = errStr.includes('429') || errStr.includes('quota') ||
+                    errStr.includes('exhausted') || errStr.includes('resource');
+
       if (is429) setLast429(true);
+
+      let errorContent;
+      if (isKeyInvalid) {
+        errorContent = '🔑 Maya is offline — the Gemini API key has expired or is invalid. ' +
+          'Please update GEMINI_API_KEY in your .env file or Render environment variables, ' +
+          'then restart the server. Get a new key at aistudio.google.com/apikey';
+      } else if (is429) {
+        errorContent = t('mayaChat.error429');
+      } else {
+        errorContent = t('mayaChat.errorServer');
+      }
+
       addMayaMessage({
         role: 'assistant',
-        content: is429 ? t('mayaChat.error429') : t('mayaChat.errorServer'),
+        content: errorContent,
         isError: true,
       });
     } finally {
@@ -281,10 +299,15 @@ export default function MayaChat() {
             data: result,
           });
           setOnline(true);
-        } catch {
+        } catch (quickErr) {
+          const qStr = String(quickErr?.message || quickErr || '').toLowerCase();
+          const qKeyBad = qStr.includes('key_invalid') || qStr.includes('key has expired') ||
+                          qStr.includes('api key expired') || qStr.includes('unauthenticated');
           addMayaMessage({
             role: 'assistant',
-            content: t('mayaChat.errorServer'),
+            content: qKeyBad
+              ? '🔑 Maya is offline — the Gemini API key has expired. Update GEMINI_API_KEY and restart the server.'
+              : t('mayaChat.errorServer'),
             isError: true,
           });
         } finally {

@@ -361,7 +361,8 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 13px;
+  /* ≥16 px prevents iOS/Android auto-zoom when the field gets focus */
+  font-size: 16px;
   color: #111827;
   padding: 4px 0;
 }
@@ -401,3 +402,54 @@
 }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Mobile overrides (< 768 px) ─────────────────────────────── */
+@media (max-width: 768px) {
+  /* ── FAB: LTR — stays bottom-right, but shifted left enough
+     to clear the accessibility widget and any right-edge nav ── */
+  .maya-root {
+    bottom: 16px !important;
+    right: 16px !important;
+    left: auto !important;
+  }
+
+  /* ── FAB: RTL — move to BOTTOM-LEFT so it never overlaps the
+     right-side sidebar drawer or navigation elements ────────── */
+  [dir="rtl"] .maya-root {
+    right: auto !important;
+    left: 16px !important;
+    bottom: 16px !important;
+    align-items: flex-start;   /* flip panel anchor to open left */
+  }
+
+  /* ── Chat panel: fill the viewport width minus safe margins ── */
+  .maya-phone {
+    width: calc(100vw - 32px);
+    max-width: 380px;
+    height: 72vh;
+    max-height: 560px;
+  }
+
+  /* ── In RTL the panel opens to the right from the left FAB ── */
+  [dir="rtl"] .maya-phone {
+    align-self: flex-start;
+  }
+
+  /* Prevent iOS/Android auto-zoom on input focus */
+  .maya-input-field,
+  .maya-input-field::placeholder {
+    font-size: 16px !important;
+  }
+
+  /* Send button: pull slightly inward so it never clips the edge */
+  .maya-send-btn {
+    margin-right: 2px;
+  }
+
+  /* Slightly smaller chips on narrow screens */
+  .maya-quick-chip,
+  .maya-guest-chip {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+}
