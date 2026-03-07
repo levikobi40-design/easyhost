@@ -1019,7 +1019,10 @@ except OSError as _e:
 STAFF_EVENT_QUEUES = {}
 STAFF_EVENT_LOCK = threading.Lock()
 
-AUTOMATION_STATS = {}
+AUTOMATION_STATS = {
+    "automated_messages": 0,
+    "last_scan": None,
+}
 
 ICAL_CACHE = {}
 ICAL_LAST_SYNC = {}
