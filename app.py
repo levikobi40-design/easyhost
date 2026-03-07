@@ -386,7 +386,48 @@ def _build_database_url() -> str:
     if raw and not raw.startswith("sqlite"):
         if raw.startswith("postgres://"):
             raw = raw.replace("postgres://", "postgresql://", 1)
-        if "sslmode" not in raw and "supabase" in raw.lower():
+        # Auto-upgrade direct Supabase host (port 5432, IPv6-only) to the
+        # Session Pooler (port 6543, IPv4 — works everywhere including Render).
+        # Detect region from the resolved IP so we pick the right pooler host.
+        _direct_re = re.match(
+            r"(postgresql://[^@]+@)(db\.)([a-z0-9]+)(\.supabase\.co):5432(/[^?]*)(.*)",
+            raw,
+        )
+        if _direct_re:
+            _creds, _, _ref, _, _db, _rest = _direct_re.groups()
+            # Detect region by resolving the direct host — IPv6 prefix tells us the AWS region.
+            # 2406:da18:: → ap-southeast-1 (Singapore)
+            # 2600:1f18:: → us-east-1    (N. Virginia)
+            # 2a05:d01c:: → eu-central-1 (Frankfurt)
+            _pooler_region = "ap-southeast-1"   # default for this project
+            try:
+                import socket as _sock
+                _addrs = _sock.getaddrinfo(f"db.{_ref}.supabase.co", 5432, proto=_sock.IPPROTO_TCP)
+                for _fam, *_, _addr in _addrs:
+                    _ip = _addr[0]
+                    if _ip.startswith("2406:da18"):
+                        _pooler_region = "ap-southeast-1"; break
+                    elif _ip.startswith("2600:1f18") or _ip.startswith("2600:1f1"):
+                        _pooler_region = "us-east-1"; break
+                    elif _ip.startswith("2a05:d01c"):
+                        _pooler_region = "eu-central-1"; break
+                    elif _ip.startswith("2406:da14"):
+                        _pooler_region = "ap-northeast-1"; break
+            except Exception:
+                pass   # fall back to default region
+            # Rewrite to pooler, change username from postgres → postgres.<ref>
+            _creds_pooler = re.sub(
+                r"(postgresql://)([^:]+)(:)",
+                lambda m: f"{m.group(1)}postgres.{_ref}{m.group(3)}",
+                _creds,
+            )
+            raw = f"{_creds_pooler}aws-0-{_pooler_region}.pooler.supabase.com:6543{_db}"
+            if "sslmode" not in _rest:
+                raw += "?sslmode=require"
+            else:
+                raw += _rest
+            print(f"[DB] Auto-upgraded direct Supabase URL to Session Pooler ({_pooler_region}).")
+        elif "sslmode" not in raw and "supabase" in raw.lower():
             raw += ("&" if "?" in raw else "?") + "sslmode=require"
         safe = re.sub(r":([^:@]+)@", ":***@", raw)
         print(f"[DB] ✅ Using DATABASE_URL → {safe}")
@@ -463,23 +504,49 @@ _is_pg     = DATABASE_URL.startswith("postgresql")
 if create_engine and sessionmaker and declarative_base:
 
     # SQLite: single-thread lock needed; PostgreSQL: no extra connect args
-    _connect_args = {"check_same_thread": False} if _is_sqlite else {}
+    _connect_args = {"check_same_thread": False} if _is_sqlite else {
+        # Fail within 10 s on unreachable host instead of hanging for 60+ s.
+        # This lets the server start even if the DB is momentarily unavailable.
+        "connect_timeout": 10,
+        "options": "-c statement_timeout=30000",   # 30-s statement timeout (ms)
+    }
 
-    if _is_sqlite:
-        # SQLite doesn't use a real connection pool
-        ENGINE = create_engine(DATABASE_URL, connect_args=_connect_args)
-    else:
-        # PostgreSQL — conservative pool for Supabase free tier (max 60 connections).
-        # pool_recycle prevents stale connections after periods of inactivity.
-        ENGINE = create_engine(
-            DATABASE_URL,
+    def _make_pg_engine(url):
+        """Create a PostgreSQL engine with conservative pool settings."""
+        return create_engine(
+            url,
             connect_args=_connect_args,
-            pool_pre_ping=True,                        # test connection before use
+            pool_pre_ping=True,           # validate connection before checkout
             pool_size=int(os.getenv("DB_POOL_SIZE", "3")),
             max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "7")),
-            pool_timeout=30,                           # wait max 30 s for a slot
-            pool_recycle=300,                          # recycle connections every 5 min
+            pool_timeout=15,              # wait max 15 s for a pool slot
+            pool_recycle=180,             # recycle connections every 3 min
         )
+
+    if _is_sqlite:
+        ENGINE = create_engine(DATABASE_URL, connect_args=_connect_args)
+    else:
+        # Try to connect; if it times out within 12 s, fall back to SQLite so
+        # the server still starts (background init will retry later).
+        try:
+            ENGINE = _make_pg_engine(DATABASE_URL)
+            # Validate immediately with a cheap query
+            with ENGINE.connect() as _test_conn:
+                _test_conn.execute(text("SELECT 1"))
+            print("[DB] ✅ PostgreSQL connection verified successfully.")
+        except Exception as _pg_err:
+            _err_str = str(_pg_err)
+            print(f"[DB] ⚠️  PostgreSQL connection failed: {_err_str[:200]}")
+            if "timeout" in _err_str.lower() or "timed out" in _err_str.lower():
+                print("[DB]    Hint: Check that DATABASE_URL uses the Supabase POOLER")
+                print("[DB]    (aws-0-us-east-1.pooler.supabase.com port 6543), not")
+                print("[DB]    the direct host (db.*.supabase.co port 5432).")
+            _sqlite_fallback = os.path.join(_APP_DIR, "leads.db")
+            print(f"[DB] 🔄 Falling back to SQLite: {_sqlite_fallback}")
+            DATABASE_URL = f"sqlite:///{_sqlite_fallback}"  # noqa: F811
+            _is_sqlite = True  # noqa: F811
+            ENGINE = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
     SessionLocal = sessionmaker(bind=ENGINE)
     Base = declarative_base()
 
