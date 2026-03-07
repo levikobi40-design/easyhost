@@ -221,22 +221,59 @@
   letter-spacing: 0.5px;
 }
 
-/* Responsive */
+/* ── Mobile TopBar ─────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .menu-btn {
-    display: flex;
+  .top-bar {
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 1rem;
+    border-radius: 0.75rem;
   }
 
+  /* Hamburger always visible on mobile */
+  .menu-btn {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  /* Breadcrumb hidden — saves horizontal space */
   .breadcrumb {
     display: none;
   }
 
+  /* User text hidden — avatar still shows */
   .user-info {
     display: none;
   }
 
-  /* Keep lang selector visible on mobile — show flags only (hide text label) */
+  /* Tenant & role selectors hidden — accessed via sidebar on mobile */
+  .tenant-selector,
+  .role-selector {
+    display: none;
+  }
+
+  /* Language flags — show flag only, hide text label */
   .lang-selector { display: flex; }
   .lang-label { display: none; }
-  .lang-btn { padding: 0 0.4rem; }
+  .lang-btn { padding: 0 0.35rem; }
+
+  /* Compact the right side */
+  .top-bar-end {
+    gap: 0.5rem;
+  }
+
+  /* Logo text hidden on very small screens */
+  .topbar-logo-text {
+    display: none;
+  }
+
+  .topbar-logo {
+    padding: 0.3rem 0.5rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .user-menu {
+    padding: 0.4rem;
+    border-radius: 50%;
+  }
 }

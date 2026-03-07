@@ -318,16 +318,19 @@
   text-transform: uppercase;
 }
 
-/* Responsive */
+/* ── Mobile layout: no sidebar margin, full-width content ─── */
 @media (max-width: 768px) {
+  /* Sidebar slides over content as a drawer — no margin needed */
+  .app-enterprise.sidebar-open .main-content,
+  .app-enterprise.sidebar-collapsed .main-content,
   [dir="rtl"] .app-enterprise .main-content,
   [dir="ltr"] .app-enterprise .main-content {
-    margin-left: 0;
-    margin-right: 0;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
   }
 
   .view-container {
-    padding: 0 1rem 1rem;
+    padding: 0 0.75rem 1.25rem;
   }
 
   .agents-grid {

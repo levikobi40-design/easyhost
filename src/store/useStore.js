@@ -48,8 +48,8 @@ export const useStore = create(
         set({ lang: nextLang });
       },
       
-      // UI State
-      sidebarOpen: true,
+      // UI State — sidebar starts closed on mobile so it doesn't block the content
+      sidebarOpen: typeof window !== 'undefined' && window.innerWidth < 768 ? false : true,
       mayaChatOpen: false,
       notificationsPanelOpen: false,
       

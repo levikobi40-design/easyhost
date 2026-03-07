@@ -2275,24 +2275,33 @@ def create_manual_room(tenant_id, name, description=None, photo_url=None, room_i
         )
         session.add(room)
         session.commit()
+        print(f"[create_manual_room] ✅ Saved property '{name}' id={rid} tenant={tenant_id}", flush=True)
         return {
             "id": rid, "name": name, "description": description or "", "photo_url": photo_url or "",
             "amenities": list(amenities) if amenities else [], "status": status, "created_at": created,
             "last_checkout_at": None, "last_checkin_at": None,
             "max_guests": room.max_guests or 2, "bedrooms": room.bedrooms or 1, "beds": room.beds or 1, "bathrooms": room.bathrooms or 1,
         }
+    except Exception as e:
+        session.rollback()
+        print(f"[create_manual_room] ❌ Failed to save property '{name}': {e}", flush=True)
+        raise
     finally:
         session.close()
 
 
 def list_manual_rooms(tenant_id, owner_id=None):
-    """Return list of dicts. When owner_id is set, only return properties owned by that user."""
+    """Return list of dicts. When owner_id is set, only return properties owned by that user.
+    Demo/guest sessions (owner_id starts with 'demo-') skip the owner filter so they can
+    see all properties in the tenant — needed for the God Mode dashboard and client demos."""
     if not SessionLocal or not ManualRoomModel:
         return []
     session = SessionLocal()
     try:
         q = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id)
-        if owner_id is not None:
+        # Skip owner filter for demo sessions so all properties remain visible
+        is_demo_session = owner_id is not None and str(owner_id).startswith("demo-")
+        if owner_id is not None and not is_demo_session:
             q = q.filter(or_(ManualRoomModel.owner_id.is_(None), ManualRoomModel.owner_id == owner_id))
         rows = q.all()
         out = []
@@ -7338,8 +7347,12 @@ def close_lead():
     message = f"Great! Here is your payment link: {payment_link}"
     result = send_whatsapp(lead.get("phone"), message)
     if result.get("success"):
+        AUTOMATION_STATS.setdefault("automated_messages", 0)
         AUTOMATION_STATS["automated_messages"] += 1
-        emit_automation_stats()
+        try:
+            emit_automation_stats(DEFAULT_TENANT_ID)
+        except Exception:
+            pass
     return jsonify({"payment_link": payment_link, "whatsapp": result})
 
 
@@ -7353,8 +7366,12 @@ def whatsapp_send():
     result = send_whatsapp(to_number, message)
     if not result.get("success"):
         return jsonify(result), 400
+    AUTOMATION_STATS.setdefault("automated_messages", 0)
     AUTOMATION_STATS["automated_messages"] += 1
-    emit_automation_stats()
+    try:
+        emit_automation_stats(DEFAULT_TENANT_ID)
+    except Exception:
+        pass
     return jsonify(result)
 
 

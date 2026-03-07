@@ -319,28 +319,113 @@
   display: none;
 }
 
-/* Responsive */
+/* ── Mobile close button — only visible on mobile ─────────── */
+.sidebar-close-btn {
+  display: none;
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+[dir="rtl"] .sidebar-close-btn {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.sidebar-close-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* ── Backdrop overlay — only rendered on mobile ────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 99;
+  cursor: pointer;
+  animation: overlayFadeIn 0.22s ease forwards;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Mobile layout ─────────────────────────────────────────── */
 @media (max-width: 768px) {
+  /* Overlay visible on mobile */
+  .sidebar-overlay {
+    display: block;
+  }
+
+  /* Sidebar sits above overlay, slides in from the correct edge */
   .sidebar {
     position: fixed;
-    width: 260px !important;
+    width: 280px !important;
+    z-index: 200;
+    /* RTL (Hebrew): slides in from the right */
     transform: translateX(100%);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
   }
 
   .sidebar.open {
-    transform: translateX(0);
+    transform: translateX(0) !important;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.6);
   }
 
+  /* LTR (English): slides in from the left */
   [dir="ltr"] .sidebar {
     transform: translateX(-100%);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
   }
 
   [dir="ltr"] .sidebar.open {
-    transform: translateX(0);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.6);
   }
 
+  /* Desktop collapse chevron — hidden on mobile (use X button instead) */
   .sidebar-toggle {
+    display: none;
+  }
+
+  /* Mobile close (X) button — visible */
+  .sidebar-close-btn {
+    display: flex;
+  }
+
+  /* Ensure labels are always visible inside the mobile drawer */
+  .sidebar.open .nav-label,
+  .sidebar.open .logo-text,
+  .sidebar.open .ai-assistant-sidebar-btn span,
+  .sidebar.open .security-badge span {
+    opacity: 1 !important;
+    width: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Slightly larger touch targets */
+  .nav-item {
+    padding: 1rem 1rem;
+    min-height: 52px;
+  }
+
+  /* Hide QR placeholder on mobile — saves space */
+  .sidebar-qr-placeholder {
     display: none;
   }
 }
