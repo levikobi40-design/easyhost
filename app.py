@@ -205,12 +205,24 @@ def _gemini_generate(prompt: str, timeout: int = 25) -> str:
     Hard-caps each attempt at `timeout` seconds so a hanging HTTP call
     never stalls a Flask/Gunicorn worker indefinitely.
     Raises on hard failure so caller can serve a friendly offline message.
+
+    Re-reads GEMINI_API_KEY from the environment on every call so that
+    updating the key in .env (and restarting the server) takes effect
+    without needing to redeploy.
     """
     import traceback as _tb
     import concurrent.futures
 
     if not _USE_NEW_GENAI:
         raise RuntimeError("[Gemini] google-generativeai not installed — run: pip install google-generativeai")
+
+    # Re-read key at call time so a new .env value is picked up after restart
+    live_key = os.getenv("GEMINI_API_KEY", "").strip() or _GEMINI_API_KEY
+    if not live_key:
+        raise RuntimeError("GEMINI_API_KEY not set — add it to .env or Render Environment Variables")
+    if live_key != getattr(genai, "_configured_key", None):
+        genai.configure(api_key=live_key)
+        genai._configured_key = live_key  # track so we only reconfigure when key changes
 
     def _call_model(model_name):
         model = genai.GenerativeModel(
@@ -240,14 +252,22 @@ def _gemini_generate(prompt: str, timeout: int = 25) -> str:
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
-            print(f"Error: {e}")
             print(f"[Gemini] ❌ {model_name} failed: {type(e).__name__}: {e}")
             _tb.print_exc()
+
+            # Key invalid / expired — no point trying other models; raise a clear error
+            if any(x in err_str for x in ("api_key_invalid", "api key not valid", "invalid api key",
+                                           "permission_denied", "api key expired",
+                                           "key has expired", "unauthenticated")):
+                raise RuntimeError(
+                    "__KEY_INVALID__: The Gemini API key is invalid or expired. "
+                    "Get a new key at https://aistudio.google.com/apikey and update GEMINI_API_KEY."
+                )
             if "not_found" in err_str or "404" in err_str:
                 continue   # model doesn't exist for this key, try next
             if "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
                 continue   # quota hit, try cheaper model
-            break  # auth/network/timeout error — no point retrying other models
+            break  # network/timeout error — no point retrying other models
 
     raise last_exc or RuntimeError("[Gemini] All models failed")
 

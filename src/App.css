@@ -1,6 +1,7 @@
 /* Enterprise App Layout */
 .app-enterprise {
   min-height: 100vh;
+  min-height: 100dvh;   /* shrinks when mobile keyboard opens */
   position: relative;
   overflow-x: hidden;
 }
@@ -335,6 +336,16 @@
 
   .agents-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* ── Prevent iOS/Android auto-zoom on focus ──────────────────
+     Browsers zoom in when an input has font-size < 16px.
+     This global rule ensures no input anywhere triggers zoom. */
+  input,
+  textarea,
+  select,
+  [contenteditable] {
+    font-size: 16px !important;
   }
 }
 

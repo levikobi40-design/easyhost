@@ -422,11 +422,14 @@
     align-items: flex-start;   /* flip panel anchor to open left */
   }
 
-  /* ── Chat panel: fill the viewport width minus safe margins ── */
+  /* ── Chat panel: use dvh so height shrinks when keyboard opens ──
+     dvh = dynamic viewport height (reacts to virtual keyboard).
+     The 72vh fallback is used by older browsers that don't support dvh. */
   .maya-phone {
     width: calc(100vw - 32px);
     max-width: 380px;
-    height: 72vh;
+    height: 72vh;            /* fallback for browsers without dvh */
+    height: 72dvh;           /* shrinks when keyboard pops up ✓ */
     max-height: 560px;
   }
 
@@ -435,18 +438,32 @@
     align-self: flex-start;
   }
 
-  /* Prevent iOS/Android auto-zoom on input focus */
+  /* ── Prevent iOS/Android auto-zoom on input focus ──────────── */
   .maya-input-field,
   .maya-input-field::placeholder {
     font-size: 16px !important;
   }
 
-  /* Send button: pull slightly inward so it never clips the edge */
-  .maya-send-btn {
-    margin-right: 2px;
+  /* ── Input bar: safe-area padding so the bar clears the iOS
+     home-indicator bar at the very bottom of the screen ──────── */
+  .maya-input-bar {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* Slightly smaller chips on narrow screens */
+  /* ── Input pill: taller touch target on mobile ─────────────── */
+  .maya-input-pill {
+    min-height: 46px;
+  }
+
+  /* ── Send button: pull slightly inward, never clips the edge ── */
+  .maya-send-btn {
+    width: 44px;
+    height: 44px;
+    margin-right: 0;
+    flex-shrink: 0;
+  }
+
+  /* ── Slightly smaller chips on narrow screens ───────────────── */
   .maya-quick-chip,
   .maya-guest-chip {
     font-size: 11px;
