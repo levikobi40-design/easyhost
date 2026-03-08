@@ -2,19 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { CheckCircle, Clock, DollarSign, Activity, Home, Users, Phone, MessageCircle } from 'lucide-react';
 import useStore from '../../store/useStore';
 import { toWhatsAppPhone } from '../../utils/phone';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from 'recharts';
 import { getDashboardSummary, getStatsSummary, getPropertyTasks, updatePropertyTaskStatus } from '../../services/api';
 import StaffGrid from './StaffGrid';
 import AirbnbImporter from './AirbnbImporter';
@@ -346,18 +333,26 @@ export default function PremiumDashboard() {
             <div className="bg-gray-800/60 dark:bg-gray-800/80 rounded-3xl border border-gray-700/50 dark:border-gray-600/50 shadow-xl backdrop-blur-sm p-6 min-h-[280px]">
               <h3 className="text-lg font-bold text-gray-100 dark:text-white mb-4">משימות לפי סטטוס</h3>
               {tasksByStatusData.some((d) => d.value > 0) ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={tasksByStatusData} layout="vertical" margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis type="number" stroke="#6b7280" />
-                    <YAxis type="category" dataKey="name" width={70} stroke="#6b7280" />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8 }}
-                      formatter={(value) => [value, 'משימות']}
-                    />
-                    <Bar dataKey="value" name="משימות" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="space-y-4 mt-4">
+                  {tasksByStatusData.map((d) => {
+                    const total = tasksByStatusData.reduce((s, x) => s + x.value, 0) || 1;
+                    const pct = Math.round((d.value / total) * 100);
+                    return (
+                      <div key={d.name}>
+                        <div className="flex justify-between text-sm text-gray-300 mb-1">
+                          <span>{d.name}</span>
+                          <span className="font-bold">{d.value}</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-4 overflow-hidden">
+                          <div
+                            className="h-4 rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, backgroundColor: d.fill }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="h-[200px] flex items-center justify-center text-gray-400 dark:text-gray-500">אין משימות</div>
               )}
@@ -365,25 +360,26 @@ export default function PremiumDashboard() {
             <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-6 min-h-[280px]">
               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">עומס עובדים</h3>
               {staffWorkloadData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie
-                      data={staffWorkloadData}
-                      dataKey="tasks"
-                      nameKey="fullName"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      label={({ fullName, tasks: t }) => `${fullName}: ${t}`}
-                    >
-                      {staffWorkloadData.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v, n, props) => [`${props.payload.fullName}: ${v} משימות`, '']} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="space-y-3 mt-4">
+                  {staffWorkloadData.map((d) => {
+                    const maxTasks = Math.max(...staffWorkloadData.map((x) => x.tasks)) || 1;
+                    const pct = Math.round((d.tasks / maxTasks) * 100);
+                    return (
+                      <div key={d.fullName}>
+                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300 mb-1">
+                          <span className="truncate max-w-[140px]">{d.fullName}</span>
+                          <span className="font-bold">{d.tasks} משימות</span>
+                        </div>
+                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                          <div
+                            className="h-3 rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, backgroundColor: d.fill }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="h-[200px] flex items-center justify-center text-gray-400 dark:text-gray-500">אין נתונים</div>
               )}
