@@ -3,10 +3,24 @@
 .a11y-widget {
   position: fixed;
   bottom: 90px;      /* sits above the Maya FAB */
-  left: 16px;
+  left: 16px;        /* LTR: bottom-left, opposite corner from Maya (bottom-right) */
+  right: auto;
   z-index: 10000;
   direction: rtl;
   font-family: inherit;
+}
+
+/* RTL (Hebrew): Maya FAB moves to bottom-left, so we move accessibility to bottom-right */
+[dir="rtl"] .a11y-widget {
+  left: auto;
+  right: 16px;
+}
+
+/* Mobile: extra bottom clearance so it clears browser chrome */
+@media (max-width: 768px) {
+  .a11y-widget {
+    bottom: 100px;
+  }
 }
 
 /* The trigger button */
@@ -33,7 +47,8 @@
 .a11y-panel {
   position: absolute;
   bottom: 56px;
-  left: 0;
+  left: 0;          /* LTR: panel opens to the right */
+  right: auto;
   width: 240px;
   background: #ffffff;
   border: 2px solid #075E54;
@@ -41,6 +56,12 @@
   box-shadow: 0 8px 32px rgba(0,0,0,0.28);
   overflow: hidden;
   animation: a11ySlideUp 0.18s ease;
+}
+
+/* RTL: panel opens to the left (anchored to right edge of trigger) */
+[dir="rtl"] .a11y-panel {
+  left: auto;
+  right: 0;
 }
 
 @keyframes a11ySlideUp {

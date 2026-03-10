@@ -97,13 +97,19 @@ function App() {
   }, [market, lang, setLang]);
 
   useEffect(() => {
+    const normaliseRole = (r) => {
+      if (!r) return 'host';
+      const map = { owner: 'host', manager: 'admin', staff: 'field', worker: 'field' };
+      return map[r] || r;
+    };
     const roleViews = {
       host:     ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
       admin:    ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'godmode'],
       operator: ['operator'],
       field:    ['field'],
     };
-    const allowed = roleViews[role] || ['dashboard'];
+    const navRole = normaliseRole(role);
+    const allowed = roleViews[navRole] || roleViews['host'];
     if (!allowed.includes(activeView)) {
       setActiveView(allowed[0]);
     }
@@ -111,14 +117,21 @@ function App() {
 
   useEffect(() => {
     const onTaskCreated = () => {
-      if (role === 'host' || role === 'admin') setActiveView('tasks');
+      const normR = { owner: 'host', manager: 'admin', staff: 'field', worker: 'field' }[role] || role;
+    if (normR === 'host' || normR === 'admin') setActiveView('tasks');
     };
     window.addEventListener('maya-task-created', onTaskCreated);
     return () => window.removeEventListener('maya-task-created', onTaskCreated);
   }, [role]);
 
   const renderRoleView = () => {
-    switch (role) {
+    // Normalise backend roles (owner, manager, staff, worker) to frontend nav groups
+    const normRole = (() => {
+      const map = { owner: 'host', manager: 'admin', staff: 'field', worker: 'field' };
+      return map[role] || role;
+    })();
+
+    switch (normRole) {
       case 'operator':
         return (
           <div key="operator-view">
@@ -129,6 +142,7 @@ function App() {
       case 'field':
         return <FieldView key="field-view" />;
       case 'host':
+      case 'admin':
       default:
         if (activeView === 'crm')        return <LeadsCRM key="host-crm" />;
         if (activeView === 'premium')    return <PremiumDashboard key="host-premium" />;

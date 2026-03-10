@@ -30,6 +30,14 @@ const Sidebar = ({ activeView, setActiveView }) => {
 
   const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
 
+  // Normalise backend role values → frontend nav groups
+  const normaliseRole = (r) => {
+    if (!r) return 'host';
+    const map = { owner: 'host', manager: 'admin', staff: 'field', worker: 'field' };
+    return map[r] || r;
+  };
+  const navRole = normaliseRole(role);
+
   const roleNav = {
     host:     ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
     admin:    ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'godmode'],
@@ -37,8 +45,9 @@ const Sidebar = ({ activeView, setActiveView }) => {
     field:    ['field'],
   };
 
+  // Default to 'host' view so Properties & Leads are always visible after login
   const visibleItems = menuItems.filter((item) =>
-    (roleNav[role] || []).includes(item.id)
+    (roleNav[navRole] || roleNav['host']).includes(item.id)
   );
 
   const handleAIAssistantClick = () => {

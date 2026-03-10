@@ -284,6 +284,18 @@ app = Flask(
     static_folder=os.path.join(_static_dir, "static"),  # JS/CSS chunks
     template_folder=_template_dir,                       # index.html
 )
+
+# ── Session & Cookie config ──────────────────────────────────────────────────
+from datetime import timedelta
+app.config["SECRET_KEY"]              = os.getenv("JWT_SECRET", os.urandom(32).hex())
+app.config["SESSION_PERMANENT"]       = True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+# Production (Render / HTTPS) — cross-site cookies required for Render's domain
+_is_production = bool(os.getenv("RENDER") or os.getenv("DYNO"))
+app.config["SESSION_COOKIE_SECURE"]   = _is_production
+app.config["SESSION_COOKIE_SAMESITE"] = "None" if _is_production else "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+
 CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-Tenant-Id"]}})
 
 
@@ -3668,6 +3680,14 @@ def init_db_browser():
             log(f"[init-db] ❌ Schema error: {e}")
     else:
         log("[init-db] ⚠️  Database engine not available — check SQLAlchemy install")
+
+    # ── 1b. Seed admin user (levikobi40@gmail.com / 123456) ──────────────────
+    try:
+        ensure_levikobi_user()
+        ensure_admin_from_env()
+        log("[init-db] ✅ Admin user levikobi40@gmail.com ready (pw: 123456)")
+    except Exception as e:
+        log(f"[init-db] ⚠️  Admin seed warning: {e}")
 
     # ── 2. Seed 10 pilot properties ──────────────────────────────────────────
     prop_count = 0
