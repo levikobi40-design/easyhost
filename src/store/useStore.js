@@ -18,12 +18,22 @@ export const useStore = create(
       setRole: (role) => set({ role }),
       setHasHydrated: (hasHydrated) => set({ hasHydrated }),
 
+      // Atomic login — sets token, tenant, and role in one update so
+      // setActiveTenantId never wipes the auth token mid-login.
+      loginSuccess: (token, tenantId, userRole) => set({
+        authToken: token,
+        isAuthenticated: true,
+        activeTenantId: tenantId || get().activeTenantId,
+        role: userRole || 'host',
+      }),
+
       tenants: [
         { id: 'demo', name: 'Demo Hotels' },
         { id: 'pilot-1', name: 'Pilot Group 1' },
         { id: 'pilot-2', name: 'Pilot Group 2' },
       ],
       activeTenantId: 'demo',
+      // Only use setActiveTenantId for intentional tenant-switching (logs out).
       setActiveTenantId: (activeTenantId) => set({ activeTenantId, authToken: null, isAuthenticated: false }),
 
       fieldLanguage: 'en',

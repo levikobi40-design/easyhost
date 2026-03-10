@@ -3127,28 +3127,46 @@ def force_seed_sample_tasks(session=None):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def seed_pilot_demo():
-    """Create 10 demo properties (5 John / 5 Sarah), demo owner accounts, and mock staff."""
-    if not all([SessionLocal, ManualRoomModel, PropertyStaffModel, UserModel]):
+    """Create 10 demo properties (5 John / 5 Sarah), demo owner accounts, and mock staff.
+
+    Robust: each insert is wrapped in its own try/except so a single failure
+    (e.g. missing column) does not abort the entire seed run.
+    """
+    if not SessionLocal or not ManualRoomModel:
+        print("[seed_pilot_demo] Skipped — DB models not available")
         return
     session = SessionLocal()
     try:
+        # ── Quick check: if all 10 properties already exist, nothing to do ────
+        existing_count = session.query(ManualRoomModel).filter(
+            ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+        ).count()
+        if existing_count >= 10:
+            print(f"[seed_pilot_demo] ✅ Already seeded ({existing_count}/10 properties found)")
+            return
+
         # ── Demo owner user accounts ──────────────────────────────────────────
         owner_map = {}
-        for email, name in [("john@easyhost.demo", "John"), ("sarah@easyhost.demo", "Sarah")]:
-            existing = session.query(UserModel).filter_by(email=email).first()
-            if not existing:
-                uid = str(uuid.uuid4())
-                session.add(UserModel(
-                    id=uid, tenant_id=DEFAULT_TENANT_ID, email=email,
-                    password_hash=generate_password_hash("demo123", method="pbkdf2:sha256"),
-                    role="host", created_at=now_iso(),
-                ))
-                owner_map[name] = uid
-            else:
-                owner_map[name] = existing.id
-        session.commit()
+        if UserModel:
+            for email, name in [("john@easyhost.demo", "John"), ("sarah@easyhost.demo", "Sarah")]:
+                try:
+                    existing = session.query(UserModel).filter_by(email=email).first()
+                    if not existing:
+                        uid = str(uuid.uuid4())
+                        session.add(UserModel(
+                            id=uid, tenant_id=DEFAULT_TENANT_ID, email=email,
+                            password_hash=generate_password_hash("demo123", method="pbkdf2:sha256"),
+                            role="host", created_at=now_iso(),
+                        ))
+                        session.commit()
+                        owner_map[name] = uid
+                    else:
+                        owner_map[name] = existing.id
+                except Exception as _ue:
+                    session.rollback()
+                    print(f"[seed_pilot_demo] Demo user {email} skipped: {_ue}")
 
-        # ── 10 pilot properties ───────────────────────────────────────────────
+        # ── 10 pilot properties (one commit per row to survive partial failures) ─
         pilot_defs = [
             ("John",  "John's Beach House",       "Beachfront 3BR villa",              6, 250),
             ("John",  "John's Downtown Loft",     "Modern loft in the city centre",    2, 150),
@@ -3157,42 +3175,70 @@ def seed_pilot_demo():
             ("John",  "John's Rooftop Penthouse", "Luxury penthouse, panoramic views", 8, 400),
             ("Sarah", "Sarah's Poolside Villa",   "5-star villa with private pool",    8, 350),
             ("Sarah", "Sarah's Garden Suite",     "Tranquil garden apartment",         3, 120),
-            ("Sarah", "Sarah's Harbor View",      "Waterfront apartment, harbour views",4, 200),
+            ("Sarah", "Sarah's Harbor View",      "Waterfront apartment, harbour views", 4, 200),
             ("Sarah", "Sarah's Cozy Cottage",     "Charming countryside cottage",      4, 140),
             ("Sarah", "Sarah's Modern Flat",      "Sleek flat near airport",           2, 110),
         ]
+        seeded = 0
         for owner_name, pname, desc, guests, _price in pilot_defs:
-            if session.query(ManualRoomModel).filter_by(tenant_id=DEFAULT_TENANT_ID, name=pname).first():
-                continue
-            session.add(ManualRoomModel(
-                id=str(uuid.uuid4()), tenant_id=DEFAULT_TENANT_ID,
-                owner_id=owner_map.get(owner_name),
-                name=pname, description=desc, status="active", created_at=now_iso(),
-                max_guests=guests, bedrooms=max(1, guests // 2),
-                beds=max(1, guests // 2), bathrooms=max(1, guests // 3),
-            ))
-        session.commit()
+            try:
+                if session.query(ManualRoomModel).filter_by(
+                    tenant_id=DEFAULT_TENANT_ID, name=pname
+                ).first():
+                    continue
+                new_prop = ManualRoomModel(
+                    id=str(uuid.uuid4()),
+                    tenant_id=DEFAULT_TENANT_ID,
+                    name=pname,
+                    description=desc,
+                    status="active",
+                    created_at=now_iso(),
+                    max_guests=guests,
+                    bedrooms=max(1, guests // 2),
+                    beds=max(1, guests // 2),
+                    bathrooms=max(1, guests // 3),
+                )
+                # owner_id is optional — only set if column exists on model
+                if hasattr(new_prop, "owner_id"):
+                    new_prop.owner_id = owner_map.get(owner_name)
+                session.add(new_prop)
+                session.commit()
+                seeded += 1
+            except Exception as _pe:
+                session.rollback()
+                print(f"[seed_pilot_demo] Property '{pname}' skipped: {_pe}")
 
         # ── Mock staff for every pilot property ───────────────────────────────
-        for pname in DEMO_PILOT_PROPERTY_NAMES:
-            prop = session.query(ManualRoomModel).filter_by(
-                tenant_id=DEFAULT_TENANT_ID, name=pname
-            ).first()
-            if not prop:
-                continue
-            for ms in MOCK_STAFF:
-                if not session.query(PropertyStaffModel).filter_by(
-                    property_id=prop.id, name=ms["name"]
-                ).first():
-                    session.add(PropertyStaffModel(
-                        id=str(uuid.uuid4()), property_id=prop.id,
-                        name=ms["name"], role=ms["role"], phone_number=ms["phone"],
-                    ))
-        session.commit()
-        print("[seed_pilot_demo] ✅ Pilot demo ready: 10 properties + mock staff seeded")
+        staff_added = 0
+        if PropertyStaffModel:
+            for pname in DEMO_PILOT_PROPERTY_NAMES:
+                try:
+                    prop = session.query(ManualRoomModel).filter_by(
+                        tenant_id=DEFAULT_TENANT_ID, name=pname
+                    ).first()
+                    if not prop:
+                        continue
+                    for ms in MOCK_STAFF:
+                        if not session.query(PropertyStaffModel).filter_by(
+                            property_id=prop.id, name=ms["name"]
+                        ).first():
+                            session.add(PropertyStaffModel(
+                                id=str(uuid.uuid4()), property_id=prop.id,
+                                name=ms["name"], role=ms["role"], phone_number=ms["phone"],
+                            ))
+                            staff_added += 1
+                    session.commit()
+                except Exception as _se:
+                    session.rollback()
+                    print(f"[seed_pilot_demo] Staff for '{pname}' skipped: {_se}")
+
+        total = session.query(ManualRoomModel).filter(
+            ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+        ).count()
+        print(f"[seed_pilot_demo] ✅ Done — {seeded} new properties, {staff_added} staff added ({total}/10 total)")
     except Exception as e:
         session.rollback()
-        print(f"[seed_pilot_demo] Error: {e}")
+        print(f"[seed_pilot_demo] Fatal error: {e}")
     finally:
         session.close()
 
@@ -5736,9 +5782,11 @@ def property_tasks_api():
                     # canonical field names
                     "property_id":      pid,
                     "property_name":    room_label,
-                    # aliases expected by older frontend code
+                    # aliases expected by frontend fallback chain
+                    "title":            desc_val,
                     "room_id":          pid,
                     "room":             room_label,
+                    "room_number":      room_label,
                     "task_type":        desc_val,
                     # rest of payload
                     "assigned_to":      assigned_to,
@@ -5749,6 +5797,7 @@ def property_tasks_api():
                     "completed_at":     getattr(r, "completed_at",     None),
                     "duration_minutes": getattr(r, "duration_minutes", None),
                     "staff_name":       staff_name or "Unknown",
+                    "worker_name":      staff_name or "Unknown",
                     "staff_phone":      staff_phone,
                     "property_context": ctx,
                     "photo_url":        getattr(r, "photo_url", None) or "",
@@ -5775,9 +5824,12 @@ def property_tasks_api():
 
         task_id = str(uuid.uuid4())
         created = now_iso()
-        full_desc = description
+        full_desc = description.strip()
         if property_context:
-            full_desc = f"{description} | נכס: {property_context}" if description else f"נכס: {property_context}"
+            full_desc = f"{full_desc} | נכס: {property_context}" if full_desc else f"נכס: {property_context}"
+        if not full_desc:
+            full_desc = "ביצוע משימה"
+        display_property = property_name.strip() or property_id or "חדר לא ידוע"
 
         # ── Smart Dispatch: if worker already has an In_Progress task, queue as Pending ──
         queued_msg = None
@@ -5816,21 +5868,28 @@ def property_tasks_api():
         )
         session.add(task)
         session.commit()
+        display_staff = staff_name.strip() or "Unknown"
         task_payload = {
             "id": task_id,
             "property_id": property_id,
             "staff_id": staff_id,
             "assigned_to": assigned_to,
-            "description": full_desc,
-            "status": effective_status,
-            "created_at": created,
-            "property_name": property_name,
-            "staff_name": staff_name,
-            "staff_phone": staff_phone,
-            "photo_url": photo_url,
-            "queued": queued_msg is not None,
+            # canonical + all frontend aliases so the card never appears empty
+            "description":   full_desc,
+            "title":         full_desc,
+            "task_type":     full_desc,
+            "property_name": display_property,
+            "room":          display_property,
+            "room_number":   display_property,
+            "staff_name":    display_staff,
+            "worker_name":   display_staff,
+            "staff_phone":   staff_phone,
+            "status":        effective_status,
+            "created_at":    created,
+            "photo_url":     photo_url,
+            "queued":        queued_msg is not None,
             "queued_message": queued_msg,
-            "actions": STAFF_ACTIONS,
+            "actions":       STAFF_ACTIONS,
         }
         return jsonify({"ok": True, "task": task_payload}), 201
     except Exception as e:

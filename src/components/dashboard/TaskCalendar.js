@@ -82,8 +82,16 @@ export default function TaskCalendar() {
     const onTaskCreated = (e) => {
       const newTask = e?.detail?.task;
       if (newTask && newTask.id) {
+        const descFallback = safeStr(newTask.description ?? newTask.title ?? newTask.task_type ?? newTask.content) || 'ביצוע משימה';
+        const propFallback = safeStr(newTask.property_name ?? newTask.room ?? newTask.room_number) || 'חדר לא ידוע';
+        const staffFallback = safeStr(newTask.staff_name ?? newTask.worker_name) || 'Unknown';
         const taskWithActions = {
           ...newTask,
+          description:   descFallback,
+          title:         descFallback,
+          property_name: propFallback,
+          staff_name:    staffFallback,
+          worker_name:   staffFallback,
           status: newTask.status || 'Pending',
           actions: newTask.actions || [{ label: 'ראיתי ✅', value: 'seen' }, { label: 'בוצע 🏁', value: 'done' }],
         };

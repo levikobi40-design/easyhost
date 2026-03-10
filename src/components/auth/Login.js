@@ -4,7 +4,7 @@ import useStore from '../../store/useStore';
 import './Login.css';
 
 function Login() {
-  const { setAuthToken, setActiveTenantId, setRole } = useStore();
+  const { loginSuccess } = useStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
@@ -19,9 +19,7 @@ function Login() {
       const fn = isRegister ? registerAuth : loginAuth;
       const data = await fn(email.trim().toLowerCase(), password);
       if (data.token) {
-        setAuthToken(data.token);
-        if (data.tenant_id) setActiveTenantId(data.tenant_id);
-        if (data.role) setRole(data.role);
+        loginSuccess(data.token, data.tenant_id, data.role);
       }
     } catch (err) {
       setError(err.message || 'Something went wrong');
@@ -36,9 +34,7 @@ function Login() {
     try {
       const data = await getDemoAuthToken('demo');
       if (data.token) {
-        setAuthToken(data.token);
-        if (data.tenant_id) setActiveTenantId(data.tenant_id);
-        setRole('host');
+        loginSuccess(data.token, data.tenant_id || 'demo', 'host');
       }
     } catch (err) {
       setError(err.message || 'Demo login failed');
