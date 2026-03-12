@@ -198,7 +198,7 @@
 
 .task-description {
   font-size: 1.26rem;
-  color: #374151;
+  color: #000000;
   margin-bottom: 1rem;
   line-height: 1.5;
   word-break: break-word;
@@ -218,7 +218,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 1.14rem;
-  color: #4b5563;
+  color: #111827;
   min-width: 0;
 }
 
@@ -464,4 +464,20 @@
 
 .task-photo-link:hover .task-photo-thumb {
   opacity: 0.85;
+}
+
+/* ── Maximum readability: all text inside white task cards is black ── */
+.task-card h1,
+.task-card h2,
+.task-card h3,
+.task-card h4,
+.task-card h5,
+.task-card h6,
+.task-card p,
+.task-card span,
+.task-card label,
+.task-card .task-date,
+.task-card .task-description,
+.task-card .task-meta-row {
+  color: #000000;
 }

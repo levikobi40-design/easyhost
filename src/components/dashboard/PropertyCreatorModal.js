@@ -152,6 +152,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
             key={initialProperty?.id ?? 'new'}
             maxFiles={5}
             onUploadComplete={setPhotoUrls}
+            propertyId={initialProperty?.id ?? null}
             initialUrls={(initialProperty?.mainImage || initialProperty?.photo_url) ? [initialProperty?.mainImage || initialProperty?.photo_url] : []}
           />
 

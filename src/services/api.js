@@ -589,10 +589,11 @@ export const createProperty = async (payload = {}) => {
  * @param {File|File[]} files - Single file or array of files
  * @returns {Promise<{urls: string[]}>}
  */
-export const uploadImages = async (files) => {
+export const uploadImages = async (files, propertyId = null) => {
   const fileList = Array.isArray(files) ? files : [files];
   const formData = new FormData();
   fileList.forEach((f) => formData.append('files', f));
+  if (propertyId) formData.append('property_id', propertyId);
   const response = await fetch(`${API_URL}/api/upload`, {
     method: 'POST',
     headers: {

@@ -1350,6 +1350,58 @@
   color: #94a3b8;
 }
 
+/* ── White-background stat cards: override light-on-dark colours ── */
+.stat-card .stat-content .stat-label {
+  color: #374151 !important;
+}
+
+.stat-card .stat-content .stat-value {
+  color: #111827 !important;
+}
+
+.stat-card .stat-subtitle {
+  color: #6b7280 !important;
+}
+
+.stat-card h1,
+.stat-card h2,
+.stat-card h3,
+.stat-card h4,
+.stat-card h5,
+.stat-card h6,
+.stat-card p,
+.stat-card span:not(.stat-trend *) {
+  color: #111827;
+}
+
+/* Property hero cards are also white */
+.property-hero-card h1,
+.property-hero-card h2,
+.property-hero-card h3,
+.property-hero-card p,
+.property-hero-card span {
+  color: #111827;
+}
+
+/* White panels (agent, memory) */
+.agent-panel h1,
+.agent-panel h2,
+.agent-panel h3,
+.agent-panel p,
+.agent-panel span,
+.memory-bank h1,
+.memory-bank h2,
+.memory-bank h3,
+.memory-bank p,
+.memory-bank span,
+.memory-card h1,
+.memory-card h2,
+.memory-card h3,
+.memory-card p,
+.memory-card span {
+  color: #111827;
+}
+
 .stat-trend {
   display: flex;
   align-items: center;

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { UploadCloud, X } from 'lucide-react';
 import { uploadImages } from '../../services/api';
 
-const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [] }) => {
+const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], propertyId = null }) => {
   const [previewUrls, setPreviewUrls] = useState([]);
   const [uploadedUrls, setUploadedUrls] = useState(Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : []);
   const [isUploading, setIsUploading] = useState(false);
@@ -25,7 +25,7 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [] }) =>
       setIsUploading(true);
 
       try {
-        const result = await uploadImages(list);
+        const result = await uploadImages(list, propertyId);
         const urls = Array.isArray(result?.urls) ? result.urls : [];
         let next;
         setUploadedUrls((prev) => {
@@ -42,7 +42,7 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [] }) =>
         setIsUploading(false);
       }
     },
-    [maxFiles, uploadedUrls, onUploadComplete]
+    [maxFiles, uploadedUrls, onUploadComplete, propertyId]
   );
 
   const handleInputChange = (e) => {

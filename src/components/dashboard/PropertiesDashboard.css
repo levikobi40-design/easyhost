@@ -35,3 +35,16 @@
   overflow: hidden;
   min-width: 0;
 }
+
+/* ── Maximum readability: all text on white property cards is black ── */
+.property-card-airbnb h1,
+.property-card-airbnb h2,
+.property-card-airbnb h3,
+.property-card-airbnb h4,
+.property-card-airbnb p,
+.property-card-airbnb span,
+.property-card-airbnb label,
+.property-card-airbnb .property-card-title,
+.property-card-airbnb .property-suite-title {
+  color: #000000;
+}

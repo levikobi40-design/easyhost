@@ -169,13 +169,18 @@ MAYA_SYSTEM_INSTRUCTION = """You are Maya — a concise, professional AI operati
 Absolute rules — never break them:
 1. Return JSON only — no free text, no explanations, no lists.
 2. Never enumerate properties, staff, or property details unless the user explicitly asks for a "property list", "staff list", or "report".
-3. When a task is requested → return only:
+3. SINGLE task → return:
    {"action":"add_task","task":{"staffName":"<name>","content":"<description>","propertyName":"<property>","status":"Pending"}}
-4. When information is requested (question, report) → return only:
+4. MULTIPLE tasks (quantity word like "2", "שניים", "3", "three", etc.) → return an array:
+   {"action":"add_tasks","tasks":[{"staffName":"<name>","content":"<description>","propertyName":"<property>","status":"Pending"}, ...]}
+   Create exactly as many task objects as the quantity requested.
+5. When information is requested (question, report) → return only:
    {"action":"info","message":"<short answer in English, one or two sentences>"}
-5. Staff routing: cleaning/towels/housekeeping → Alma | repair/leak/maintenance/broken → Kobi | electrical/bulb/power/circuit → Avi
-6. If room number is missing → write "room not specified" in content — do not ask for clarification.
-7. Language: respond in the same language the user writes in (English by default)."""
+6. Staff routing: cleaning/towels/housekeeping/ניקיון/מגבות → Alma | repair/leak/maintenance/broken/תיקון/נזילה/תחזוקה → Kobi | electrical/bulb/power/circuit/חשמל/מנורה/קצר → Avi
+7. Room number extraction: parse numbers from natural language ("room 5", "חדר 5", "חמש", "five") and embed in content as "Room 5: <issue>".
+8. If the user's request is task-like BUT the property or room is completely unclear → return:
+   {"action":"clarify","question":"Which property or room should I assign this to?"}
+9. Language: respond in the same language the user writes in (English by default)."""
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
 STAFF_KEYWORDS = {
@@ -4483,12 +4488,19 @@ def upload_images():
     """
     Generic image upload — accepts multiple files, returns URLs.
     Routes to Cloudinary when configured, falls back to local storage.
+
+    Optional form field 'property_id': when provided, saves the first
+    uploaded URL as the property's photo_url immediately so the caller
+    does not need a separate PATCH request.
     """
     files = request.files.getlist("files") or (
         [request.files["file"]] if request.files.get("file") else []
     )
     if not files:
         return jsonify({"error": "Missing files", "urls": []}), 400
+
+    property_id = (request.form.get("property_id") or "").strip() or None
+    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
 
     uploaded_urls = []
     for f in files:
@@ -4500,23 +4512,45 @@ def upload_images():
 
         data, new_ext = _compress_image(f.stream)
 
+        url = None
         if _CLOUDINARY_CONFIGURED:
             try:
                 url = _cloudinary_upload(data, folder="easyhost/uploads")
-                uploaded_urls.append(url)
-                continue
             except Exception as cdn_err:
                 print(f"[Cloudinary] Upload failed, falling back to local: {cdn_err}")
 
-        # ── Local fallback ────────────────────────────────────────────────
-        ext = new_ext or (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg")
-        if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
-            ext = "jpg"
-        unique_name = f"{uuid.uuid4().hex}.{ext}"
-        file_path = os.path.join(UPLOAD_STATIC, unique_name)
-        with open(file_path, "wb") as _fh:
-            _fh.write(data)
-        uploaded_urls.append(f"{API_BASE_URL}/uploads/shared/{unique_name}")
+        if not url:
+            # ── Local fallback ────────────────────────────────────────────────
+            ext = new_ext or (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg")
+            if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+                ext = "jpg"
+            unique_name = f"{uuid.uuid4().hex}.{ext}"
+            file_path = os.path.join(UPLOAD_STATIC, unique_name)
+            with open(file_path, "wb") as _fh:
+                _fh.write(data)
+            url = f"{API_BASE_URL}/uploads/shared/{unique_name}"
+
+        uploaded_urls.append(url)
+
+    # ── Persist first URL to property if property_id provided ────────────────
+    if property_id and uploaded_urls and SessionLocal and ManualRoomModel:
+        try:
+            _sess = SessionLocal()
+            try:
+                row = _sess.query(ManualRoomModel).filter_by(
+                    id=property_id, tenant_id=tenant_id
+                ).first()
+                if row:
+                    row.photo_url = uploaded_urls[0]
+                    _sess.commit()
+                    print(f"[upload_images] ✅ photo_url saved to property {property_id}")
+            except Exception as _dbe:
+                _sess.rollback()
+                print(f"[upload_images] DB save warning: {_dbe}")
+            finally:
+                _sess.close()
+        except Exception as _outer:
+            print(f"[upload_images] Session error: {_outer}")
 
     return jsonify({"urls": uploaded_urls})
 
@@ -4524,8 +4558,14 @@ def upload_images():
 @app.route("/api/rooms/manual/photo/upload", methods=["POST"])
 @require_auth
 def room_photo_upload():
-    """Property photo upload — routes to Cloudinary when configured, else local."""
+    """Property photo upload — routes to Cloudinary when configured, else local.
+    Accepts optional form field 'property_id'; when present, immediately persists
+    the new photo_url to the manual_rooms row so the caller doesn't need a
+    separate PATCH.
+    """
     tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+    property_id = (request.form.get("property_id") or "").strip() or None
+
     if "photo" not in request.files:
         return jsonify({"error": "Missing file"}), 400
     file = request.files["photo"]
@@ -4534,23 +4574,45 @@ def room_photo_upload():
 
     data, new_ext = _compress_image(file.stream)
 
+    photo_url = None
     if _CLOUDINARY_CONFIGURED:
         try:
             photo_url = _cloudinary_upload(data, folder=f"easyhost/properties/{tenant_id}")
-            return jsonify({"ok": True, "photo_url": photo_url})
         except Exception as cdn_err:
             print(f"[Cloudinary] Property photo upload failed, falling back to local: {cdn_err}")
 
-    # ── Local fallback ────────────────────────────────────────────────────────
-    os.makedirs(UPLOAD_ROOT, exist_ok=True)
-    tenant_dir = os.path.join(UPLOAD_ROOT, tenant_id, "properties")
-    os.makedirs(tenant_dir, exist_ok=True)
-    orig_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-    ext = new_ext or orig_ext
-    unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-    with open(os.path.join(tenant_dir, unique_name), "wb") as _fh:
-        _fh.write(data)
-    photo_url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
+    if not photo_url:
+        # ── Local fallback ────────────────────────────────────────────────────
+        os.makedirs(UPLOAD_ROOT, exist_ok=True)
+        tenant_dir = os.path.join(UPLOAD_ROOT, tenant_id, "properties")
+        os.makedirs(tenant_dir, exist_ok=True)
+        orig_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+        ext = new_ext or orig_ext
+        unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
+        with open(os.path.join(tenant_dir, unique_name), "wb") as _fh:
+            _fh.write(data)
+        photo_url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
+
+    # ── Persist to DB immediately if property_id provided ────────────────────
+    if property_id and SessionLocal and ManualRoomModel:
+        try:
+            _sess = SessionLocal()
+            try:
+                row = _sess.query(ManualRoomModel).filter_by(
+                    id=property_id, tenant_id=tenant_id
+                ).first()
+                if row:
+                    row.photo_url = photo_url
+                    _sess.commit()
+                    print(f"[room_photo_upload] ✅ photo_url saved to property {property_id}")
+            except Exception as _dbe:
+                _sess.rollback()
+                print(f"[room_photo_upload] DB save warning: {_dbe}")
+            finally:
+                _sess.close()
+        except Exception as _outer:
+            print(f"[room_photo_upload] Session error: {_outer}")
+
     return jsonify({"ok": True, "photo_url": photo_url})
 
 
@@ -5693,7 +5755,7 @@ Rules:
     cmd_lower = (command or "").lower().strip()
     task_keywords = ["תקלה", "בעיה", "דליפה", "נזילה", "קצר", "חשמל", "ניקיון", "תחזוקה", "תקן", "תתקן", "נשרף", "נשרפה", "מנורה", "מנקה", "לשלוח", "חדר", "fix", "repair", "clean", "broken", "leak"]
     is_task_like = any(kw in (command or "") or kw in cmd_lower for kw in task_keywords)
-    if parsed and is_task_like and parsed.get("action") not in ("add_task", "info"):
+    if parsed and is_task_like and parsed.get("action") not in ("add_task", "add_tasks", "info", "clarify"):
         staff = "אבי" if any(x in (command or "") for x in ["קצר", "חשמל", "electrical", "נשרף", "נשרפה", "מנורה"]) else "עלמה"
         if any(x in (command or "") for x in ["ניקיון", "מגבת", "מנקה", "clean", "cleaning"]):
             staff = "עלמה"
@@ -5703,6 +5765,48 @@ Rules:
             "action": "add_task",
             "task": {"staffName": staff, "content": (command or "תקלה/בקשה")[:200], "propertyName": "Chandler", "status": "Pending"},
         }
+
+    # Handle action: "clarify" — Maya needs more info before creating a task
+    if parsed.get("action") == "clarify":
+        q = parsed.get("question") or "Which property or room should I assign this to?"
+        return jsonify({
+            "success": True,
+            "message": q,
+            "displayMessage": q,
+            "taskCreated": False,
+            "task": None,
+            "parsed": parsed,
+        }), 200
+
+    # Handle action: "add_tasks" — bulk task creation (quantity > 1)
+    if parsed.get("action") == "add_tasks" and isinstance(parsed.get("tasks"), list):
+        created_tasks = []
+        last_err = None
+        for task_obj in parsed["tasks"]:
+            if not isinstance(task_obj, dict):
+                continue
+            t, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+            if t:
+                task_created = True
+                task = t
+                created_tasks.append(t)
+                enqueue_twilio_task("notify_task", task=t)
+            elif err:
+                last_err = err
+        if created_tasks:
+            staff_name = (created_tasks[0] or {}).get("staff_name", "")
+            display_msg = f"Created {len(created_tasks)} tasks successfully! ✅" if not TWILIO_SIMULATE else "Message simulated successfully."
+            return jsonify({
+                "success": True,
+                "message": display_msg,
+                "displayMessage": display_msg,
+                "taskCreated": True,
+                "task": created_tasks[0],
+                "tasks": created_tasks,
+                "parsed": parsed,
+            }), 200
+        elif last_err:
+            return jsonify({"success": False, "message": last_err, "displayMessage": last_err}), 500
 
     # Handle action: "add_task" format (strict JSON from Gemini)
     if parsed.get("action") == "add_task" and isinstance(parsed.get("task"), dict):
@@ -6796,19 +6900,21 @@ def stats_summary():
         finally:
             session_obj.close()
 
-    # ── Monthly revenue + recent bookings from BookingModel ──────────────────
+    # ── Rolling 30-day revenue + recent bookings from BookingModel ───────────
     monthly_revenue = 0
     recent_bookings = []
     if SessionLocal and BookingModel:
         _bs = SessionLocal()
         try:
-            _month = datetime.now(timezone.utc).strftime("%Y-%m")
+            _30ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+            _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             _rev = (
                 _bs.query(func.sum(BookingModel.total_price))
                 .filter(
                     BookingModel.tenant_id == tenant_id,
                     BookingModel.status.in_(["confirmed", "completed"]),
-                    BookingModel.check_in.like(f"{_month}%"),
+                    BookingModel.check_out >= _30ago,
+                    BookingModel.check_out <= _today,
                 )
                 .scalar()
             )
@@ -7692,9 +7798,12 @@ def get_dashboard_summary():
         return jsonify({"revenue": "0₪", "active_tasks_count": 0, "open_issues": 0, "upcoming": [], "status": "Unavailable"})
     session = SessionLocal()
     try:
-        # ── Revenue: sum confirmed/completed bookings this calendar month ──────
+        # ── Revenue: sum bookings whose check_out falls in the last 30 days ────
+        # Using check_out (revenue realised at guest departure) and a rolling
+        # 30-day window so revenue is always visible regardless of calendar month.
         total_revenue = 0
-        month_prefix = datetime.now(timezone.utc).strftime("%Y-%m")   # e.g. "2026-03"
+        _thirty_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        _today_str   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if BookingModel:
             try:
                 result = (
@@ -7702,7 +7811,8 @@ def get_dashboard_summary():
                     .filter(
                         BookingModel.tenant_id == tenant_id,
                         BookingModel.status.in_(["confirmed", "completed"]),
-                        BookingModel.check_in.like(f"{month_prefix}%"),
+                        BookingModel.check_out >= _thirty_ago,
+                        BookingModel.check_out <= _today_str,
                     )
                     .scalar()
                 )
@@ -7754,7 +7864,7 @@ def get_dashboard_summary():
                     "status": t.status,
                 })
 
-        # Count bookings this month for the KPI sub-label
+        # Count bookings in rolling 30-day window for the KPI sub-label
         monthly_bookings = 0
         if BookingModel:
             try:
@@ -7763,7 +7873,8 @@ def get_dashboard_summary():
                     .filter(
                         BookingModel.tenant_id == tenant_id,
                         BookingModel.status.in_(["confirmed", "completed"]),
-                        BookingModel.check_in.like(f"{month_prefix}%"),
+                        BookingModel.check_out >= _thirty_ago,
+                        BookingModel.check_out <= _today_str,
                     )
                     .count()
                 )
