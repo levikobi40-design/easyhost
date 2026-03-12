@@ -166,21 +166,27 @@ def _cloudinary_upload(data_bytes: bytes, folder: str = "easyhost") -> str:
 
 MAYA_SYSTEM_INSTRUCTION = """You are Maya — a concise, professional AI operations manager for short-term rental portfolios.
 
-Absolute rules — never break them:
-1. Return JSON only — no free text, no explanations, no lists.
-2. Never enumerate properties, staff, or property details unless the user explicitly asks for a "property list", "staff list", or "report".
-3. SINGLE task → return:
-   {"action":"add_task","task":{"staffName":"<name>","content":"<description>","propertyName":"<property>","status":"Pending"}}
-4. MULTIPLE tasks (quantity word like "2", "שניים", "3", "three", etc.) → return an array:
-   {"action":"add_tasks","tasks":[{"staffName":"<name>","content":"<description>","propertyName":"<property>","status":"Pending"}, ...]}
-   Create exactly as many task objects as the quantity requested.
-5. When information is requested (question, report) → return only:
-   {"action":"info","message":"<short answer in English, one or two sentences>"}
-6. Staff routing: cleaning/towels/housekeeping/ניקיון/מגבות → Alma | repair/leak/maintenance/broken/תיקון/נזילה/תחזוקה → Kobi | electrical/bulb/power/circuit/חשמל/מנורה/קצר → Avi
-7. Room number extraction: parse numbers from natural language ("room 5", "חדר 5", "חמש", "five") and embed in content as "Room 5: <issue>".
-8. If the user's request is task-like BUT the property or room is completely unclear → return:
-   {"action":"clarify","question":"Which property or room should I assign this to?"}
-9. Language: respond in the same language the user writes in (English by default)."""
+ABSOLUTE RULES — never break them:
+1. Return ONLY valid JSON. No free text, no markdown, no explanations.
+2. Never enumerate properties, staff, or amenities unless "report" or "property list" is explicitly requested.
+3. SINGLE task (most requests) → return exactly:
+   {"action":"add_task","task":{"staffName":"<name>","content":"<full clear description>","propertyName":"<property>","task_type":"<Cleaning|Maintenance|Service>","priority":"<normal|high>","status":"Pending"}}
+4. MULTIPLE tasks — user mentions a quantity ("2", "שניים", "three", "שלוש", etc.) OR lists separate issues for different rooms → return:
+   {"action":"add_tasks","tasks":[<task_obj_1>, <task_obj_2>, ...]}
+   Create EXACTLY as many distinct task objects as requested. Each must have a unique content and propertyName.
+5. Information / question only → return:
+   {"action":"info","message":"<short answer, one or two sentences>"}
+6. MISSING or AMBIGUOUS property/room — if you CANNOT determine which specific property or room number this task belongs to → return:
+   {"action":"clarify","question":"באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."}
+   NEVER invent a property name. NEVER use "Unknown", "חדר לא ידוע", or a placeholder.
+
+FIELD RULES:
+- content: Write the FULL, specific intent (e.g. "תיקון נזילה בברז במטבח" not just "תיקון"). Include room number.
+- task_type: "Cleaning" for ניקיון/מגבות/housekeeping | "Maintenance" for תיקון/נזילה/תחזוקה/repair/leak | "Service" for כל השאר
+- priority: "high" if the user says דחוף/בהול/urgent/asap/critical | otherwise "normal"
+- staffName: Alma → Cleaning | Kobi → Maintenance | Avi → Electrical (חשמל/מנורה/קצר/bulb/power/circuit)
+- propertyName: use the exact name from the property list provided in the prompt; use the closest match if a room number is given.
+- Language: respond in the same language the user writes in (Hebrew by default)."""
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
 STAFF_KEYWORDS = {
@@ -738,6 +744,8 @@ if create_engine and sessionmaker and declarative_base:
         duration_minutes = Column(String)    # float stored as string for SQLite compat
         worker_notes = Column(Text)          # Optional notes the worker adds
         photo_url = Column(String)           # Image linked to this task (uploaded on creation)
+        priority  = Column(String, default="normal")   # normal | high (set when "דחוף"/"urgent")
+        task_type = Column(String)           # Cleaning | Maintenance | Service
 
     class WorkerStatsModel(Base):
         """Aggregated per-worker daily performance — updated by the Performance Agent."""
@@ -1045,9 +1053,9 @@ if create_engine and sessionmaker and declarative_base:
                 connection.commit()
             except Exception as e:
                 print("[ensure_property_tasks_table] Note:", e)
-            for col in ["property_name", "staff_name", "staff_phone", "staff_id",
-                        "started_at", "completed_at", "duration_minutes", "worker_notes",
-                        "photo_url"]:
+        for col in ["property_name", "staff_name", "staff_phone", "staff_id",
+                    "started_at", "completed_at", "duration_minutes", "worker_notes",
+                    "photo_url", "priority", "task_type"]:
                 try:
                     connection.execute(text(f"ALTER TABLE property_tasks ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
                 except Exception:
@@ -5202,6 +5210,17 @@ def _infer_staff_from_command(command, task_obj):
     return "קובי"  # default maintenance
 
 
+_UNKNOWN_PLACEHOLDERS = {
+    "unknown", "חדר לא ידוע", "property", "נכס לא ידוע", "לא ידוע",
+    "chandler",  # old fallback value — still reject if passed directly
+}
+
+
+def _is_unknown_property(name: str) -> bool:
+    """Return True if the property name is a meaningless placeholder."""
+    return (not name) or name.strip().lower() in _UNKNOWN_PLACEHOLDERS
+
+
 def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command=None):
     """Create task from action.add_task format: {staffName, content, propertyName, status}"""
     if not SessionLocal or not PropertyTaskModel or not PropertyStaffModel:
@@ -5209,6 +5228,20 @@ def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_prope
     staff_name = (task_obj.get("staffName") or "").strip() or "Staff"
     content = (task_obj.get("content") or "").strip() or "Task from Maya"
     prop_name = (task_obj.get("property_name") or task_obj.get("propertyName") or "").strip()
+
+    # ── Strict validation: reject unknown/placeholder property names ───────
+    if _is_unknown_property(prop_name):
+        # Check if there's exactly one property — auto-assign to it
+        if len(rooms) == 1:
+            prop_name = rooms[0].get("name", "")
+        elif rooms and not prop_name:
+            # No property given at all but multiple exist → ask for clarification
+            clarify_msg = "באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."
+            return None, clarify_msg
+        elif _is_unknown_property(prop_name) and rooms:
+            # Explicit "Unknown" sent → refuse to create, return clarification message
+            clarify_msg = "באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."
+            return None, clarify_msg
     suggested = staff_name.lower()
     if "עלמה" in staff_name or "alma" in suggested:
         suggested = "alma"
@@ -5224,13 +5257,26 @@ def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_prope
             suggested = "kobi"
         elif inferred == "אבי":
             suggested = "avi"
+    # Map task_type field to intent
+    raw_task_type = (task_obj.get("task_type") or "").strip().lower()
+    if raw_task_type == "cleaning":
+        intent = "cleaning"
+    elif raw_task_type == "maintenance":
+        intent = "maintenance"
+    elif raw_task_type == "service":
+        intent = "housekeeping"
+    else:
+        intent = "cleaning" if suggested == "alma" else "maintenance" if suggested == "kobi" else "electrician" if suggested == "avi" else "housekeeping"
+
     gemini_result = {
-        "intent": "cleaning" if suggested == "alma" else "maintenance" if suggested == "kobi" else "electrician" if suggested == "avi" else "housekeeping",
+        "intent": intent,
         "content": content,
         "description": content,
         "property_name": prop_name,
         "suggested_staff": suggested,
         "staffName": staff_name,
+        "priority": task_obj.get("priority") or "normal",
+        "task_type": task_obj.get("task_type") or ("Cleaning" if suggested == "alma" else "Maintenance" if suggested in ("kobi", "avi") else "Service"),
     }
     return _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_property)
 
@@ -5335,12 +5381,23 @@ def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_
                 "duplicate": True,
             }, None
 
-        print(f"DEBUG: Maya decided to CREATE task for room {room_log}")
+        # ── Priority & task_type from gemini_result ───────────────────────────
+    priority_val = (gemini_result.get("priority") or "normal").lower()
+    if priority_val not in ("normal", "high"):
+        priority_val = "normal"
+    task_type_val = (gemini_result.get("task_type") or "").strip()
+    if not task_type_val:
+        task_type_val = ("Cleaning" if intent == "cleaning" else
+                         "Maintenance" if intent in ("maintenance", "electrician") else "Service")
+    # Prefix urgent tasks so they stand out in the task card
+    urgent_prefix = "🚨 [דחוף] " if priority_val == "high" else ""
+
+    print(f"DEBUG: Maya decided to CREATE task for room {room_log}")
         task_id = str(uuid.uuid4())
         created = now_iso()
-        full_desc = desc
+        full_desc = f"{urgent_prefix}{desc}"
         if prop_ctx:
-            full_desc = f"{desc} | נכס: {prop_ctx}" if desc else f"נכס: {prop_ctx}"
+            full_desc = f"{full_desc} | נכס: {prop_ctx}" if full_desc else f"נכס: {prop_ctx}"
         new_pt = PropertyTaskModel(
             id=task_id,
             property_id=prop_id or "",
@@ -5353,15 +5410,21 @@ def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_
             staff_name=staff_name,
             staff_phone=staff_phone,
         )
+        if hasattr(new_pt, "priority"):
+            new_pt.priority = priority_val
+        if hasattr(new_pt, "task_type"):
+            new_pt.task_type = task_type_val
         session.add(new_pt)
         session.commit()
-        print(f"SUCCESS: Task created for room {room_log} — id={task_id} staff={staff_name}")
+        print(f"SUCCESS: Task created for room {room_log} — id={task_id} staff={staff_name} priority={priority_val}")
         return {
             "id": task_id,
             "property_id": prop_id,
             "assigned_to": staff_id,
             "description": full_desc,
             "status": "Pending",
+            "priority": priority_val,
+            "task_type": task_type_val,
             "created_at": created,
             "property_name": prop_display,
             "staff_name": staff_name,
@@ -5674,25 +5737,36 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
         if parts:
             history_text = "\nPrevious conversation:\n" + "\n".join(parts) + "\n\n"
 
-    TASK_TRIGGERS = "תקלה|בעיה|דליפה|קצר|חשמל|ניקיון|תחזוקה|תקן|נשרף|נשרפה|מנורה|fix|repair|clean|broken|leak|electrical|lamp|bulb"
-    # Extract first property name for context (used inside the task JSON)
-    _first_prop = "Chandler"
-    if rooms:
-        _first_prop = (rooms[0].get("name") or "Chandler")
-    prompt = f"""{history_text}Request: "{command}"
+    # Build property list for AI context (name + id for matching)
+    _prop_names = [r.get("name", "") for r in rooms if r.get("name")]
+    _prop_list_str = ", ".join(_prop_names) if _prop_names else "No properties configured"
 
-Return JSON only — no extra text, no property lists, no staff lists.
+    prompt = f"""{history_text}User request: "{command}"
 
-If this is a task request (cleaning / repair / issue / send staff / room):
-{{"action":"add_task","task":{{"staffName":"Kobi","content":"{command}","propertyName":"{_first_prop}","status":"Pending"}}}}
+Available properties: [{_prop_list_str}]
 
-If this is a simple question only:
-{{"action":"info","message":"<short answer — one sentence>"}}
+Classify and return ONLY valid JSON (no extra text):
+
+• SINGLE task:
+  {{"action":"add_task","task":{{"staffName":"Alma|Kobi|Avi","content":"<FULL specific description>","propertyName":"<exact name from list or best match>","task_type":"Cleaning|Maintenance|Service","priority":"normal|high","status":"Pending"}}}}
+
+• MULTIPLE tasks (quantity OR multiple rooms/issues mentioned):
+  {{"action":"add_tasks","tasks":[<task_obj>, <task_obj>, ...]}}
+  Produce exactly as many task objects as requested. Each gets its own propertyName and content.
+
+• Information / question:
+  {{"action":"info","message":"<one-sentence answer>"}}
+
+• Property or room is UNCLEAR / not in the property list:
+  {{"action":"clarify","question":"באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."}}
 
 Rules:
-- staffName: Alma (cleaning/towels/housekeeping) | Kobi (repair/leak/maintenance) | Avi (electrical/bulb/power)
-- content: short description including room number if mentioned
-- never list properties/staff/amenities unless "report" or "property list" is explicitly requested"""
+- content MUST be the full intent (e.g. "תיקון נזילה מהברז ב-302" not just "תיקון"). Include room number.
+- task_type: Cleaning=ניקיון/housekeeping, Maintenance=תיקון/נזילה/תחזוקה/repair/leak, Service=everything else
+- priority: "high" if דחוף/בהול/urgent/asap/critical — else "normal"
+- staffName: Alma→Cleaning | Kobi→Maintenance | Avi→Electrical(חשמל/מנורה/קצר/bulb)
+- propertyName: match to the exact property name from the list; if only a room number is given, pick the most relevant property. If truly unknown → use "clarify" action instead.
+- NEVER invent a property name or use "Unknown" / "חדר לא ידוע"."""
 
     try:
         text = _gemini_generate(prompt)
