@@ -403,6 +403,10 @@ def serve_uploads(filename):
 # ── Database URL resolution (priority: DATABASE_URL > SUPABASE_URL+KEY > SQLite) ─────
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
+def _is_pg_url(url: str) -> bool:
+    """Return True if the URL looks like a remote PostgreSQL connection."""
+    return url.startswith("postgresql://") and "localhost" not in url and "127.0.0.1" not in url
+
 def _build_database_url() -> str:
     """
     Resolve the database connection URL. Priority order:
@@ -413,56 +417,26 @@ def _build_database_url() -> str:
                                                (SQLite disabled when these are set)
       4. SQLite                — only used when NO Supabase credentials exist at all
     """
-    # ── 1. Explicit DATABASE_URL ────────────────────────────────────────────
+    # ── 1. Explicit DATABASE_URL — used exactly as set, no auto-rewriting ──────
     raw = os.getenv("DATABASE_URL", "").strip()
     if raw and not raw.startswith("sqlite"):
+        # Normalise scheme
         if raw.startswith("postgres://"):
             raw = raw.replace("postgres://", "postgresql://", 1)
-        # Auto-upgrade direct Supabase host (port 5432, IPv6-only) to the
-        # Session Pooler (port 6543, IPv4 — works everywhere including Render).
-        # Detect region from the resolved IP so we pick the right pooler host.
-        _direct_re = re.match(
-            r"(postgresql://[^@]+@)(db\.)([a-z0-9]+)(\.supabase\.co):5432(/[^?]*)(.*)",
-            raw,
-        )
-        if _direct_re:
-            _creds, _, _ref, _, _db, _rest = _direct_re.groups()
-            # Detect region by resolving the direct host — IPv6 prefix tells us the AWS region.
-            # 2406:da18:: → ap-southeast-1 (Singapore)
-            # 2600:1f18:: → us-east-1    (N. Virginia)
-            # 2a05:d01c:: → eu-central-1 (Frankfurt)
-            _pooler_region = "ap-southeast-1"   # default for this project
-            try:
-                import socket as _sock
-                _addrs = _sock.getaddrinfo(f"db.{_ref}.supabase.co", 5432, proto=_sock.IPPROTO_TCP)
-                for _fam, *_, _addr in _addrs:
-                    _ip = _addr[0]
-                    if _ip.startswith("2406:da18"):
-                        _pooler_region = "ap-southeast-1"; break
-                    elif _ip.startswith("2600:1f18") or _ip.startswith("2600:1f1"):
-                        _pooler_region = "us-east-1"; break
-                    elif _ip.startswith("2a05:d01c"):
-                        _pooler_region = "eu-central-1"; break
-                    elif _ip.startswith("2406:da14"):
-                        _pooler_region = "ap-northeast-1"; break
-            except Exception:
-                pass   # fall back to default region
-            # Rewrite to pooler, change username from postgres → postgres.<ref>
-            _creds_pooler = re.sub(
-                r"(postgresql://)([^:]+)(:)",
-                lambda m: f"{m.group(1)}postgres.{_ref}{m.group(3)}",
-                _creds,
-            )
-            raw = f"{_creds_pooler}aws-0-{_pooler_region}.pooler.supabase.com:6543{_db}"
-            if "sslmode" not in _rest:
-                raw += "?sslmode=require"
-            else:
-                raw += _rest
-            print(f"[DB] Auto-upgraded direct Supabase URL to Session Pooler ({_pooler_region}).")
-        elif "sslmode" not in raw and "supabase" in raw.lower():
+
+        # Strip any custom flags that are not valid psycopg2 options.
+        # e.g. ?direct=True is used in .env as a signal "don't auto-rewrite"
+        # but would cause psycopg2 to fail.
+        raw = re.sub(r"[?&]direct=[^&]*", "", raw)
+        raw = re.sub(r"\?&", "?", raw)   # clean up ?& artifact
+        raw = raw.rstrip("?&")
+
+        # Ensure SSL for any remote PostgreSQL (Supabase always requires it)
+        if "sslmode" not in raw and ("supabase" in raw.lower() or _is_pg_url(raw)):
             raw += ("&" if "?" in raw else "?") + "sslmode=require"
+
         safe = re.sub(r":([^:@]+)@", ":***@", raw)
-        print(f"[DB] ✅ Using DATABASE_URL → {safe}")
+        print(f"[DB] ✅ Using DATABASE_URL (exact) → {safe}")
         return raw
 
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
@@ -555,29 +529,38 @@ if create_engine and sessionmaker and declarative_base:
             pool_recycle=180,             # recycle connections every 3 min
         )
 
+    # Detect production environment (Render sets RENDER=true automatically)
+    _is_production = bool(os.getenv("RENDER") or os.getenv("DYNO"))
+
     if _is_sqlite:
         ENGINE = create_engine(DATABASE_URL, connect_args=_connect_args)
     else:
-        # Try to connect; if it times out within 12 s, fall back to SQLite so
-        # the server still starts (background init will retry later).
         try:
             ENGINE = _make_pg_engine(DATABASE_URL)
-            # Validate immediately with a cheap query
             with ENGINE.connect() as _test_conn:
                 _test_conn.execute(text("SELECT 1"))
             print("[DB] ✅ PostgreSQL connection verified successfully.")
         except Exception as _pg_err:
             _err_str = str(_pg_err)
-            print(f"[DB] ⚠️  PostgreSQL connection failed: {_err_str[:200]}")
-            if "timeout" in _err_str.lower() or "timed out" in _err_str.lower():
-                print("[DB]    Hint: Check that DATABASE_URL uses the Supabase POOLER")
-                print("[DB]    (aws-0-us-east-1.pooler.supabase.com port 6543), not")
-                print("[DB]    the direct host (db.*.supabase.co port 5432).")
-            _sqlite_fallback = os.path.join(_APP_DIR, "leads.db")
-            print(f"[DB] 🔄 Falling back to SQLite: {_sqlite_fallback}")
-            DATABASE_URL = f"sqlite:///{_sqlite_fallback}"  # noqa: F811
-            _is_sqlite = True  # noqa: F811
-            ENGINE = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+            print(f"[DB] ❌ PostgreSQL connection FAILED: {_err_str[:300]}")
+            print(f"[DB]    DATABASE_URL used: {re.sub(r':([^:@]+)@', ':***@', DATABASE_URL)}")
+
+            if _is_production:
+                # ── Production (Render): NEVER silently fall back to SQLite ──────
+                # The admin must fix the DATABASE_URL env var.
+                print("[DB] 🚨 PRODUCTION: refusing SQLite fallback — all DB endpoints")
+                print("[DB]    will return HTTP 503 until DATABASE_URL is corrected.")
+                print("[DB]    Go to Render → Environment → DATABASE_URL and set a")
+                print("[DB]    valid Supabase Session Pooler URL, e.g.:")
+                print("[DB]    postgresql://postgres.REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require")
+                ENGINE = None   # endpoints check for None and return 503
+            else:
+                # ── Local dev only: fall back to SQLite so development can continue ─
+                print("[DB] 🔄 Local dev: falling back to SQLite (production will error instead)")
+                _sqlite_fallback = os.path.join(_APP_DIR, "leads.db")
+                DATABASE_URL = f"sqlite:///{_sqlite_fallback}"  # noqa: F811
+                _is_sqlite = True                               # noqa: F811
+                ENGINE = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
     SessionLocal = sessionmaker(bind=ENGINE)
     Base = declarative_base()
@@ -800,6 +783,23 @@ if create_engine and sessionmaker and declarative_base:
 
         tenant = relationship("TenantModel")
 
+    class BookingModel(Base):
+        """Guest bookings — one row per stay.  Drives the Revenue dashboard."""
+        __tablename__ = "bookings"
+
+        id           = Column(String, primary_key=True)
+        tenant_id    = Column(String, default=DEFAULT_TENANT_ID)
+        property_id  = Column(String)          # FK to manual_rooms.id (soft ref)
+        property_name = Column(String)
+        guest_name   = Column(String)
+        guest_phone  = Column(String)
+        check_in     = Column(String)          # ISO date YYYY-MM-DD
+        check_out    = Column(String)          # ISO date YYYY-MM-DD
+        nights       = Column(Integer, default=1)
+        total_price  = Column(Integer, default=0)   # NIS / USD
+        status       = Column(String, default="confirmed")  # confirmed / cancelled / completed
+        created_at   = Column(String)
+
     def ensure_staff_schema():
         if not ENGINE or not text:
             return
@@ -967,6 +967,7 @@ if create_engine and sessionmaker and declarative_base:
             ensure_staff_schema()
             ensure_property_staff_table()
             ensure_property_tasks_table()
+            ensure_bookings_table()
             print(f"[init_db] ✅ Schema ready on {db_label}")
         except Exception as _ie:
             print(f"[init_db] ❌ Schema init error: {_ie}")
@@ -1050,6 +1051,32 @@ if create_engine and sessionmaker and declarative_base:
                     except Exception:
                         pass
 
+    def ensure_bookings_table():
+        """Create bookings table if it doesn't exist."""
+        if not ENGINE or not text:
+            return
+        with ENGINE.connect() as connection:
+            try:
+                connection.execute(text("""
+                    CREATE TABLE IF NOT EXISTS bookings (
+                        id VARCHAR PRIMARY KEY,
+                        tenant_id VARCHAR,
+                        property_id VARCHAR,
+                        property_name VARCHAR,
+                        guest_name VARCHAR,
+                        guest_phone VARCHAR,
+                        check_in VARCHAR,
+                        check_out VARCHAR,
+                        nights INTEGER DEFAULT 1,
+                        total_price INTEGER DEFAULT 0,
+                        status VARCHAR DEFAULT 'confirmed',
+                        created_at VARCHAR
+                    )
+                """))
+                connection.commit()
+            except Exception as e:
+                print("[ensure_bookings_table] Note:", e)
+
 else:
     TenantModel = None
     UserModel = None
@@ -1064,6 +1091,7 @@ else:
     WorkerStatsModel        = None
     WorkerPerformanceModel  = None
     DamageReportModel       = None
+    BookingModel            = None
 
 # ── Eager schema init ────────────────────────────────────────────────────────
 # This runs at module import time (when Gunicorn loads app.py), so Supabase
@@ -3232,10 +3260,68 @@ def seed_pilot_demo():
                     session.rollback()
                     print(f"[seed_pilot_demo] Staff for '{pname}' skipped: {_se}")
 
+        # ── Sample bookings (last 30 days) to populate Revenue dashboard ─────
+        bookings_added = 0
+        if BookingModel:
+            try:
+                existing_bookings = session.query(BookingModel).filter_by(
+                    tenant_id=DEFAULT_TENANT_ID
+                ).count()
+            except Exception:
+                existing_bookings = 0
+
+            if existing_bookings == 0:
+                # Re-fetch the pilot properties so we can link bookings to real IDs
+                pilot_props = session.query(ManualRoomModel).filter(
+                    ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+                ).all()
+
+                _booking_defs = [
+                    # (guest_name, nights, total_price, days_ago)
+                    ("James Mitchell",   3,  1800, 2),
+                    ("Laura Bennett",    5,  2500, 5),
+                    ("Carlos Rivera",    2,   900, 7),
+                    ("Sophie Turner",    4,  1400, 10),
+                    ("Daniel Kim",       1,   550, 12),
+                    ("Emily Hartman",    6,  2100, 15),
+                    ("Michael Johnson",  3,  1250, 18),
+                    ("Olivia Nguyen",    2,   780, 21),
+                    ("Ethan Clarke",     7,  2450, 25),
+                    ("Ava Martins",      4,  1600, 29),
+                ]
+                for guest_name, nights, total_price, days_ago in _booking_defs:
+                    try:
+                        prop = random.choice(pilot_props) if pilot_props else None
+                        check_in_dt  = datetime.now(timezone.utc) - timedelta(days=days_ago + nights)
+                        check_out_dt = check_in_dt + timedelta(days=nights)
+                        session.add(BookingModel(
+                            id=str(uuid.uuid4()),
+                            tenant_id=DEFAULT_TENANT_ID,
+                            property_id=prop.id if prop else None,
+                            property_name=prop.name if prop else "Demo Property",
+                            guest_name=guest_name,
+                            guest_phone="",
+                            check_in=check_in_dt.strftime("%Y-%m-%d"),
+                            check_out=check_out_dt.strftime("%Y-%m-%d"),
+                            nights=nights,
+                            total_price=total_price,
+                            status="completed",
+                            created_at=now_iso(),
+                        ))
+                        bookings_added += 1
+                    except Exception as _be:
+                        session.rollback()
+                        print(f"[seed_pilot_demo] Booking for '{guest_name}' skipped: {_be}")
+                try:
+                    session.commit()
+                except Exception as _bce:
+                    session.rollback()
+                    print(f"[seed_pilot_demo] Bookings commit failed: {_bce}")
+
         total = session.query(ManualRoomModel).filter(
             ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
         ).count()
-        print(f"[seed_pilot_demo] ✅ Done — {seeded} new properties, {staff_added} staff added ({total}/10 total)")
+        print(f"[seed_pilot_demo] ✅ Done — {seeded} new properties, {staff_added} staff, {bookings_added} bookings added ({total}/10 total)")
     except Exception as e:
         session.rollback()
         print(f"[seed_pilot_demo] Fatal error: {e}")
@@ -6710,12 +6796,55 @@ def stats_summary():
         finally:
             session_obj.close()
 
+    # ── Monthly revenue + recent bookings from BookingModel ──────────────────
+    monthly_revenue = 0
+    recent_bookings = []
+    if SessionLocal and BookingModel:
+        _bs = SessionLocal()
+        try:
+            _month = datetime.now(timezone.utc).strftime("%Y-%m")
+            _rev = (
+                _bs.query(func.sum(BookingModel.total_price))
+                .filter(
+                    BookingModel.tenant_id == tenant_id,
+                    BookingModel.status.in_(["confirmed", "completed"]),
+                    BookingModel.check_in.like(f"{_month}%"),
+                )
+                .scalar()
+            )
+            monthly_revenue = int(_rev or 0)
+
+            _rows = (
+                _bs.query(BookingModel)
+                .filter(BookingModel.tenant_id == tenant_id)
+                .order_by(BookingModel.check_in.desc())
+                .limit(5)
+                .all()
+            )
+            for _b in _rows:
+                recent_bookings.append({
+                    "id":            _b.id,
+                    "property_name": _b.property_name or "—",
+                    "guest_name":    _b.guest_name or "Guest",
+                    "check_in":      _b.check_in,
+                    "check_out":     _b.check_out,
+                    "nights":        _b.nights or 1,
+                    "total_price":   _b.total_price or 0,
+                    "status":        _b.status or "confirmed",
+                })
+        except Exception as _berr:
+            print(f"[stats/summary] bookings query error: {_berr}")
+        finally:
+            _bs.close()
+
     return jsonify({
         "total_properties": total_properties,
         "tasks_by_status": tasks_by_status,
         "staff_workload": staff_workload,
         "total_capacity": total_capacity,
         "top_staff": top_staff[:3],
+        "monthly_revenue": monthly_revenue,
+        "recent_bookings": recent_bookings,
     })
 
 
@@ -7563,8 +7692,26 @@ def get_dashboard_summary():
         return jsonify({"revenue": "0₪", "active_tasks_count": 0, "open_issues": 0, "upcoming": [], "status": "Unavailable"})
     session = SessionLocal()
     try:
+        # ── Revenue: sum confirmed/completed bookings this calendar month ──────
         total_revenue = 0
-        if CalendarConnectionModel:
+        month_prefix = datetime.now(timezone.utc).strftime("%Y-%m")   # e.g. "2026-03"
+        if BookingModel:
+            try:
+                result = (
+                    session.query(func.sum(BookingModel.total_price))
+                    .filter(
+                        BookingModel.tenant_id == tenant_id,
+                        BookingModel.status.in_(["confirmed", "completed"]),
+                        BookingModel.check_in.like(f"{month_prefix}%"),
+                    )
+                    .scalar()
+                )
+                total_revenue = int(result or 0)
+            except Exception as _rev_err:
+                print(f"[dashboard/summary] revenue query error: {_rev_err}")
+
+        # Fallback: CalendarConnectionModel.potential_revenue when no bookings
+        if total_revenue == 0 and CalendarConnectionModel:
             rec = session.query(CalendarConnectionModel).filter_by(tenant_id=tenant_id).first()
             if rec and rec.potential_revenue:
                 total_revenue = int(rec.potential_revenue)
@@ -7607,8 +7754,25 @@ def get_dashboard_summary():
                     "status": t.status,
                 })
 
+        # Count bookings this month for the KPI sub-label
+        monthly_bookings = 0
+        if BookingModel:
+            try:
+                monthly_bookings = (
+                    session.query(BookingModel)
+                    .filter(
+                        BookingModel.tenant_id == tenant_id,
+                        BookingModel.status.in_(["confirmed", "completed"]),
+                        BookingModel.check_in.like(f"{month_prefix}%"),
+                    )
+                    .count()
+                )
+            except Exception:
+                pass
+
         return jsonify({
-            "revenue": f"{total_revenue}₪",
+            "revenue": f"₪{total_revenue:,}",
+            "monthly_bookings": monthly_bookings,
             "active_tasks_count": active_tasks,
             "open_issues": open_issues,
             "upcoming": upcoming,
