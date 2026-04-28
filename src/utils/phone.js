@@ -7,8 +7,11 @@
 export function toWhatsAppPhone(phone) {
   if (!phone) return '';
   const digits = String(phone).replace(/\D/g, '');
-  if (digits.startsWith('0') && digits.length >= 9) return '972' + digits.slice(1);
-  if (!digits.startsWith('972') && digits.length >= 9) return '972' + digits;
+  if (!digits) return '';
+  /* Short test numbers (e.g. 123456): pass through for dev without forcing 972. */
+  if (digits.length < 9) return digits;
+  if (digits.startsWith('0')) return '972' + digits.slice(1);
+  if (!digits.startsWith('972')) return '972' + digits;
   return digits;
 }
 

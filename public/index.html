@@ -1,43 +1,169 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Easy Host AI - Luxury hotel management OS"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>Easy Host AI</title>
+    <!-- ── Viewport & rendering ────────────────────────────── -->
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <!-- ── PWA: theme colour & app-capable ────────────────── -->
+    <!-- Chrome on Android uses theme-color for the status bar -->
+    <meta name="theme-color" content="#00c875"
+          media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#00c875"
+          media="(prefers-color-scheme: light)" />
+
+    <!-- Standalone mode on iOS (hides Safari chrome) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EasyHost AI" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Microsoft Tile (Windows) -->
+    <meta name="msapplication-TileColor"       content="#060a14" />
+    <meta name="msapplication-TileImage"       content="%PUBLIC_URL%/icon.svg" />
+    <meta name="msapplication-config"          content="none" />
+    <meta name="msapplication-tap-highlight"   content="no" />
+
+    <!-- ── SEO & Social ──────────────────────────────────── -->
+    <meta name="description"
+          content="EasyHost AI — AI-Powered Hotel Operations. Mission Control for Property Owners & Field Teams." />
+    <meta name="keywords"
+          content="hotel management, AI, property operations, hospitality, Maya AI" />
+    <meta name="author" content="EasyHost AI" />
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- Open Graph -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:title"       content="EasyHost AI" />
+    <meta property="og:description" content="AI-Powered Hotel Operations — Hospitality on Autopilot" />
+    <meta property="og:image"       content="%PUBLIC_URL%/icon.svg" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card"        content="summary" />
+    <meta name="twitter:title"       content="EasyHost AI" />
+    <meta name="twitter:description" content="Hospitality on Autopilot — Powered by Maya AI" />
+
+    <!-- ── Icons ──────────────────────────────────────────── -->
+    <link rel="icon"             href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="icon"             href="%PUBLIC_URL%/icon.svg"    type="image/svg+xml" />
+    <!-- iOS home-screen icon (128-px inset safe zone) -->
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <!-- Fallback splash colours while the JS bundle loads -->
+    <link rel="mask-icon"        href="%PUBLIC_URL%/icon.svg"    color="#00c875" />
+
+    <!-- ── PWA Manifest ───────────────────────────────────── -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- ── Inter font (loaded via Google Fonts for speed) ── -->
+    <link rel="preconnect"    href="https://fonts.googleapis.com" />
+    <link rel="preconnect"    href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sarabun:wght@400;600;700;800&display=swap" />
+
+    <!-- ── Splash-screen background while JS loads ─────────
+         Keeps the screen black instead of a white flash.    -->
+    <style>
+      html, body, #root {
+        margin: 0; padding: 0;
+        background: #060a14;
+        min-height: 100%;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      }
+      /* iOS PWA status-bar safe area */
+      body {
+        padding-top:    env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left:   env(safe-area-inset-left);
+        padding-right:  env(safe-area-inset-right);
+      }
+      /* Loading spinner shown until React hydrates */
+      #pwa-splash {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        background: #060a14;
+        gap: 20px;
+        z-index: 99999;
+        transition: opacity 0.4s ease;
+      }
+      #pwa-splash.hidden { opacity: 0; pointer-events: none; }
+      .pwa-splash-icon {
+        width: 88px; height: 88px;
+        border-radius: 22px;
+        background: radial-gradient(circle at 30% 20%, #0d1b2a, #060a14);
+        border: 1.5px solid rgba(0,200,117,0.3);
+        box-shadow: 0 0 32px rgba(0,200,117,0.2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 42px;
+        animation: splash-pulse 1.8s ease-in-out infinite;
+      }
+      @keyframes splash-pulse {
+        0%, 100% { box-shadow: 0 0 24px rgba(0,200,117,0.2); }
+        50%       { box-shadow: 0 0 48px rgba(0,200,117,0.45); }
+      }
+      .pwa-splash-name {
+        font-size: 22px; font-weight: 900;
+        color: #ffffff; letter-spacing: -0.5px;
+      }
+      .pwa-splash-tag {
+        font-size: 11px; font-weight: 700;
+        color: rgba(0,200,117,0.7);
+        letter-spacing: 0.25em; text-transform: uppercase;
+      }
+      .pwa-splash-bar {
+        width: 160px; height: 3px;
+        border-radius: 99px;
+        background: rgba(255,255,255,0.07);
+        overflow: hidden;
+        margin-top: 8px;
+      }
+      .pwa-splash-fill {
+        height: 100%; width: 0%;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #6366f1, #00c875);
+        animation: splash-load 1.6s cubic-bezier(0.4,0,0.2,1) 0.2s forwards;
+      }
+      @keyframes splash-load {
+        from { width: 0%; }
+        to   { width: 100%; }
+      }
+    </style>
+
+    <title>EasyHost AI</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>JavaScript is required to run EasyHost AI.</noscript>
+
+    <!-- Splash screen — hidden once React mounts -->
+    <div id="pwa-splash">
+      <div class="pwa-splash-icon">🏨</div>
+      <div class="pwa-splash-name">EasyHost AI</div>
+      <div class="pwa-splash-tag">Powered by Maya</div>
+      <div class="pwa-splash-bar">
+        <div class="pwa-splash-fill"></div>
+      </div>
+    </div>
+
     <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
+    <!-- Hide splash once React root mounts -->
+    <script>
+      (function() {
+        var splash = document.getElementById('pwa-splash');
+        // MutationObserver: when #root gains children, React has mounted
+        var obs = new MutationObserver(function() {
+          var root = document.getElementById('root');
+          if (root && root.children.length > 0) {
+            splash.classList.add('hidden');
+            setTimeout(function() { splash.style.display = 'none'; }, 450);
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.getElementById('root'), { childList: true });
+      })();
+    </script>
   </body>
 </html>

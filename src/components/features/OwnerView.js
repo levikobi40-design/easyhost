@@ -19,7 +19,7 @@ import './OwnerView.css';
 import { API_URL } from '../../utils/constants';
 
 /**
- * Easy Host AI Owner Dashboard - Premium Glassmorphism
+ * EasyHost AI Owner Dashboard - Premium Glassmorphism
  * Thailand-style luxury hotel app experience
  */
 const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
@@ -68,20 +68,20 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
 
   // Maya Chat Messages
   const [mayaMessages, setMayaMessages] = useState([
-    { type: 'maya', text: "Hello! I'm Maya, your Easy Host AI Concierge. How can I assist you today?" }
+    { type: 'maya', text: "Hello! I'm Maya, your EasyHost AI Concierge. How can I assist you today?" }
   ]);
 
   // Fetch services from API
   const fetchServices = useCallback(async () => {
     setServicesLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/services`);
+      const response = await fetch(`${API_URL}/services`);
       if (response.ok) {
         const data = await response.json();
         setServices(data);
       }
     } catch (error) {
-      console.error('[Easy Host AI] Error fetching services:', error);
+      console.error('[EasyHost AI] Error fetching services:', error);
       // Fallback services
       setServices([
         { id: 'room_service', title: 'Room Service', icon: 'coffee', desc: 'Order food & beverages', gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' },
@@ -98,7 +98,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
   const fetchSuggestions = useCallback(async () => {
     setSuggestionsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/agent/suggestions`);
+      const response = await fetch(`${API_URL}/agent/suggestions`);
       if (response.ok) {
         const data = await response.json();
         setSuggestions(data.suggestions || []);
@@ -107,7 +107,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
         setServerOnline(false);
       }
     } catch (error) {
-      console.error('[Easy Host AI] Error fetching suggestions:', error);
+      console.error('[EasyHost AI] Error fetching suggestions:', error);
       setServerOnline(false);
     } finally {
       setSuggestionsLoading(false);
@@ -118,25 +118,25 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
   const fetchRealLeads = useCallback(async () => {
     setLeadsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/leads`);
+      const response = await fetch(`${API_URL}/leads`);
       if (response.ok) {
         const data = await response.json();
         const leadsArray = Array.isArray(data) ? data : [];
         setRealLeads(leadsArray);
         setServerOnline(true);
-        console.log(`[Easy Host AI] Loaded ${leadsArray.length} leads`);
+        console.log(`[EasyHost AI] Loaded ${leadsArray.length} leads`);
       } else {
         setServerOnline(false);
       }
 
       // Fetch stats
-      const statsResponse = await fetch(`${API_URL}/api/leads/stats`);
+      const statsResponse = await fetch(`${API_URL}/leads/stats`);
       if (statsResponse.ok) {
         const stats = await statsResponse.json();
         setLeadsStats(stats);
       }
     } catch (error) {
-      console.error('[Easy Host AI] Error fetching leads:', error);
+      console.error('[EasyHost AI] Error fetching leads:', error);
       setServerOnline(false);
     } finally {
       setLeadsLoading(false);
@@ -145,7 +145,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
 
   // Add demo lead for testing (HARDCODED URL)
   const handleAddDemoLead = async () => {
-    const demoNames = ['John Smith', 'Maria Garcia', 'David Chen', 'Anna Muller', 'Yuki Tanaka'];
+    const demoNames = ['יוסי לוי', 'מיכל אברהם', 'רועי כהן', 'נועה גל', 'דניאל ברק'];
     const randomName = demoNames[Math.floor(Math.random() * demoNames.length)];
     const randomGuests = Math.floor(Math.random() * 4) + 1;
 
@@ -165,8 +165,8 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
     };
 
     try {
-      console.log('[Easy Host AI] Creating demo lead:', demoLead);
-      const response = await fetch(`${API_URL}/api/leads`, {
+      console.log('[EasyHost AI] Creating demo lead:', demoLead);
+      const response = await fetch(`${API_URL}/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(demoLead)
@@ -182,7 +182,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
         }]);
       }
     } catch (err) {
-      console.error('[Easy Host AI] Error creating demo lead:', err);
+      console.error('[EasyHost AI] Error creating demo lead:', err);
       setServerOnline(false);
     }
   };
@@ -190,7 +190,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
   // Handle service request
   const handleServiceRequest = async (service) => {
     try {
-      const response = await fetch(`${API_URL}/api/services/request`, {
+      const response = await fetch(`${API_URL}/services/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service: service.id, room: '101', details: '' })
@@ -204,7 +204,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
         setServerOnline(true);
       }
     } catch (err) {
-      console.error('[Easy Host AI] Service request error:', err);
+      console.error('[EasyHost AI] Service request error:', err);
     }
   };
 
@@ -218,7 +218,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
         console.error('Error fetching agent:', error);
         setAgent({
           name: "Maya",
-          title: "Easy Host AI Concierge",
+          title: "EasyHost AI Concierge",
           avatar: "https://api.dicebear.com/7.x/personas/svg?seed=Maya&backgroundColor=667eea"
         });
       }
@@ -299,7 +299,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
     try {
       await sendOutreachEmail({
         recipient: selectedLead?.email,
-        subject: 'Easy Host AI Partnership',
+        subject: 'EasyHost AI Partnership',
         content: emailDraft?.email_draft
       });
       setEmailSent(true);
@@ -392,7 +392,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
         </div>
         <div className="maya-info">
           <div className="maya-brand-row">
-            <span className="maya-brand">Easy Host AI</span>
+            <span className="maya-brand">EasyHost AI</span>
             <span className="maya-badge">AI</span>
           </div>
           <h1 className="maya-name">{agent?.name || 'Maya'}</h1>
@@ -538,7 +538,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
             <div className="panel-header">
               <div>
                 <h3><Users size={22} /> Sales Leads</h3>
-                <p>Real-time leads from Easy Host AI platform</p>
+                <p>Real-time leads from EasyHost AI platform</p>
               </div>
               <div className="panel-actions">
                 <button className="action-btn primary" onClick={handleAddDemoLead}>
@@ -813,7 +813,7 @@ const OwnerView = ({ aiLog, onShowSummary, onAIAction, t }) => {
       <div className="insight-footer glass-footer">
         <div className="insight-content">
           <Sparkles size={18} />
-          <span>{aiInsight?.insight || 'Maya is ready to help grow your Easy Host AI business!'}</span>
+          <span>{aiInsight?.insight || 'Maya is ready to help grow your EasyHost AI business!'}</span>
         </div>
         <button className="refresh-btn" onClick={() => { fetchInsights(); fetchSuggestions(); }}>
           <RefreshCw size={16} />

@@ -1,11 +1,12 @@
 {
   "branding": {
-    "name": "Easy Hotel AI",
+    "name": "EasyHost AI",
     "subtitle": "Luxury Hotel Management OS",
     "aiConcierge": "AI Concierge",
     "aiShort": "AI"
   },
   "nav": {
+    "mainNavigation": "Main navigation",
     "dashboard": "Dashboard",
     "premium": "Premium",
     "properties": "My Properties",
@@ -16,7 +17,7 @@
     "analytics": "Analytics",
     "field": "Field Ops",
     "enterprise": "Enterprise",
-    "godMode": "God Mode"
+    "godMode": "Operational Excellence"
   },
   "languages": {
     "he": "Hebrew",
@@ -37,6 +38,8 @@
     "inactive": "Inactive"
   },
   "common": {
+    "pending": "Pending",
+    "done": "Done",
     "close": "Close",
     "cancel": "Cancel",
     "save": "Save",
@@ -65,7 +68,25 @@
   },
   "sidebar": {
     "aiAssistant": "AI Assistant",
-    "zeroTrust": "Zero-Trust Secured"
+    "zeroTrust": "Zero-Trust Secured",
+    "scanToManage": "Scan to manage"
+  },
+  "sidebarNav": {
+    "dashboard":  "🏠 Overview",
+    "analytics":  "📊 Analytics",
+    "premium":    "🏨 Properties Hub",
+    "properties": "Property management",
+    "inventory":  "🛏 Room Inventory",
+    "tasks":      "Mission board",
+    "crm":        "👥 Leads CRM",
+    "operator":   "📡 Operator",
+    "field":      "⚡ Field Agent",
+    "scheduler":  "Shift scheduler",
+    "manualops":  "Manual operations",
+    "godmode":    "🔮 Operational Excellence"
+  },
+  "godMode": {
+    "demoStaff": "Demo staff"
   },
   "placeholders": {
     "roomsTitle": "Room Management",
@@ -83,7 +104,7 @@
     "statusOffline": "Offline"
   },
   "dashboard": {
-    "title": "Easy Host AI",
+    "title": "EasyHost AI",
     "subtitle": "AI-powered hotel management OS",
     "generateReport": "Generate Daily Report",
     "actions": "Actions",
@@ -145,6 +166,12 @@
     },
     "trendLabelDefault": "from last month",
     "generatingReport": "Generating report...",
+    "properties": "Properties",
+    "activeTasks": "Active Tasks",
+    "completed": "Completed",
+    "incomingComplaints": "Incoming Complaints",
+    "staffResponses": "Staff Responses",
+    "simComplaints": "Sim Complaints",
     "sidebar": {
       "title": "Sidebar",
       "hide": "Hide",
@@ -263,9 +290,10 @@
   },
   "mayaChat": {
     "title": "Maya",
-    "role": "AI Operations Manager",
+    "role": "Active Operations Manager",
     "greeting": "Hey! I'm Maya, your 24/7 AI manager. How can I help? 🟢",
     "askPlaceholder": "Chat with Maya...",
+    "send": "Send",
     "hint": "Maya manages 5 smart agents working for you",
     "leadsFoundLabel": "Leads found:",
     "proactiveOccupancy": "I've detected a gap in next week's bookings; should I have the Marketing Agent create an Airbnb promo?",
@@ -275,6 +303,7 @@
     "quickBar": "Quick actions",
     "suggestionsBar": "Suggested commands",
     "dialogLabel": "Maya — AI Assistant",
+    "workingOnIt": "Working on it…",
     "status": {
       "online": "🟢 Online",
       "connecting": "⏳ Connecting…"
@@ -288,8 +317,8 @@
     },
     "bypassBtn": "⚡ Bypass AI — Create task manually",
     "bypassHint": "Or type /test-task [room] · /clean [room] · /towels [room] · /fix [room]",
-    "error429": "Maya is overloaded right now (Google 429 — temporary quota limit) 😮‍💨\nUse the \"Create Task Manually\" button to bypass AI.",
-    "errorServer": "Cannot reach the Google server. Please check the terminal 🔴",
+    "error429": "Maya is overloaded right now (temporary AI quota limit) 😮‍💨\nUse the \"Create Task Manually\" button to bypass AI.",
+    "errorServer": "Cannot reach the Maya backend (Claude). Please check the terminal 🔴",
     "errorNoServer": "Cannot connect to the server. Please make sure Flask is running.",
     "newTaskCreated": "✅ New task created",
     "messageSent": "📡 Message sent",
@@ -299,7 +328,11 @@
       "cleaning": "Request Cleaning",
       "post": "Create Post",
       "automation": "Automation"
-    }
+    },
+    "priorityHigh": "🚨 Urgent",
+    "priorityNormal": "🟢 Normal",
+    "markDone": "Done",
+    "markAsDone": "Mark as done"
   },
   "notifications": {
     "title": "Notifications",
@@ -375,7 +408,10 @@
     }
   },
   "staffView": {
-    "openTask": "Open Task"
+    "openTask": "Open Task",
+    "enRoute": "En Route",
+    "finishMission": "FINISH MISSION",
+    "missionComplete": "Mission Complete"
   },
   "orchestrator": {
     "messages": {

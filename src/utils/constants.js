@@ -1,17 +1,18 @@
-// API URL - single source of truth (uses host for cross-device access)
-import { API_URL, API_BASE_URL } from './apiClient';
-export { API_URL, API_BASE_URL };
+// API URL — from config.js → http://localhost:1000 (Flask).
+import { API_URL, API_BASE_URL, BASE_URL } from './apiClient';
+export { API_URL, API_BASE_URL, BASE_URL };
+export const FORCED_BACKEND_URL = API_URL;
 
 // SSE Stream URLs
-export const SSE_STREAM_URL = `${API_URL}/api/stream/bookings`;
-export const SSE_LEADS_URL = `${API_URL}/api/stream/leads`;
+export const SSE_STREAM_URL = `${API_URL}/stream/bookings`;
+export const SSE_LEADS_URL = `${API_URL}/stream/leads`;
 
 // Frontend URLs
 // AI Assistant External URL - Opens in new tab
 export const AI_ASSISTANT_URL = 'https://voluble-beignet-896a35.netlify.app/';
 
-// WebSocket URL
-export const WS_URL = process.env.REACT_APP_WS_URL || 'ws://127.0.0.1:5000/ws';
+// Legacy: native ws:// URLs are unused — real-time uses Socket.IO (see services/socket.js).
+export const WS_URL = process.env.REACT_APP_WS_URL || '';
 
 // Feature flags
 export const FEATURES = {

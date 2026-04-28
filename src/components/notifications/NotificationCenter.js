@@ -20,12 +20,8 @@ const NotificationCenter = () => {
   } = useStore();
   const { t, i18n } = useTranslations();
 
-  // Subscribe to WebSocket events
+  // In-app events only (no Socket.IO — server pushes via polling elsewhere)
   useEffect(() => {
-    // Connect to WebSocket
-    wsService.connect();
-
-    // Subscribe to room requests
     const unsubRoom = wsService.on('room_request', (data) => {
       addNotification({
         type: data.priority === 'high' ? 'warning' : 'info',
@@ -59,7 +55,6 @@ const NotificationCenter = () => {
       unsubRoom();
       unsubAgent();
       unsubLead();
-      wsService.disconnect();
     };
   }, [addNotification, t]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -34,10 +34,10 @@
   --danger-light: #f87171;
   --danger-hover: #dc2626;
 
-  /* Backgrounds */
-  --bg-primary: #0b0f14;
-  --bg-secondary: #121825;
-  --bg-tertiary: #1b2230;
+  /* Backgrounds — Enterprise navy/black (#0f172a) */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
   --bg-hover: rgba(255, 255, 255, 0.05);
   --bg-active: rgba(255, 255, 255, 0.1);
 
@@ -131,7 +131,7 @@
 
 /* === BASE STYLES === */
 body {
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Oxygen',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -251,8 +251,9 @@ html {
   animation: blink 1.5s infinite;
 }
 
-/* === FORM ELEMENTS BASE === */
-input, select, textarea {
+/* === FORM ELEMENTS BASE ===
+   Maya chat inputs (.maya-input-field) are excluded — they use their own dark theme. */
+input:not(.maya-input-field), select, textarea:not(.maya-input-field) {
   font-family: inherit;
   font-size: var(--text-sm);
   color: #000000 !important;
@@ -265,20 +266,20 @@ input, select, textarea {
   outline: none;
 }
 
-input:hover, select:hover, textarea:hover {
+input:not(.maya-input-field):hover, select:hover, textarea:not(.maya-input-field):hover {
   border-color: var(--border-light);
 }
 
-input:focus, select:focus, textarea:focus {
+input:not(.maya-input-field):focus, select:focus, textarea:not(.maya-input-field):focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-input::placeholder, textarea::placeholder {
+input:not(.maya-input-field)::placeholder, textarea:not(.maya-input-field)::placeholder {
   color: #475569 !important;
 }
 
-input:disabled, select:disabled, textarea:disabled {
+input:not(.maya-input-field):disabled, select:disabled, textarea:not(.maya-input-field):disabled {
   opacity: 0.5;
   cursor: not-allowed;
   background-color: var(--bg-tertiary);
@@ -466,4 +467,201 @@ select {
 
 .online-pulse {
   animation: onlinePulse 2s infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FINAL BRAND POLISH
+   ▸ Font: Professional Inter/Segoe UI throughout, minimum Bold
+   ▸ Text on white/bright surfaces: #000000, always
+   ▸ Anti-flicker: GPU compositing on all animated elements
+   ▸ Zikukim (confetti / celebration): smooth burst from centre
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Universal font baseline ─────────────────────────────── */
+*, *::before, *::after {
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont,
+               'Roboto', 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Cards, panels, modals and their children always get black text */
+.od-kpi-card, .od-card, .od-alert-card,
+.fv-mission-card, .fv-modal, .fv-victory-box,
+.maya-task-card, .maya-levelup-box,
+.gm-panel, .gm-card, .gm-stat-card,
+.glass-card,
+[class*="-card"], [class*="-panel"], [class*="-modal"] {
+  color: #000000;
+}
+[class*="-card"] h1, [class*="-card"] h2,
+[class*="-card"] h3, [class*="-card"] h4,
+[class*="-panel"] h1, [class*="-panel"] h2,
+[class*="-panel"] h3, [class*="-panel"] h4,
+[class*="-modal"] h1, [class*="-modal"] h2,
+[class*="-modal"] h3, [class*="-modal"] h4 {
+  color: #000000;
+  font-weight: 900;
+}
+
+/* Labels, values, stats on bright backgrounds */
+.od-kpi-label, .od-kpi-value, .od-act-staff,
+.gm-stat-val, .gm-stat-label, .gm-panel-header,
+.fv-card-title, .fv-card-room,
+.mtc-title, .mtc-desc,
+.maya-levelup-title {
+  color: #000000 !important;
+  font-weight: 800;
+}
+
+/* ── 2. Anti-flicker: GPU layer for all animated elements ──── */
+/* Promote to composite layer so CSS animations skip the paint step */
+[class*="overlay"], [class*="levelup"],
+[class*="confetti"], [class*="toast"],
+[class*="victory"], [class*="cheer"],
+[class*="briefing"], [class*="-fill"],
+[class*="shake"], [class*="pop"] {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Prevent layout-triggered repaints on transition elements */
+.fv-mission-card,
+.od-kpi-card,
+.maya-task-card,
+.od-activity-row {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ── 3. Zikukim (confetti) — smooth centred burst ───────────
+   The container covers the viewport.
+   All particles now use a radial burst keyframe that starts from
+   the centre (50% 50%) and flies outward, then falls — no more
+   top-edge spawn that can clip or flicker.                       */
+.fv-confetti-container,
+.maya-confetti-container {
+  position: fixed !important;
+  inset: 0 !important;
+  pointer-events: none;
+  z-index: 999999;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Override particle start position to burst from centre */
+.fv-confetti-particle {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  margin: 0 !important;
+  width: var(--size, 9px);
+  height: var(--size, 9px);
+  background: var(--color);
+  border-radius: var(--radius, 2px);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  animation: fv-burst-fall var(--duration, 1.4s) var(--delay, 0s)
+             cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fv-burst-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform:
+      translate(var(--tx, 0px), var(--ty, 200px))
+      rotate(var(--rot, 540deg))
+      scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* Star confetti particle variant */
+.fv-star-particle {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  font-size: var(--size, 18px);
+  line-height: 1;
+  will-change: transform, opacity;
+  animation: fv-star-burst var(--duration, 1.2s) var(--delay, 0s)
+             cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes fv-star-burst {
+  0%   { transform: translate(0, 0) scale(0) rotate(0deg); opacity: 1; }
+  30%  { transform: translate(var(--tx, 0), var(--ty, -80px)) scale(1.4) rotate(180deg); opacity: 1; }
+  100% { transform: translate(var(--tx, 0), calc(var(--ty, -80px) + 120px)) scale(0.6) rotate(360deg); opacity: 0; }
+}
+
+/* ── 4. All overlay containers: perfectly centred ────────────*/
+.fv-overlay,
+.maya-levelup-overlay,
+.fv-levelup-overlay,
+.fv-cheer-overlay,
+.fv-briefing-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 99998;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: overlay-fade-in 0.25s ease both;
+}
+
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Inner boxes spring in */
+.fv-levelup-box,
+.fv-cheer-box,
+.fv-briefing-box {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  animation: spring-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes spring-pop {
+  from { opacity: 0; transform: scale(0.55) translateY(30px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* ── 5. Remove transition flicker on route/view changes ──────*/
+/* React route swaps cause a 1-frame white flash when an element
+   has both opacity and background transitions. Using composite-
+   only properties eliminates the intermediate paint step.       */
+.main-content,
+.view-container,
+.field-view,
+.od-root,
+.gm-root {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  isolation: isolate; /* new stacking context — no paint bleed */
+}
+
+/* ── 6. Smooth transition on all interactive elements ────────*/
+button, a, [role="button"] {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.15s ease,
+              filter 0.15s ease,
+              opacity 0.15s ease;
+}
+button:focus-visible {
+  outline: 3px solid #00c875;
+  outline-offset: 3px;
 }

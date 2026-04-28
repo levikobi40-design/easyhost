@@ -1,38 +1,77 @@
 import React, { useState, useEffect } from 'react';
 import { loginAuth, registerAuth, getDemoAuthToken } from '../../services/api';
 import useStore from '../../store/useStore';
+import { parseJwtPayload, isBiktaForcePhone } from '../../utils/biktaUser';
+import { isDashboardAdmin } from '../../utils/dashboardRoles';
 import './Login.css';
 
 export const LOGIN_STORAGE_KEY = 'hotel-login-state';
+/** Alias for session restore — same shape as hotel-login-state */
+export const USER_STORAGE_KEY = 'user';
 
 export function clearLoginState() {
-  try { localStorage.removeItem(LOGIN_STORAGE_KEY); } catch {}
-}
-
-function saveLoginState(token, tenantId, role) {
   try {
-    localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify({
-      token, tenantId: tenantId || 'default', role: role || 'owner', loggedInAt: Date.now(),
-    }));
+    localStorage.removeItem(LOGIN_STORAGE_KEY);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem('easyhost_auth_token');
   } catch {}
 }
 
-function applyAuth(token, tenantId, role, setAuthToken, setActiveTenantId, setRole) {
-  setAuthToken(token);
-  setActiveTenantId(tenantId || 'default');
-  setRole(role || 'owner');
-  saveLoginState(token, tenantId, role);
+function saveLoginState(token, tenantId, role) {
+  const payload = {
+    token,
+    tenantId: tenantId || 'default',
+    role: role || 'owner',
+    loggedInAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(payload));
+  } catch {}
+}
+
+function resolveTenantForToken(token, tenantId) {
+  let tid = tenantId || 'default';
+  try {
+    const p = parseJwtPayload(token);
+    const phone = p.phone || p.staff_phone || p.tel;
+    if (phone && isBiktaForcePhone(phone)) tid = 'BIKTA_NESS_ZIONA';
+  } catch {
+    /* ignore */
+  }
+  return tid;
+}
+
+function applyAuth(token, tenantId, role, loginSuccess) {
+  const tid = resolveTenantForToken(token, tenantId);
+  loginSuccess(token, tid, role || 'owner');
+  saveLoginState(token, tid, role);
+  try {
+    localStorage.setItem('easyhost_auth_token', token);
+    if (isDashboardAdmin(role)) {
+      localStorage.setItem('admin_token', token);
+    } else {
+      localStorage.removeItem('admin_token');
+    }
+  } catch (_) {
+    /* ignore */
+  }
   try {
     const raw = localStorage.getItem('hotel-enterprise-storage');
     const parsed = raw ? JSON.parse(raw) : { state: {}, version: 0 };
-    parsed.state = { ...(parsed.state || {}), authToken: token, role: role || 'owner', activeTenantId: tenantId || 'default' };
+    parsed.state = {
+      ...(parsed.state || {}),
+      authToken: token,
+      role: role || 'owner',
+      activeTenantId: tid,
+    };
     localStorage.setItem('hotel-enterprise-storage', JSON.stringify(parsed));
   } catch {}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function LoginPage() {
-  const { setAuthToken, setActiveTenantId, setRole } = useStore();
+  const { loginSuccess, setAuthToken } = useStore();
 
   // 'login' | 'register' | 'success'
   const [view, setView]           = useState('login');
@@ -46,11 +85,11 @@ export default function LoginPage() {
   // If the user previously logged in, skip the login screen immediately.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LOGIN_STORAGE_KEY);
+      const raw = localStorage.getItem(LOGIN_STORAGE_KEY) || localStorage.getItem(USER_STORAGE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw);
       if (saved?.token) {
-        applyAuth(saved.token, saved.tenantId, saved.role, setAuthToken, setActiveTenantId, setRole);
+        applyAuth(saved.token, saved.tenantId, saved.role, useStore.getState().loginSuccess);
       }
     } catch {}
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -75,7 +114,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const data = await loginAuth(email.trim().toLowerCase(), password);
-      applyAuth(data.token, data.tenant_id, data.role, setAuthToken, setActiveTenantId, setRole);
+      applyAuth(data.token, data.tenant_id, data.role, loginSuccess);
     } catch (err) {
       const msg = err?.message || '';
       if (msg.includes('Invalid') || msg.includes('401')) {
@@ -102,14 +141,14 @@ export default function LoginPage() {
       const data = await registerAuth(email.trim().toLowerCase(), password);
       setSavedEmail(email.trim().toLowerCase());
       setSavedPassword(password);
-      applyAuth(data.token, data.tenant_id, data.role, setAuthToken, setActiveTenantId, setRole);
+      applyAuth(data.token, data.tenant_id, data.role, loginSuccess);
       setView('success');
     } catch (err) {
       const msg = err?.message || '';
       if (msg.includes('already') || msg.includes('409')) {
         try {
           const data = await loginAuth(email.trim().toLowerCase(), password);
-          applyAuth(data.token, data.tenant_id, data.role, setAuthToken, setActiveTenantId, setRole);
+          applyAuth(data.token, data.tenant_id, data.role, loginSuccess);
         } catch {
           setError('This email is already registered. Switch to Sign In and try again.');
           setView('login');
@@ -125,19 +164,18 @@ export default function LoginPage() {
   };
 
   // ── Demo / Guest access ───────────────────────────────────────────────────
-  // 1. Try /api/auth/demo (no DB needed — just issues a JWT on the server)
+  // 1. Try /auth/demo (no DB needed — just issues a JWT on the server)
   // 2. If the backend is unreachable, fall back to a local offline admin session
   const handleDevLogin = async () => {
     setLoading(true);
     setError('');
     try {
       const data = await getDemoAuthToken('demo');
-      applyAuth(data.token, data.tenant_id || 'demo', data.role || 'admin',
-                setAuthToken, setActiveTenantId, setRole);
+      applyAuth(data.token, data.tenant_id || 'demo', data.role || 'admin', loginSuccess);
     } catch {
       // Backend unreachable — use local offline session so the demo still works
       const offlineToken = 'demo-offline-' + Date.now();
-      applyAuth(offlineToken, 'demo', 'admin', setAuthToken, setActiveTenantId, setRole);
+      applyAuth(offlineToken, 'demo', 'admin', loginSuccess);
     } finally {
       setLoading(false);
     }

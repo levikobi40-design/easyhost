@@ -1,6 +1,6 @@
 {
   "branding": {
-    "name": "Easy Host AI",
+    "name": "EasyHost AI",
     "subtitle": "Πλατφόρμα Διαχείρισης Ξενοδοχείου με AI",
     "aiConcierge": "AI Concierge",
     "aiShort": "AI"
@@ -79,7 +79,7 @@
     "statusOffline": "Offline"
   },
   "dashboard": {
-    "title": "Easy Host AI",
+    "title": "EasyHost AI",
     "subtitle": "Έξυπνο σύστημα διαχείρισης ξενοδοχείου",
     "generateReport": "Ημερήσια Αναφορά",
     "trendLabelDefault": "σε σχέση με τον προηγούμενο μήνα",
@@ -187,6 +187,7 @@
     "role": "Senior Project Manager",
     "greeting": "Γεια! Είμαι η Maya, η senior project manager σας. Πώς μπορώ να βοηθήσω σήμερα;",
     "askPlaceholder": "דבר עם מאיה / Chat with Maya...",
+    "send": "Αποστολή",
     "hint": "Η Maya διαχειρίζεται 5 έξυπνους agents",
     "leadsFoundLabel": "Leads που βρέθηκαν:",
     "proactiveOccupancy": "Εντόπισα κενό στις κρατήσεις της επόμενης εβδομάδας. Να ζητήσω από τον Marketing Agent ένα Airbnb promo;",
@@ -196,7 +197,11 @@
       "cleaning": "Αίτημα Καθαρισμού",
       "post": "Δημιουργία Post",
       "automation": "Αυτοματισμός"
-    }
+    },
+    "priorityHigh": "🚨 Επείγον",
+    "priorityNormal": "🟢 Κανονικό",
+    "markDone": "Ολοκληρώθηκε ✓",
+    "markAsDone": "Σημείωσε ως ολοκληρωμένο"
   },
   "notifications": {
     "title": "Ειδοποιήσεις",

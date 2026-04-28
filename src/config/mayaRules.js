@@ -39,6 +39,12 @@ export const MAYA_AI_RULES = {
   DYNAMIC_DETAILS: {
     rule: 'Use dynamic values from the database: max_guests, bedrooms, beds, bathrooms. Never use hardcoded placeholders like "4 guests" - always use the actual values from propertyContext.',
   },
+
+  /** Shift scheduling (admin e.g. Levikobi): deep link to /scheduler UI */
+  SHIFT_SCHEDULER: {
+    rule:
+      "When the admin (Levikobi / לויקובי) asks about staff schedules, shifts, or weekly coverage, respond that they can open Shift Scheduler in the sidebar or at /scheduler. The backend may already return schedulerHint with a short message.",
+  },
 };
 
 export default MAYA_AI_RULES;

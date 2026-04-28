@@ -1,25 +1,83 @@
 {
-  "short_name": "Easy Host AI",
-  "name": "Easy Host AI",
+  "name": "EasyHost AI",
+  "short_name": "EasyHost",
+  "description": "AI-Powered Hotel Operations — Mission Control for Property Owners & Field Teams",
+  "lang": "he",
+  "dir": "rtl",
+
+  "start_url": "/",
+  "scope": "/",
+  "id": "easyhost-ai-pwa",
+
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+
+  "theme_color": "#00c875",
+  "background_color": "#060a14",
+
+  "categories": ["business", "productivity", "utilities"],
+
   "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
     {
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "type": "image/x-icon",
+      "purpose": "any"
     },
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+
+  "screenshots": [
+    {
+      "src": "icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "EasyHost AI — Owner Dashboard"
+    }
+  ],
+
+  "shortcuts": [
+    {
+      "name": "Owner Dashboard",
+      "short_name": "Dashboard",
+      "description": "Open the Owner Analytics Dashboard",
+      "url": "/?view=analytics",
+      "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Field Mission Map",
+      "short_name": "Missions",
+      "description": "Open the Employee Quest Map",
+      "url": "/?view=field",
+      "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ],
+
+  "related_applications": [],
+  "prefer_related_applications": false
 }

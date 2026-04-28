@@ -181,7 +181,7 @@ const LeadsPage = () => {
 
   // Add demo lead for testing
   const handleAddDemoLead = async () => {
-    const demoNames = ['John Smith', 'Maria Garcia', 'David Chen', 'Anna Müller', 'Yuki Tanaka'];
+    const demoNames = ['יוסי לוי', 'מיכל אברהם', 'רועי כהן', 'נועה גל', 'דניאל ברק'];
     const randomName = demoNames[Math.floor(Math.random() * demoNames.length)];
     const randomGuests = Math.floor(Math.random() * 4) + 1;
 

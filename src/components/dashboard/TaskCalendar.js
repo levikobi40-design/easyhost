@@ -1,90 +1,84 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CalendarCheck, Phone, MessageCircle, FileText, ChevronDown } from 'lucide-react';
-import { toWhatsAppPhone, getTaskWhatsAppPhone } from '../../utils/phone';
-import { getPropertyTasks, updatePropertyTaskStatus, sendMayaCommand, getProperties } from '../../services/api';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { CalendarCheck, FileText, ChevronDown } from 'lucide-react';
+import { updatePropertyTaskStatus, sendMayaCommand, getPropertyStaff, bootstrapOperationalData, fetchDailyPropertyTasksReport } from '../../services/api';
+import { API_URL } from '../../utils/apiClient';
+import { useProperties } from '../../context/PropertiesContext';
 import TaskListErrorBoundary from '../common/TaskListErrorBoundary';
 import useStore from '../../store/useStore';
+import { useMission } from '../../context/MissionContext';
+import { getBazaarHotelRoomCards } from '../../data/bazaarHotelRooms';
+import { isLegacyMockHotelTask } from '../../utils/bazaarTasks';
 import { maya } from '../../services/agentOrchestrator';
+import { toWhatsAppPhone } from '../../utils/phone';
+import { taskCalendarSafeStr as safeStr, getTaskCalendarWhatsAppMessage as getWhatsAppMessage } from '../../utils/taskCalendarWhatsApp';
+import TaskCalendarTaskCard from './TaskCalendarTaskCard';
+import { missionTaskIsInProgress, missionTaskIsSeen, missionTaskIsDone } from '../../utils/taskCalendarStatus';
+import { TaskBoardSkeleton } from '../common/DashboardSkeletons';
 import './TaskCalendar.css';
 
-/** Always return a string for rendering - prevents [object Object] crash */
-const safeStr = (val, fallback = '') => {
-  if (val == null) return fallback;
-  if (typeof val === 'string') return val;
-  if (typeof val === 'object') return safeStr(val.content ?? val.title ?? val.text, fallback);
-  return String(val);
-};
-
-/** Build WhatsApp message by staff. Alma: 'היי עלמה, יש בקשה חדשה מחדר X בנכס Y. אנא טפלי בהקדם!' */
-const getWhatsAppMessage = (t) => {
-  const content = safeStr(t.description ?? t.title ?? t.content).slice(0, 120);
-  const property = safeStr(t.property_name ?? t.propertyName);
-  const staff = ((t.staff_name ?? t.staffName) || '').toString().toLowerCase();
-  if (staff.includes('alma') || staff.includes('עלמה')) {
-    const roomMatch = content.match(/חדר\s*(\d+)|room\s*(\d+)|(\d+)/i) || [];
-    const room = roomMatch[1] || roomMatch[2] || roomMatch[3] || '—';
-    const propName = property || 'הנכס';
-    return `היי עלמה, יש בקשה חדשה מחדר ${room} בנכס ${propName}. אנא טפלי בהקדם!`;
-  }
-  if (staff.includes('kobi') || staff.includes('קובי')) {
-    return property ? `היי קובי, יש לך משימה: ${content} ב${property}` : `היי קובי, יש לך משימה: ${content}`;
-  }
-  if (staff.includes('avi') || staff.includes('אבי')) {
-    return property ? `היי אבי, יש לך משימה: ${content} ב${property}` : `היי אבי, יש לך משימה: ${content}`;
-  }
-  return `היי ${safeStr(t.staff_name ?? t.staffName) || 'שם'}, יש לך משימה: ${content}`;
-};
-
 export default function TaskCalendar() {
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    tasks,
+    loading,
+    loadingMore,
+    hasMoreTasks,
+    tasksTotal,
+    taskStatusCounts,
+    prependTask,
+    updateTaskInList,
+    loadMoreTasks,
+  } = useMission();
+  const { properties } = useProperties();
   const [filter, setFilter] = useState('all'); // 'all' | 'pending' | 'completed'
   const [propertyFilter, setPropertyFilter] = useState('all'); // 'all' | property name
-  const [properties, setProperties] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [managementLoading, setManagementLoading] = useState(false);
-  const loadRef = useRef(0);
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+  const lang = useStore((s) => s.lang) || 'en';
+  const activeTenantId = useStore((s) => s.activeTenantId);
+  const isBazaarPilot = activeTenantId === 'BAZAAR_JAFFA';
   const setLastSelectedTask = useStore((s) => s.setLastSelectedTask);
   const toggleMayaChat = useStore((s) => s.toggleMayaChat);
   const addMayaMessage = useStore((s) => s.addMayaMessage);
   const addNotification = useStore((s) => s.addNotification);
 
+
+  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
+  const taskListWrapRef = useRef(null);
+
+  useEffect(() => {
+    const onBatch = (e) => {
+      const { updates } = e?.detail || {};
+      if (!Array.isArray(updates)) return;
+      if (updates.some((u) => String(u.status || '').toLowerCase() === 'done')) {
+        setFilter('completed');
+      }
+    };
+    window.addEventListener('mission-tasks-batch-local-update', onBatch);
+    return () => window.removeEventListener('mission-tasks-batch-local-update', onBatch);
+  }, []);
   useEffect(() => {
     let cancelled = false;
-    const loadId = ++loadRef.current;
-    setLoading(true);
-    getPropertyTasks()
-      .then((list) => {
-        if (!cancelled && loadId === loadRef.current) {
-          setTasks(Array.isArray(list) ? list : []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled && loadId === loadRef.current) setTasks([]);
-      })
-      .finally(() => {
-        if (!cancelled && loadId === loadRef.current) setLoading(false);
-      });
+    (async () => {
+      try {
+        await bootstrapOperationalData();
+      } catch (_) {
+        /* server may have seeded on startup */
+      }
+      if (!cancelled) window.dispatchEvent(new Event('maya-refresh-tasks'));
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Load property list for the filter dropdown
-  useEffect(() => {
-    getProperties()
-      .then((list) => setProperties(Array.isArray(list) ? list : []))
-      .catch(() => setProperties([]));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [highlightedTaskId, setHighlightedTaskId] = useState(null);
   useEffect(() => {
     const onTaskCreated = (e) => {
       const newTask = e?.detail?.task;
       if (newTask && newTask.id) {
         const descFallback = safeStr(newTask.description ?? newTask.title ?? newTask.task_type ?? newTask.content) || 'ביצוע משימה';
         const propFallback = safeStr(newTask.property_name ?? newTask.room ?? newTask.room_number) || 'חדר לא ידוע';
-        const staffFallback = safeStr(newTask.staff_name ?? newTask.worker_name) || 'Unknown';
+        const staffFallback = safeStr(newTask.staff_name ?? newTask.worker_name) || 'לא ידוע';
         const taskWithActions = {
           ...newTask,
           description:   descFallback,
@@ -95,43 +89,125 @@ export default function TaskCalendar() {
           status: newTask.status || 'Pending',
           actions: newTask.actions || [{ label: 'ראיתי ✅', value: 'seen' }, { label: 'בוצע 🏁', value: 'done' }],
         };
-        setTasks((prev) => {
-          if (prev.some((t) => t.id === newTask.id)) return prev;
-          return [taskWithActions, ...prev];
-        });
+        prependTask(taskWithActions);
         setHighlightedTaskId(newTask.id);
         setTimeout(() => setHighlightedTaskId(null), 2500);
-        getPropertyTasks()
-          .then((list) => {
-            setTasks((prev) => {
-              const merged = Array.isArray(list) ? list : [];
-              const hasNew = merged.some((t) => t.id === newTask.id);
-              if (!hasNew) return [taskWithActions, ...merged];
-              return merged;
-            });
-          })
-          .catch(() => {});
       }
     };
     window.addEventListener('maya-task-created', onTaskCreated);
     return () => window.removeEventListener('maya-task-created', onTaskCreated);
-  }, []);
+  }, [prependTask]);
 
   const [togglingId, setTogglingId] = useState(null);
+  const [cleanerLoading, setCleanerLoading] = useState({});
+  const [undoOffer, setUndoOffer] = useState(null);
+  const undoTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+  }, []);
+
+  const openPropertyCleanerWhatsApp = useCallback(async (t, e) => {
+    e.stopPropagation();
+    const pid = t.property_id;
+    if (!pid) return;
+    const tid = t.id;
+    setCleanerLoading((m) => ({ ...m, [tid]: true }));
+    try {
+      let staff = await getPropertyStaff(pid, { role: 'cleaning' });
+      if (!staff?.length) staff = await getPropertyStaff(pid);
+      const withPhone = (staff || []).find((s) => (s.phone_number || s.phone || '').trim());
+      const phone = withPhone?.phone_number || withPhone?.phone;
+      if (!phone) {
+        window.alert('לא נמצא טלפון לניקיון בנכס. הוסיפו עובד ניקיון ב״Staff & Planner״.');
+        return;
+      }
+      const msg = getWhatsAppMessage(t);
+      const digits = toWhatsAppPhone(phone);
+      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+    } finally {
+      setCleanerLoading((m) => ({ ...m, [tid]: false }));
+    }
+  }, []);
+  const handleUndoMarkDone = useCallback(async () => {
+    if (!undoOffer) return;
+    const { taskId, revertTo } = undoOffer;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoOffer(null);
+    updateTaskInList(taskId, (t) => ({ ...t, status: revertTo }));
+    setTogglingId(null);
+    try {
+      const res = await updatePropertyTaskStatus(taskId, revertTo);
+      if (res?.queued) {
+        addNotification({
+          type: 'info',
+          title: 'מאיה',
+          message: 'השינוי נשמר מקומית — יסונכרן כשהחיבור חוזר',
+        });
+      }
+    } catch (e) {
+      updateTaskInList(taskId, (t) => ({ ...t, status: 'Done' }));
+      window.alert(e?.message || 'עדכון נכשל');
+    }
+  }, [undoOffer, updateTaskInList, addNotification]);
+
   const handleToggleStatus = useCallback(async (taskId, newStatus, task) => {
     if (!taskId) return;
-    setTogglingId(taskId);
-    let prevStatus;
+
+    if (undoOffer && undoOffer.taskId !== taskId) {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+      setUndoOffer(null);
+    }
+    if (undoOffer && undoOffer.taskId === taskId && newStatus !== 'Done') {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+      setUndoOffer(null);
+    }
+
+    const prevStatus = task?.status;
     const staffName = (task?.staff_name ?? task?.staffName ?? 'העובד').trim() || 'העובד';
-    setTasks((prev) => {
-      const t = prev.find((x) => x.id === taskId);
-      prevStatus = t?.status;
-      return prev.map((x) => (x.id === taskId ? { ...x, status: newStatus } : x));
-    });
+    updateTaskInList(taskId, (t) => ({ ...t, status: newStatus }));
+    if (String(newStatus).toLowerCase() === 'done') {
+      setFilter('completed');
+    }
+    setTogglingId(null);
     try {
-      await updatePropertyTaskStatus(taskId, newStatus);
-      if (newStatus === 'Seen') {
-        addMayaMessage({ role: 'assistant', content: `${staffName} אישר את המשימה` });
+      const res = await updatePropertyTaskStatus(taskId, newStatus);
+      if (res?.queued) {
+        addNotification({
+          type: 'info',
+          title: 'מאיה',
+          message: 'העדכון נשמר מקומית ויסונכרן כשהחיבור חוזר',
+        });
+      }
+      if (newStatus === 'Done') {
+        if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+        setUndoOffer({
+          taskId,
+          revertTo: prevStatus && String(prevStatus).toLowerCase() !== 'done' ? prevStatus : 'In_Progress',
+        });
+        undoTimerRef.current = setTimeout(() => {
+          undoTimerRef.current = null;
+          setUndoOffer((cur) => (cur?.taskId === taskId ? null : cur));
+        }, 5000);
+      }
+      if (newStatus === 'In_Progress') {
+        try {
+          await fetch(`${API_URL}/staff/acknowledge`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ task_id: taskId, staff_name: staffName }),
+          });
+        } catch (_) { /* non-critical */ }
+        addMayaMessage({ role: 'assistant', content: `${staffName} אישר את המשימה ✅ הטיימר הופסק.` });
         toggleMayaChat(true);
       } else if (newStatus === 'Done') {
         addMayaMessage({ role: 'assistant', content: `${staffName} סיים את המשימה ✅` });
@@ -139,35 +215,19 @@ export default function TaskCalendar() {
         toggleMayaChat(true);
       }
     } catch (e) {
-      setTasks((prev) =>
-        prev.map((x) => (x.id === taskId ? { ...x, status: prevStatus } : x))
-      );
-      window.alert(e?.message || 'Failed to update');
-    } finally {
-      setTogglingId(null);
+      updateTaskInList(taskId, (t) => ({ ...t, status: prevStatus }));
+      setUndoOffer((cur) => (cur?.taskId === taskId ? null : cur));
+      window.alert(e?.message || 'עדכון נכשל');
     }
-  }, [addMayaMessage, addNotification, toggleMayaChat]);
+  }, [addMayaMessage, addNotification, toggleMayaChat, updateTaskInList, undoOffer]);
 
-  const isDone = (task) => (task?.status || '').toLowerCase() === 'done';
-  const isSeen = (task) => (task?.status || '').toLowerCase() === 'seen';
-
-  const formatDate = (str) => {
-    if (!str) return '—';
-    try {
-      const d = new Date(str);
-      return d.toLocaleDateString('he-IL', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return str;
-    }
-  };
+  const isDone = (task) => missionTaskIsDone(task);
+  const isInProgress = (task) => missionTaskIsInProgress(task);
+  const isSeen = (task) => missionTaskIsSeen(task);
 
   const filteredTasks = (tasks ?? []).filter((t) => {
+    if (isLegacyMockHotelTask(t)) return false;
+    if ((t?.status || '').toLowerCase() === 'archived') return false;
     // Status filter
     if (filter === 'pending' && isDone(t)) return false;
     if (filter === 'completed' && !isDone(t)) return false;
@@ -179,21 +239,115 @@ export default function TaskCalendar() {
     return true;
   });
 
-  /** Smart sort: urgent keywords (דחוף, קריטי, דליפה) first */
-  const urgentKeywords = /דחוף|קריטי|דליפה|urgent|critical|leak/i;
-  const sortedTasks = [...filteredTasks].sort((a, b) => {
-    const descA = safeStr(a.description ?? a.title ?? a.content);
-    const descB = safeStr(b.description ?? b.title ?? b.content);
-    const aUrgent = urgentKeywords.test(descA);
-    const bUrgent = urgentKeywords.test(descB);
-    if (aUrgent && !bUrgent) return -1;
-    if (!aUrgent && bUrgent) return 1;
-    return 0;
-  });
+  /** True when due_at is within the next 4 hours — pins to top via urgency score */
+  const isCheckinSoonPinned = (t) => {
+    if (isDone(t) || !t?.due_at) return false;
+    const due = new Date(t.due_at);
+    if (Number.isNaN(due.getTime())) return false;
+    const hours = (due.getTime() - Date.now()) / 3600000;
+    return hours >= 0 && hours <= 4;
+  };
 
-  const totalCount = tasks.length;
-  const inProgressCount = tasks.filter((t) => !isDone(t)).length;
-  const completedCount = tasks.filter((t) => isDone(t)).length;
+  /** Urgency score: imminent check-in due_at > room ready / check-in prep > leaks/urgent > cleaning */
+  const taskUrgencyScore = (t) => {
+    if (isCheckinSoonPinned(t)) return 300;
+    const d = safeStr(t.description ?? t.title ?? t.content).toLowerCase();
+    const tt = (t.task_type || '').toLowerCase();
+    if (t?.due_at && !isDone(t)) {
+      const due = new Date(t.due_at);
+      if (!Number.isNaN(due.getTime())) {
+        const hours = (due.getTime() - Date.now()) / 3600000;
+        if (hours > 0 && hours <= 24) return 120;
+      }
+    }
+    if (/check-in|צ'ק-אין|checkin|room ready|הכנה|מוכן לצ|מוכן לחדר|אורח מגיע/.test(d)) return 100;
+    if (/דחוף|urgent|קריטי|דליפה|leak|flood|מים/.test(d)) return 92;
+    if (tt === 'cleaning' || (t.task_type || '') === 'ניקיון חדר' || /ניקיון|clean|מיטה|מצעים/.test(d)) return 75;
+    if (/lightbulb|נורה|תאורה|lamp|מנורה|מפסק/.test(d)) return 28;
+    if (/דחוף/.test(d)) return 85;
+    return 50;
+  };
+
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    const sa = taskUrgencyScore(a);
+    const sb = taskUrgencyScore(b);
+    if (sb !== sa) return sb - sa;
+    // Newest-first within the same urgency tier: descending created_at.
+    // ISO-8601 strings sort lexicographically, so reversing localeCompare
+    // gives correct newest-first without a Date parse on every comparison.
+    const ta = safeStr(a.created_at || a.due_at || '');
+    const tb = safeStr(b.created_at || b.due_at || '');
+    return tb.localeCompare(ta);
+  });
+  const tasksForDisplay = sortedTasks;
+
+  const TASK_RENDER_BATCH = 48;
+  const [renderLimit, setRenderLimit] = useState(TASK_RENDER_BATCH);
+  const filterScrollKey = `${filter}\0${propertyFilter}`;
+  const filterScrollKeyRef = useRef(filterScrollKey);
+  useEffect(() => {
+    if (filterScrollKeyRef.current !== filterScrollKey) {
+      filterScrollKeyRef.current = filterScrollKey;
+      setRenderLimit(TASK_RENDER_BATCH);
+    }
+  }, [filterScrollKey]);
+
+  useEffect(() => {
+    setRenderLimit((l) => Math.min(l, Math.max(tasksForDisplay.length, TASK_RENDER_BATCH)));
+  }, [tasksForDisplay.length]);
+
+  const visibleTasks = useMemo(
+    () => tasksForDisplay.slice(0, Math.min(renderLimit, tasksForDisplay.length)),
+    [tasksForDisplay, renderLimit],
+  );
+
+  const renderBatchSentinelRef = useRef(null);
+  const canShowMoreCards = visibleTasks.length < tasksForDisplay.length;
+  useEffect(() => {
+    const el = renderBatchSentinelRef.current;
+    if (!el || !canShowMoreCards) return undefined;
+    const ob = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setRenderLimit((n) => Math.min(n + TASK_RENDER_BATCH, tasksForDisplay.length));
+        }
+      },
+      { root: null, rootMargin: '400px', threshold: 0 },
+    );
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, [canShowMoreCards, tasksForDisplay.length, renderLimit]);
+
+  /** Fetch next server page when the virtualized list has caught up and more rows exist remotely. */
+  const apiPageSentinelRef = useRef(null);
+  const needApiPage =
+    hasMoreTasks &&
+    !loadingMore &&
+    !canShowMoreCards &&
+    visibleTasks.length >= tasksForDisplay.length &&
+    tasksForDisplay.length > 0;
+  useEffect(() => {
+    const el = apiPageSentinelRef.current;
+    if (!el || !needApiPage) return undefined;
+    const ob = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMoreTasks();
+      },
+      { root: null, rootMargin: '600px', threshold: 0 },
+    );
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, [needApiPage, loadMoreTasks, tasksForDisplay.length, visibleTasks.length]);
+
+  const barFromSql =
+    Number(taskStatusCounts?.total) === Number(tasksTotal) && Number(tasksTotal) >= 0;
+  const totalCount = tasksTotal > 0 ? tasksTotal : tasks?.length ?? 0;
+  const inProgressCount = barFromSql
+    ? Number(taskStatusCounts.in_progress) || 0
+    : tasks.filter((t) => isInProgress(t) || isSeen(t)).length;
+  const completedCount = barFromSql
+    ? Number(taskStatusCounts.done) || 0
+    : tasks.filter((t) => isDone(t)).length;
 
   const handleManagementAnalysis = useCallback(async () => {
     setManagementLoading(true);
@@ -204,7 +358,7 @@ export default function TaskCalendar() {
         property: safeStr(t.property_name ?? t.propertyName),
         status: t.status || 'Pending',
       }));
-      const result = await sendMayaCommand('בוא נראה אותה מנהלת', tasksForAnalysis);
+      const result = await sendMayaCommand('בוא נראה אותה מנהלת', tasksForAnalysis, [], lang);
       toggleMayaChat(true);
       addMayaMessage({
         role: 'assistant',
@@ -220,28 +374,74 @@ export default function TaskCalendar() {
     } finally {
       setManagementLoading(false);
     }
-  }, [tasks, toggleMayaChat, addMayaMessage]);
+  }, [tasks, toggleMayaChat, addMayaMessage, lang]);
 
   const handleDailyReport = useCallback(async () => {
     setReportLoading(true);
     try {
-      const result = await maya.processCommand('Generate daily report - summarize tasks done today and what is left for tomorrow');
+      const report = await fetchDailyPropertyTasksReport();
+      const base = report?.summary_text || 'אין נתונים לדוח.';
+      let content = base;
+      try {
+        const refined = await maya.processCommand(
+          `זהו דוח נתונים גולמי מהמערכת (24 שעות אחרונות). נסח אותו בשני פסקאות קצרות בעברית מקצועית לבעל נכס, בלי לשנות מספרים או לשבח את המערכת:\n\n${base}`,
+        );
+        content = refined?.displayMessage ?? refined?.message ?? base;
+      } catch (_) {
+        content = base;
+      }
       toggleMayaChat(true);
-      addMayaMessage({
-        role: 'assistant',
-        content: result?.displayMessage ?? result?.message ?? 'Report generated.',
-      });
+      addMayaMessage({ role: 'assistant', content });
     } catch (e) {
       toggleMayaChat(true);
       addMayaMessage({
         role: 'assistant',
-        content: `Error: ${e?.message || 'Could not generate report'}`,
+        content: `שגיאה: ${e?.message || 'לא ניתן להפיק דוח כרגע'}`,
         isError: true,
       });
     } finally {
       setReportLoading(false);
     }
   }, [toggleMayaChat, addMayaMessage]);
+
+  const bazaarImageFallback =
+    'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&q=80';
+
+  if (isBazaarPilot) {
+    const bazaarRooms = getBazaarHotelRoomCards();
+    return (
+      <div className="task-calendar task-calendar--bazaar p-10 bg-[#FBFBFB] min-h-screen" dir="rtl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-10">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center">
+              <CalendarCheck size={28} className="text-amber-600" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-gray-900">לוח משימות</h1>
+              <p className="text-gray-500 mt-1">מלון בזאר יפו — חדרים לפי סוג (Superior, Deluxe וכו׳). תמונות: public/assets/images/hotels/bazaar</p>
+            </div>
+          </div>
+        </div>
+        <div className="bazaar-hotel-grid">
+          {bazaarRooms.map((room) => (
+            <div key={room.id} className="bazaar-hotel-card">
+              <div className="bazaar-hotel-card-thumb">
+                <img
+                  src={room.imageSrc}
+                  alt=""
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.src = bazaarImageFallback;
+                  }}
+                />
+              </div>
+              <p className="bazaar-hotel-card-label">{room.labelHe}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="task-calendar p-10 bg-[#FBFBFB] min-h-screen" dir="rtl">
@@ -341,7 +541,7 @@ export default function TaskCalendar() {
 
       <TaskListErrorBoundary>
       {loading ? (
-        <p className="text-gray-400 py-12 text-center">טוען משימות...</p>
+        <TaskBoardSkeleton rows={8} />
       ) : filteredTasks.length === 0 ? (
         <div className="task-calendar-empty bg-white rounded-2xl p-12 text-center border border-gray-100">
           <CalendarCheck size={48} className="text-gray-300 mx-auto mb-4" />
@@ -349,123 +549,62 @@ export default function TaskCalendar() {
           <p className="text-sm text-gray-400 mt-1">כשמאיה תשלח הודעה לעובד, המשימה תופיע כאן</p>
         </div>
       ) : (
-        <div className="task-calendar-grid">
-          {sortedTasks.map((t, i) => (
-            <div
-              key={t?.id != null && typeof t.id !== 'object' ? String(t.id) : `task-${i}`}
-              className={`task-card ${isDone(t) ? 'task-done' : isSeen(t) ? 'task-seen' : 'task-pending'} ${highlightedTaskId === t.id ? 'task-card-pop' : ''}`}
-              onClick={() => setLastSelectedTask(t)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setLastSelectedTask(t)}
-            >
-              <div className="task-card-header">
-                <span className={`task-status-badge ${isDone(t) ? 'done' : isSeen(t) ? 'seen' : 'pending'}`}>
-                  {isDone(t) ? 'הושלם' : isSeen(t) ? 'ראיתי' : 'ממתין'}
-                </span>
-                <span className="task-date">{formatDate(t.created_at)}</span>
-              </div>
-              <p className="task-description">{safeStr(t.description) || safeStr(t.title) || safeStr(t.content) || ''}</p>
-              {safeStr(t.property_context) && (
-                <p className="text-xs text-gray-500 mt-0.5">{safeStr(t.property_context)}</p>
-              )}
-              {t.photo_url && (
-                <a
-                  href={t.photo_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="task-photo-link"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label="צפה בתמונת המשימה"
-                >
-                  <img
-                    src={t.photo_url}
-                    alt="תמונת משימה"
-                    className="task-photo-thumb"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
-                </a>
-              )}
-              <div className="task-meta">
-                {(t.property_name ?? t.propertyName) && (
-                  <div className="task-meta-row">
-                    <span className="task-meta-icon" aria-hidden>🏠</span>
-                    <span>{safeStr(t.property_name ?? t.propertyName)}</span>
-                  </div>
-                )}
-                {(t.staff_name ?? t.staffName) && (
-                  <div className="task-meta-row flex items-center gap-2">
-                    <span className="task-meta-icon" aria-hidden>👤</span>
-                    <span>{safeStr(t.staff_name ?? t.staffName)}</span>
-                    {((t.staff_phone ?? t.staffPhone) || getTaskWhatsAppPhone(t)) && (
-                      <>
-                        <a href={`tel:+${getTaskWhatsAppPhone(t) || toWhatsAppPhone(t.staff_phone ?? t.staffPhone)}`} className="task-phone-link" title="Call" onClick={(e) => e.stopPropagation()}>
-                          <Phone size={14} />
-                        </a>
-                        <a
-                          href={`https://wa.me/${getTaskWhatsAppPhone(t) || toWhatsAppPhone(t.staff_phone ?? t.staffPhone)}?text=${encodeURIComponent(getWhatsAppMessage(t))}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="task-whatsapp-btn"
-                          title="שליחת וואטסאפ"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MessageCircle size={22} />
-                        </a>
-                      </>
-                    )}
-                  </div>
-                )}
-                {((t.staff_phone ?? t.staffPhone) || getTaskWhatsAppPhone(t)) && !(t.staff_name ?? t.staffName) && (
-                  <div className="task-meta-row task-phone">
-                    <Phone size={16} />
-                    <a href={`tel:${safeStr(t.staff_phone ?? t.staffPhone).replace(/\D/g, '')}`} className="task-phone-link" onClick={(e) => e.stopPropagation()}>{safeStr(t.staff_phone ?? t.staffPhone)}</a>
-                    <a href={`https://wa.me/${getTaskWhatsAppPhone(t) || toWhatsAppPhone(t.staff_phone ?? t.staffPhone)}?text=${encodeURIComponent(getWhatsAppMessage(t))}`} target="_blank" rel="noopener noreferrer" className="task-whatsapp-btn" title="שליחת וואטסאפ" onClick={(e) => e.stopPropagation()}>
-                      <MessageCircle size={22} />
-                    </a>
-                  </div>
-                )}
-              </div>
-              <div className="task-card-actions" onClick={(e) => e.stopPropagation()}>
-                {!isDone(t) && (
-                  <>
-                    {(t.actions || [{ label: 'ראיתי ✅', value: 'confirmed' }, { label: 'בוצע 🏁', value: 'done' }])
-                      .filter((a) => (a.value === 'confirmed' && !isSeen(t)) || a.value === 'done')
-                      .map((a) => {
-                        const status = a.value === 'confirmed' ? 'Seen' : 'Done';
-                        const isConfirm = a.value === 'confirmed';
-                        return (
-                          <button
-                            key={a.value}
-                            type="button"
-                            disabled={togglingId === t.id}
-                            onClick={() => handleToggleStatus(t.id, status, t)}
-                            className={`task-action-btn ${isConfirm ? 'task-action-seen' : 'task-action-done'} ${togglingId === t.id ? 'loading' : ''}`}
-                            title={isConfirm ? 'אישור קבלה' : 'סמן כהושלם'}
-                          >
-                            {togglingId === t.id ? <span className="task-toggle-spinner" /> : a.label}
-                          </button>
-                        );
-                      })}
-                  </>
-                )}
-                {isDone(t) && (
-                  <button
-                    type="button"
-                    disabled={togglingId === t.id}
-                    onClick={() => handleToggleStatus(t.id, 'Pending', t)}
-                    className={`task-action-btn task-action-revert ${togglingId === t.id ? 'loading' : ''}`}
-                    title="חזרה לממתין"
-                  >
-                    {togglingId === t.id ? <span className="task-toggle-spinner" /> : 'חזרה לממתין'}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+        <div ref={taskListWrapRef} className="task-calendar-virtual-host">
+          <div className="task-calendar-grid">
+            {visibleTasks.map((t, index) => {
+              const cardKey =
+                t?.id != null && typeof t.id !== 'object' ? String(t.id) : `task-${index}`;
+              return (
+                <TaskCalendarTaskCard
+                  key={cardKey}
+                  task={t}
+                  properties={properties}
+                  highlightedTaskId={highlightedTaskId}
+                  setLastSelectedTask={setLastSelectedTask}
+                  setLightboxUrl={setLightboxUrl}
+                  cleanerLoading={cleanerLoading}
+                  openPropertyCleanerWhatsApp={openPropertyCleanerWhatsApp}
+                  handleUndoMarkDone={handleUndoMarkDone}
+                  handleToggleStatus={handleToggleStatus}
+                  togglingId={togglingId}
+                  undoOffer={undoOffer}
+                />
+              );
+            })}
+          </div>
+          {canShowMoreCards ? (
+            <div ref={renderBatchSentinelRef} className="task-calendar-scroll-sentinel" aria-hidden style={{ minHeight: 24 }} />
+          ) : null}
+          {needApiPage ? (
+            <div ref={apiPageSentinelRef} className="task-calendar-scroll-sentinel" aria-hidden style={{ minHeight: 32 }} />
+          ) : null}
+          {loadingMore ? (
+            <p className="text-xs text-slate-500 py-3 text-center" dir="rtl">טוען משימות נוספות…</p>
+          ) : null}
         </div>
       )}
       </TaskListErrorBoundary>
+
+      {/* ── Photo Lightbox ───────────────────────────────────────── */}
+      {lightboxUrl && (
+        <div className="tc-lightbox-backdrop" onClick={() => setLightboxUrl(null)}>
+          <div className="tc-lightbox" onClick={e => e.stopPropagation()}>
+            <button className="tc-lightbox-close" onClick={() => setLightboxUrl(null)}>✕</button>
+            <img
+              src={lightboxUrl}
+              alt="תמונת משימה מוגדלת"
+              className="tc-lightbox-img"
+              onError={e => { e.currentTarget.alt = 'תמונה לא נמצאה'; }}
+            />
+            <a
+              href={lightboxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tc-lightbox-open"
+            >פתח בחלון חדש ↗</a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

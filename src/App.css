@@ -1,9 +1,10 @@
-/* Enterprise App Layout */
+/* Enterprise App Layout — Dark Luxury Theme */
 .app-enterprise {
   min-height: 100vh;
   min-height: 100dvh;   /* shrinks when mobile keyboard opens */
   position: relative;
   overflow-x: hidden;
+  background: #0f172a;
 }
 
 /* layout-rtl: sidebar forced right via .sidebar-rtl (right:0, left:auto) + main-content margin-right */
@@ -14,6 +15,7 @@
   transition: all 0.3s ease;
   position: relative;
   z-index: 1;
+  background: #0f172a;
 }
 
 /* Sidebar position: right when RTL (Hebrew), left when LTR (English) */
@@ -38,7 +40,17 @@
 }
 
 .view-container {
-  padding: 0 1.5rem 1.5rem;
+  padding: 0.5rem 1.5rem 2rem;
+  background: transparent;
+}
+
+/* Glassmorphism card base */
+.glass-card {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
 }
 
 .clockin-shell {
@@ -340,9 +352,9 @@
 
   /* ── Prevent iOS/Android auto-zoom on focus ──────────────────
      Browsers zoom in when an input has font-size < 16px.
-     This global rule ensures no input anywhere triggers zoom. */
-  input,
-  textarea,
+     Maya chat inputs are excluded — MayaChat.css handles their own 16px rule. */
+  input:not(.maya-input-field),
+  textarea:not(.maya-input-field),
   select,
   [contenteditable] {
     font-size: 16px !important;

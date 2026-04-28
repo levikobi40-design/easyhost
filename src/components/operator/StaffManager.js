@@ -32,7 +32,13 @@ const StaffManager = () => {
   useEffect(() => {
     loadStaff();
     const interval = setInterval(loadStaff, 15000);
-    return () => clearInterval(interval);
+    // Instant refresh when Maya registers a new staff member via chat
+    const onMayaStaff = () => loadStaff();
+    window.addEventListener('maya-staff-registered', onMayaStaff);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('maya-staff-registered', onMayaStaff);
+    };
   }, []);
 
   const handleToggle = async (member) => {

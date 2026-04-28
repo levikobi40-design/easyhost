@@ -1,10 +1,16 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CheckCircle, Clock, DollarSign, Activity, Home, Users, Phone, MessageCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCircle, Clock, DollarSign, Activity, Home, Users, Phone, MessageCircle, Percent } from 'lucide-react';
 import useStore from '../../store/useStore';
+import useCurrency from '../../hooks/useCurrency';
 import { toWhatsAppPhone } from '../../utils/phone';
-import { getDashboardSummary, getStatsSummary, getPropertyTasks, updatePropertyTaskStatus } from '../../services/api';
+import { API_URL } from '../../config.js';
+import { getDashboardSummary, getStatsSummary, updatePropertyTaskStatus } from '../../services/api';
+import { useProperties } from '../../context/PropertiesContext';
+import { useMission } from '../../context/MissionContext';
 import StaffGrid from './StaffGrid';
 import AirbnbImporter from './AirbnbImporter';
+import RevenueCharts from './RevenueCharts';
 import GuestChatFeed from '../guest/GuestChatFeed';
 import PropertyCreatorModal from './PropertyCreatorModal';
 import TaskListErrorBoundary from '../common/TaskListErrorBoundary';
@@ -12,6 +18,47 @@ import ManagerPipeline from './ManagerPipeline';
 
 const TASK_CHART_COLORS = ['#3b82f6', '#10b981'];
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+/**
+ * Pilot / simulation refresh — Hotel Bazaar Jaffa (61-room engine) + portfolio occupancy.
+ */
+const refreshHotelOpsSimulation = async () => {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const raw = localStorage.getItem('hotel-enterprise-storage');
+    const parsed = raw ? JSON.parse(raw) : null;
+    const token = parsed?.state?.authToken;
+    const tenantId = parsed?.state?.activeTenantId;
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (tenantId) headers['X-Tenant-Id'] = tenantId;
+  } catch (_) {
+    /* ignore */
+  }
+  const res = await fetch(`${API_URL}/simulation/refresh?t=${Date.now()}`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Simulation refresh failed (${res.status})`);
+  }
+  return data;
+};
+
+/** Dedupe by task id so list length does not jump when API returns overlaps. */
+function dedupeTasksById(arr) {
+  const seen = new Set();
+  const out = [];
+  for (const t of arr || []) {
+    const id = t?.id != null ? String(t.id) : '';
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(t);
+  }
+  return out;
+}
 
 /** Always return a string for rendering - prevents [object Object] crash */
 const safeStr = (val, fallback = '') => {
@@ -26,6 +73,7 @@ const TaskTimeline = ({ tasks, loading, onToggleStatus = () => {} }) => {
     if (!s) return 'pending';
     if (s === 'Done' || s === 'done' || s === 'Completed' || s === 'completed') return 'completed';
     if (s === 'Seen' || s === 'seen') return 'seen';
+    if (String(s).toLowerCase().replace(/\s+/g, '_') === 'in_progress') return 'in_progress';
     return 'pending';
   };
 
@@ -45,7 +93,7 @@ const TaskTimeline = ({ tasks, loading, onToggleStatus = () => {} }) => {
     <div className="p-6 bg-gray-900/50 dark:bg-gray-800/80 rounded-3xl shadow-xl border border-gray-700/50 dark:border-gray-600/50 backdrop-blur-sm">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-xl font-bold text-gray-100 dark:text-white">רשימת משימות</h3>
-        <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-full border border-emerald-500/30">LIVE</span>
+        <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-full border border-emerald-500/30">שידור חי</span>
       </div>
       {loading ? (
         <div className="py-8 text-center text-gray-400 dark:text-gray-500">טוען...</div>
@@ -60,6 +108,7 @@ const TaskTimeline = ({ tasks, loading, onToggleStatus = () => {} }) => {
             const timeStr = formatTime(task.due_at || task.created_at);
             const isDone = status === 'completed';
             const isSeen = status === 'seen';
+            const isInProg = status === 'in_progress';
             return (
               <div
                 key={task?.id != null && typeof task.id !== 'object' ? String(task.id) : `task-${index}`}
@@ -67,7 +116,10 @@ const TaskTimeline = ({ tasks, loading, onToggleStatus = () => {} }) => {
               >
                 <div
                   className={`z-10 w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    isDone ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : isSeen ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    isDone ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : isInProg ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                      : isSeen ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                   }`}
                 >
                   {isDone ? <CheckCircle size={18} /> : <Clock size={18} />}
@@ -108,7 +160,7 @@ const TaskTimeline = ({ tasks, loading, onToggleStatus = () => {} }) => {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {!isDone && (
                       <>
-                        {!isSeen && (
+                        {!isSeen && !isInProg && (
                           <button
                             type="button"
                             onClick={() => onToggleStatus(task.id, 'Seen', task)}
@@ -146,17 +198,107 @@ const TaskTimeline = ({ tasks, loading, onToggleStatus = () => {} }) => {
   );
 };
 
-const KPICard = ({ title, value, icon: Icon, color }) => (
-  <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-4">
-    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${color}`}>
+const KPICard = ({ title, value, icon: Icon, color, onClick, active }) => (
+  <div
+    onClick={onClick}
+    className={`bg-white dark:bg-gray-800 p-6 rounded-3xl border shadow-sm flex items-center gap-4 transition-all select-none
+      ${active
+        ? 'border-[#00ff88] ring-2 ring-[#00ff88]/40 cursor-pointer shadow-lg shadow-[#00ff88]/10'
+        : 'border-gray-100 dark:border-gray-700'}
+      ${onClick ? 'cursor-pointer hover:shadow-md hover:border-[#00ff88]/60' : ''}`}
+    style={{ boxSizing: 'border-box' }}
+  >
+    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${color}`}>
       <Icon size={24} />
     </div>
-    <div>
-      <p className="text-xs text-gray-400 dark:text-gray-400 font-medium">{title}</p>
-      <h4 className="text-2xl font-black text-gray-100 dark:text-white">{value}</h4>
+    <div className="min-w-0 flex-1">
+      <p className="text-xs font-bold text-gray-900 dark:text-gray-200 truncate">{title}</p>
+      <h4 className="text-2xl font-black text-gray-900 dark:text-white truncate">{value}</h4>
     </div>
+    {onClick && (
+      <span className="text-[#00ff88] text-lg" title="לחץ לפירוט">›</span>
+    )}
   </div>
 );
+
+/* ── Revenue breakdown modal ─────────────────────────────────────── */
+const RevenueModal = ({ summary, onClose }) => {
+  const { format } = useCurrency();
+  const rows = Array.isArray(summary?.revenue_breakdown)
+    ? summary.revenue_breakdown
+    : [];
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: '#fff', borderRadius: 24, padding: '32px 28px',
+          minWidth: 320, maxWidth: 480, width: '90vw',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+          border: '2px solid #00ff88',
+          color: '#000',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 900, color: '#000', margin: 0 }}>
+            💰 פירוט הכנסות החודש
+          </h2>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#000', fontWeight: 900 }}
+          >×</button>
+        </div>
+
+        {rows.length === 0 ? (
+          <p style={{ color: '#000', fontWeight: 700, textAlign: 'center', padding: '24px 0' }}>
+            אין נתוני הכנסות עדיין.<br />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>הפעל את /simulate-week ליצירת נתוני דמו.</span>
+          </p>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'right', color: '#000', fontWeight: 900, padding: '8px 4px', borderBottom: '2px solid #00ff88' }}>נכס</th>
+                <th style={{ textAlign: 'left',  color: '#000', fontWeight: 900, padding: '8px 4px', borderBottom: '2px solid #00ff88' }}>הכנסה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{
+                    color: '#000', fontWeight: 700, padding: '10px 4px',
+                    maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {r.property_name || r.name || `נכס ${i + 1}`}
+                  </td>
+                  <td style={{ color: '#000', fontWeight: 900, padding: '10px 4px', textAlign: 'left' }}>
+                    {format(Number(r.revenue ?? r.amount ?? 0))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={{ color: '#000', fontWeight: 900, padding: '12px 4px', borderTop: '2px solid #00ff88' }}>סה"כ</td>
+                <td style={{ color: '#000', fontWeight: 900, padding: '12px 4px', borderTop: '2px solid #00ff88', textAlign: 'left' }}>
+                  {format(rows.reduce((acc, r) => acc + Number(r.revenue ?? r.amount ?? 0), 0))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const QuickActionStaff = ({ topStaff }) => {
   const callPhone = (phone) => {
@@ -192,65 +334,126 @@ const QuickActionStaff = ({ topStaff }) => {
 };
 
 export default function PremiumDashboard() {
+  const navigate = useNavigate();
+  const { format } = useCurrency();
+  const { refresh: fetchProperties } = useProperties();
+  const mission = useMission();
+  const {
+    tasks: missionTasks,
+    refresh: fetchTasks,
+    loading: missionLoading,
+    updateTaskInList,
+  } = mission;
+  const patchTaskInMission =
+    typeof updateTaskInList === 'function' ? updateTaskInList : () => {};
+  const tasks = useMemo(() => dedupeTasksById(missionTasks), [missionTasks]);
   const [summary, setSummary] = useState(null);
   const [stats, setStats] = useState(null);
-  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [importSuccess, setImportSuccess] = useState(0);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
+  const [showRevenueModal, setShowRevenueModal] = useState(false);
+  const [simRefreshing, setSimRefreshing] = useState(false);
   const loadRef = useRef(0);
+  const bootstrapOnceRef = useRef(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  /** Local dashboard bundle — call on mount, Run Pilot, or explicit user actions (not global timers). */
+  const loadDashboardData = useCallback(async () => {
     const loadId = ++loadRef.current;
     setLoading(true);
-    Promise.all([getDashboardSummary(), getStatsSummary(), getPropertyTasks()])
-      .then(([s, st, t]) => {
-        if (!cancelled && loadId === loadRef.current) {
-          setSummary(s ?? null);
-          setStats(st ?? null);
-          setTasks(Array.isArray(t) ? t : []);
+    try {
+      if (!bootstrapOnceRef.current) {
+        bootstrapOnceRef.current = true;
+        try {
+          const { bootstrapOperationalData } = await import('../../services/api');
+          await bootstrapOperationalData();
+        } catch (_) {
+          /* App.js may have seeded; continue */
         }
-      })
-      .catch((e) => {
-        if (!cancelled && loadId === loadRef.current) {
-          setSummary({ revenue: '0₪', active_tasks_count: 0, status: 'Unavailable' });
-          setStats({ total_properties: 0, tasks_by_status: { Pending: 0, Done: 0 }, staff_workload: {}, total_capacity: 0, top_staff: [] });
-          setTasks([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled && loadId === loadRef.current) setLoading(false);
+      }
+      await fetchProperties(true);
+      await fetchTasks({ fullList: true });
+      const [s, st] = await Promise.all([getDashboardSummary(), getStatsSummary()]);
+      if (loadId !== loadRef.current) return undefined;
+      setSummary(s ?? null);
+      setStats(st ?? null);
+      return true;
+    } catch {
+      if (loadId !== loadRef.current) return undefined;
+      setSummary({ revenue: '0', active_tasks_count: 0, status: 'Unavailable' });
+      setStats({
+        total_properties: 0,
+        tasks_by_status: { Pending: 0, Done: 0 },
+        total_tasks: 0,
+        total_active_tasks: 0,
+        staff_workload: {},
+        total_capacity: 0,
+        top_staff: [],
       });
-    return () => { cancelled = true; };
-  }, [importSuccess]);
+      return false;
+    } finally {
+      if (loadId === loadRef.current) setLoading(false);
+    }
+  }, [fetchTasks, fetchProperties]);
 
   useEffect(() => {
-    const onTaskCreated = (e) => {
-      const newTask = e?.detail?.task;
-      if (newTask?.id) {
-        setTasks((prev) => {
-          if ((prev ?? []).some((t) => t.id === newTask.id)) return prev ?? [];
-          return [{ ...newTask, status: newTask.status || 'Pending' }, ...(prev ?? [])];
-        });
-      }
-      Promise.all([getStatsSummary(), getPropertyTasks()]).then(([st, t]) => {
-        if (st) setStats(st);
-        setTasks(Array.isArray(t) ? t : []);
-      });
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  /** Re-sync when simulation or global refresh events fire (not only on mount). */
+  useEffect(() => {
+    const onGlobalRefresh = () => {
+      loadDashboardData();
+    };
+    window.addEventListener('properties-refresh', onGlobalRefresh);
+    window.addEventListener('maya-refresh-tasks', onGlobalRefresh);
+    return () => {
+      window.removeEventListener('properties-refresh', onGlobalRefresh);
+      window.removeEventListener('maya-refresh-tasks', onGlobalRefresh);
+    };
+  }, [loadDashboardData]);
+
+  useEffect(() => {
+    const onTaskCreated = () => {
+      fetchTasks({ fullList: true }).then(() =>
+        getStatsSummary().then((st) => {
+          if (st) setStats(st);
+        })
+      );
     };
     window.addEventListener('maya-task-created', onTaskCreated);
-    return () => window.removeEventListener('maya-task-created', onTaskCreated);
-  }, []);
+    return () => {
+      window.removeEventListener('maya-task-created', onTaskCreated);
+    };
+  }, [fetchTasks]);
 
   const addMayaMessage = useStore((s) => s.addMayaMessage);
   const addNotification = useStore((s) => s.addNotification);
   const toggleMayaChat = useStore((s) => s.toggleMayaChat);
 
+  const handleSimulationRefresh = useCallback(async () => {
+    setSimRefreshing(true);
+    try {
+      const out = await refreshHotelOpsSimulation();
+      const line = out?.mayaMessage || out?.displayMessage || out?.message;
+      if (line) {
+        addMayaMessage({ role: 'assistant', content: line });
+        toggleMayaChat(true);
+      }
+      await fetchProperties(true);
+      await fetchTasks({ fullList: true });
+      await loadDashboardData();
+      window.dispatchEvent(new CustomEvent('properties-refresh', { detail: { force: true } }));
+    } catch (e) {
+      window.alert(e?.message || 'Simulation refresh failed');
+    } finally {
+      setSimRefreshing(false);
+    }
+  }, [addMayaMessage, fetchProperties, fetchTasks, loadDashboardData, toggleMayaChat]);
+
   const handleToggleStatus = useCallback(async (taskId, newStatus, task) => {
     try {
       await updatePropertyTaskStatus(taskId, newStatus);
-      setTasks((prev) => (prev ?? []).map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
+      patchTaskInMission(taskId, (t) => ({ ...t, status: newStatus }));
       const staffName = (task?.staff_name ?? task?.staffName ?? 'העובד').trim() || 'העובד';
       if (newStatus === 'Seen') {
         addMayaMessage({ role: 'assistant', content: `${staffName} אישר את המשימה` });
@@ -263,7 +466,7 @@ export default function PremiumDashboard() {
     } catch (e) {
       window.alert(e?.message || 'Failed to update');
     }
-  }, [addMayaMessage, addNotification, toggleMayaChat]);
+  }, [addMayaMessage, addNotification, toggleMayaChat, patchTaskInMission]);
 
   const tasksByStatusData = stats?.tasks_by_status
     ? [
@@ -283,34 +486,74 @@ export default function PremiumDashboard() {
         }))
     : [];
 
+  const totalTasksDisplay =
+    Number(stats?.total_active_tasks ?? stats?.total_tasks ?? 0) || 0;
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8" dir="rtl">
-      <div className="flex justify-between items-end mb-10">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white">בוקר טוב, מנהל</h1>
-          <p className="text-gray-500 dark:text-gray-400">כל הנכסים שלך תחת שליטה. הנה מה שקורה היום.</p>
+    <div
+      className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8"
+      dir="rtl"
+      style={{ maxWidth: '100vw', boxSizing: 'border-box', overflowX: 'hidden' }}
+    >
+      {showRevenueModal && (
+        <RevenueModal summary={summary} onClose={() => setShowRevenueModal(false)} />
+      )}
+
+      <div className="flex justify-between items-end mb-10" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            בוקר טוב, מנהל
+          </h1>
+          <p className="text-gray-700 dark:text-gray-300 font-semibold">כל הנכסים שלך תחת שליטה. הנה מה שקורה היום.</p>
         </div>
         <button
           type="button"
           onClick={() => setShowPropertyModal(true)}
-          className="bg-black dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-2xl font-bold hover:opacity-90 transition-all"
+          className="px-6 py-3 rounded-2xl font-black transition-all"
+          style={{
+            background: 'rgba(15,23,41,0.85)',
+            color: '#ffffff',
+            border: '1.5px solid rgba(0,255,136,0.55)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            fontWeight: 900,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#00ff88'; e.currentTarget.style.background = 'rgba(0,255,136,0.08)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,255,136,0.55)'; e.currentTarget.style.background = 'rgba(15,23,41,0.85)'; }}
         >
           + הוסף נכס חדש
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        {/* Revenue KPI — clickable → breakdown modal */}
         <KPICard
           title="הכנסות החודש"
-          value={summary?.revenue ?? '₪0'}
+          value={format(Number(summary?.revenue) || 0)}
           icon={DollarSign}
           color="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+          onClick={() => setShowRevenueModal(true)}
+          active={showRevenueModal}
         />
         <KPICard
           title="נכסים"
           value={String(stats?.total_properties ?? 0)}
           icon={Home}
           color="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+          onClick={() => navigate('/properties')}
+        />
+        <KPICard
+          title="שיעור תפוסה (סימולציה)"
+          value={
+            simRefreshing
+              ? '…'
+              : stats?.occupancy_pct != null && stats?.occupancy_pct !== ''
+                ? `${Math.round(Number(stats.occupancy_pct))}%`
+                : '—'
+          }
+          icon={Percent}
+          color="bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400"
+          onClick={simRefreshing ? undefined : handleSimulationRefresh}
         />
         <KPICard
           title="קיבולת כוללת"
@@ -319,16 +562,19 @@ export default function PremiumDashboard() {
           color="bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"
         />
         <KPICard
-          title="משימות פעילות"
-          value={String(stats?.tasks_by_status?.Pending ?? 0)}
+          title="בקשות פתוחות"
+          value={String(totalTasksDisplay)}
           icon={Activity}
           color="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
         />
       </div>
 
+      {/* ── גרפי הכנסות ותפוסה ──────────────────────────── */}
+      <RevenueCharts />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          <AirbnbImporter onSuccess={() => setImportSuccess((n) => n + 1)} />
+          <AirbnbImporter onSuccess={() => loadDashboardData()} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-gray-800/60 dark:bg-gray-800/80 rounded-3xl border border-gray-700/50 dark:border-gray-600/50 shadow-xl backdrop-blur-sm p-6 min-h-[280px]">
               <h3 className="text-lg font-bold text-gray-100 dark:text-white mb-4">משימות לפי סטטוס</h3>
@@ -389,7 +635,7 @@ export default function PremiumDashboard() {
         </div>
         <div className="space-y-8">
           <TaskListErrorBoundary>
-            <TaskTimeline tasks={tasks ?? []} loading={loading} onToggleStatus={handleToggleStatus} />
+            <TaskTimeline tasks={tasks ?? []} loading={loading || missionLoading} onToggleStatus={handleToggleStatus} />
           </TaskListErrorBoundary>
           <ManagerPipeline />
           <QuickActionStaff topStaff={stats?.top_staff} />
@@ -400,7 +646,7 @@ export default function PremiumDashboard() {
       <PropertyCreatorModal
         isOpen={showPropertyModal}
         onClose={() => setShowPropertyModal(false)}
-        onSuccess={() => setImportSuccess((n) => n + 1)}
+        onSuccess={() => loadDashboardData()}
       />
     </div>
   );

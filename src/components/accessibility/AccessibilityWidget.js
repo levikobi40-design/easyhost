@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './AccessibilityWidget.css';
 
 const CLASSES = {
@@ -73,7 +74,7 @@ export default function AccessibilityWidget() {
     { key: 'reduceMotion',   label: 'הפחת אנימציות',      icon: '⏸' },
   ];
 
-  return (
+  const widget = (
     <div className="a11y-widget" role="complementary" aria-label="תפריט נגישות">
       <button
         ref={triggerRef}
@@ -132,4 +133,9 @@ export default function AccessibilityWidget() {
       )}
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(widget, document.body);
+  }
+  return widget;
 }

@@ -1,29 +1,38 @@
 import React, { useEffect, useCallback } from 'react';
 import {
-  LayoutDashboard, Users, MessageCircle,
+  LayoutDashboard, Users, Radio,
   Building2, Shield, ChevronLeft,
-  ChevronRight, Sparkles, ExternalLink, Home, CalendarCheck, Zap, X
+  ChevronRight, Sparkles, ExternalLink, Home, CalendarCheck, X, BedDouble, BarChart3,
+  Cpu, Map, CalendarRange, UserCog,
 } from 'lucide-react';
 import useTranslations from '../../hooks/useTranslations';
+import easyhostLogoDark from '../../assets/easyhost-logo-dark.svg';
 import useStore from '../../store/useStore';
 import { AI_ASSISTANT_URL } from '../../utils/constants';
+import { dashboardNavTier } from '../../utils/dashboardRoles';
 import StaffDirectory from './StaffDirectory';
 import StaffDirectoryErrorBoundary from './StaffDirectoryErrorBoundary';
 import './Sidebar.css';
 
+/* ── Nav items — labels resolved via i18n in the component ─── */
 const menuItems = [
-  { id: 'dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
-  { id: 'premium',   icon: Building2,       labelKey: 'nav.premium' },
-  { id: 'properties',icon: Home,            labelKey: 'nav.properties' },
-  { id: 'tasks',     icon: CalendarCheck,   labelKey: 'nav.tasks' },
-  { id: 'crm',       icon: Users,           labelKey: 'nav.crm' },
-  { id: 'operator',  icon: MessageCircle,   labelKey: 'nav.operator' },
-  { id: 'field',     icon: MessageCircle,   labelKey: 'nav.field' },
-  { id: 'godmode',   icon: Zap,             labelKey: 'nav.godMode', adminOnly: true },
+  { id: 'dashboard',  icon: LayoutDashboard, fallback: '🏠 Overview'          },
+  { id: 'analytics',  icon: BarChart3,       fallback: '📊 Analytics'         },
+  { id: 'premium',    icon: Building2,       fallback: '🏨 Properties Hub'    },
+  { id: 'properties', icon: Home,            fallback: '🏡 Manage Properties' },
+  { id: 'bazaar-week', icon: CalendarRange,  fallback: '📅 Week 1 deals'      },
+  { id: 'inventory',  icon: BedDouble,       fallback: '🛏 Room Inventory'    },
+  { id: 'tasks',      icon: CalendarCheck,   fallback: '📋 Mission Board'     },
+  { id: 'crm',        icon: Users,           fallback: '👥 Leads CRM'         },
+  { id: 'operator',   icon: Radio,           fallback: '📡 Operator'          },
+  { id: 'field',      icon: Map,             fallback: '⚡ Field Agent'        },
+  { id: 'scheduler',  icon: CalendarRange,   fallback: '📅 Shift Scheduler',   adminOnly: true },
+  { id: 'godmode',    icon: Cpu,             fallback: '🔮 Operational Excellence', adminOnly: true },
+  { id: 'manualops',  icon: UserCog,         fallback: '👥 Staff & Planner' },
 ];
 
 const Sidebar = ({ activeView, setActiveView }) => {
-  const { sidebarOpen, toggleSidebar, lang, role } = useStore();
+  const { sidebarOpen, toggleSidebar, lang, role, activeTenantId } = useStore();
   const isRTL = lang === 'he';
   const { t } = useTranslations();
   const safeT = typeof t === 'function' ? t : (k) => k;
@@ -31,27 +40,48 @@ const Sidebar = ({ activeView, setActiveView }) => {
   const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
 
   // Normalise backend role values → frontend nav groups
-  const normaliseRole = (r) => {
-    if (!r) return 'host';
-    const map = { owner: 'host', manager: 'admin', staff: 'field', worker: 'field' };
-    return map[r] || r;
-  };
-  const navRole = normaliseRole(role);
+  const navTier = dashboardNavTier(role);
 
-  const roleNav = {
-    host:     ['dashboard', 'premium', 'properties', 'tasks', 'crm'],
-    admin:    ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'godmode'],
-    operator: ['operator'],
-    field:    ['field'],
-  };
+  const isBazaarJaffaTenant = activeTenantId === 'BAZAAR_JAFFA';
+  /** ADMIN: full nav. OPERATION: no Settings (`manualops`) or Developer (`godmode`). STAFF: tasks only. */
+  const roleNav = isBazaarJaffaTenant
+    ? {
+        admin: ['tasks', 'properties', 'bazaar-week', 'manualops', 'scheduler', 'godmode'],
+        operation: ['tasks', 'properties', 'bazaar-week', 'scheduler'],
+        staff: ['tasks'],
+        operator: ['operator'],
+        field: ['field'],
+      }
+    : {
+        admin: ['dashboard', 'analytics', 'premium', 'properties', 'inventory', 'tasks', 'crm', 'manualops', 'scheduler', 'godmode'],
+        operation: ['dashboard', 'analytics', 'premium', 'properties', 'inventory', 'tasks', 'crm', 'scheduler'],
+        staff: ['tasks'],
+        operator: ['operator'],
+        field: ['field'],
+      };
 
-  // Default to 'host' view so Properties & Leads are always visible after login
-  const visibleItems = menuItems.filter((item) =>
-    (roleNav[navRole] || roleNav['host']).includes(item.id)
-  );
+  const visibleItems = menuItems.filter((item) => {
+    const allowed = roleNav[navTier] || roleNav.staff;
+    if (!allowed.includes(item.id)) return false;
+    if (item.adminOnly && navTier !== 'admin' && navTier !== 'operation') return false;
+    return true;
+  });
 
   const handleAIAssistantClick = () => {
     window.open(AI_ASSISTANT_URL, '_blank', 'noopener,noreferrer');
+  };
+
+  const navLabel = (item) => {
+    if (isBazaarJaffaTenant && isRTL) {
+      if (item.id === 'tasks') return 'לוח משימות';
+      if (item.id === 'properties') return 'ניהול נכסים';
+      if (item.id === 'bazaar-week') return 'שבוע פעילות / מבצעים';
+      if (item.id === 'manualops') return 'הפעלה ידנית';
+    }
+    const key = `sidebarNav.${item.id}`;
+    const translated = safeT(key);
+    if (!translated || translated === key) return item.fallback;
+    return translated;
   };
 
   // Close sidebar when nav item tapped on mobile
@@ -98,16 +128,17 @@ const Sidebar = ({ activeView, setActiveView }) => {
 
       <aside
         style={sidebarStyle}
-        className={`sidebar glass-dark ${sidebarOpen ? 'open' : 'collapsed'} ${isRTL ? 'sidebar-rtl' : ''}`}
+        className={`sidebar ${sidebarOpen ? 'open' : 'collapsed'} ${isRTL ? 'sidebar-rtl' : ''}`}
         aria-label={safeT('nav.mainNavigation') || 'Main navigation'}
       >
-        {/* Logo + mobile close button row */}
+        {/* Logo + mobile close button row — Dark Blue logo in collapsed, Building2 when open */}
         <div className="sidebar-logo">
-          <div className="logo-icon">
-            <div className="logo-icon-stack">
-              <Home size={26} />
-              <Sparkles size={14} className="logo-sparkle" />
-            </div>
+          <div className="logo-icon logo-icon-neon logo-icon-dark">
+            {sidebarOpen ? (
+              <Building2 size={26} />
+            ) : (
+              <img src={easyhostLogoDark} alt="EasyHost AI" className="sidebar-logo-dark-img" />
+            )}
           </div>
           <span
             className="logo-text"
@@ -132,15 +163,19 @@ const Sidebar = ({ activeView, setActiveView }) => {
               key={item.id}
               onClick={() => handleNavClick(item.id)}
               className={`nav-item ${activeView === item.id ? 'active' : ''}${item.id === 'godmode' ? ' nav-item-godmode' : ''}`}
-              aria-label={safeT(item.labelKey) || item.id}
+              aria-label={safeT(`sidebarNav.${item.id}`) || item.fallback || item.id}
               aria-current={activeView === item.id ? 'page' : undefined}
             >
               <item.icon size={22} aria-hidden="true" />
               <span
                 className="nav-label"
-                style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}
+                style={{
+                  opacity:    sidebarOpen ? 1 : 0,
+                  maxWidth:   sidebarOpen ? 160 : 0,
+                  transition: 'opacity 0.25s, max-width 0.25s',
+                }}
               >
-                {safeT(item.labelKey)}
+                {navLabel(item)}
               </span>
               {activeView === item.id && (
                 <div className="active-indicator" aria-hidden="true" />
@@ -149,25 +184,27 @@ const Sidebar = ({ activeView, setActiveView }) => {
           ))}
         </nav>
 
-        {/* Staff Directory - wrapped to prevent crashes */}
-        <StaffDirectoryErrorBoundary>
-          <StaffDirectory />
-        </StaffDirectoryErrorBoundary>
-
-        {/* AI Assistant Button */}
-        <div className="sidebar-action">
-          <button
-            onClick={handleAIAssistantClick}
-            className="ai-assistant-sidebar-btn"
-            aria-label={safeT('sidebar.aiAssistant') || 'AI Assistant — open in new window'}
-          >
-            <Sparkles size={20} />
-            <span style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}>
-              {safeT('sidebar.aiAssistant')}
-            </span>
-            {sidebarOpen && <ExternalLink size={14} />}
-          </button>
-        </div>
+        {(navTier === 'admin' || navTier === 'operation') && (
+          <>
+            <StaffDirectoryErrorBoundary>
+              <StaffDirectory />
+            </StaffDirectoryErrorBoundary>
+            <div className="sidebar-action">
+              <button
+                type="button"
+                onClick={handleAIAssistantClick}
+                className="ai-assistant-sidebar-btn"
+                aria-label={safeT('sidebar.aiAssistant') || 'AI Assistant — open in new window'}
+              >
+                <Sparkles size={20} />
+                <span style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}>
+                  {safeT('sidebar.aiAssistant')}
+                </span>
+                {sidebarOpen && <ExternalLink size={14} />}
+              </button>
+            </div>
+          </>
+        )}
 
         {/* Desktop collapse toggle — hidden on mobile */}
         <button
@@ -183,18 +220,19 @@ const Sidebar = ({ activeView, setActiveView }) => {
           )}
         </button>
 
-        {/* Footer */}
-        <div className="sidebar-footer">
-          <div className="security-badge">
-            <Shield size={16} />
-            <span style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}>
-              {safeT('sidebar.zeroTrust')}
-            </span>
+        {(navTier === 'admin' || navTier === 'operation') && (
+          <div className="sidebar-footer">
+            <div className="security-badge">
+              <Shield size={16} />
+              <span style={{ opacity: sidebarOpen ? 1 : 0, width: sidebarOpen ? 'auto' : 0 }}>
+                {safeT('sidebar.zeroTrust')}
+              </span>
+            </div>
+            <div className="sidebar-qr-placeholder">
+              <span>{safeT('sidebar.scanToManage')}</span>
+            </div>
           </div>
-          <div className="sidebar-qr-placeholder">
-            <span>סרוק לניהול</span>
-          </div>
-        </div>
+        )}
       </aside>
     </>
   );

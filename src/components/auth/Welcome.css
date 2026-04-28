@@ -1,0 +1,463 @@
+/* ════════════════════════════════════════════════════════════════
+   Welcome — Premium Entry Portal
+   Dark futuristic theme · Glowing portal cards · Extra-bold black text
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Root shell ─────────────────────────────────────────────── */
+.wc-root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 0%,   rgba(99,102,241,0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 100%,  rgba(0,200,117,0.10)  0%, transparent 55%),
+    linear-gradient(180deg, #060a14 0%, #090d1a 50%, #06101a 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  overflow-x: hidden;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+
+  /* Fade-in on mount */
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.wc-root--ready {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Particle canvas (background) ───────────────────────────── */
+.wc-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── All direct children sit above canvas ────────────────────── */
+.wc-header,
+.wc-hero,
+.wc-cards,
+.wc-footer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+/* ── Brand header ────────────────────────────────────────────── */
+.wc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 48px 0;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wc-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wc-logo-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+.wc-logo-name {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+.wc-logo-tag {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.25em;
+  color: #00c875;
+  background: rgba(0,200,117,0.12);
+  border: 1px solid rgba(0,200,117,0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  text-transform: uppercase;
+  align-self: flex-end;
+  margin-bottom: 2px;
+}
+
+.wc-live-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 99px;
+  padding: 5px 14px;
+}
+.wc-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00c875;
+  box-shadow: 0 0 6px #00c875;
+  animation: wc-blink 1.8s ease-in-out infinite;
+}
+@keyframes wc-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ── Hero section ────────────────────────────────────────────── */
+.wc-hero {
+  text-align: center;
+  padding: 64px 24px 44px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.wc-hero-eyebrow {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: #00c875;
+  margin-bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.wc-hero-eyebrow::before,
+.wc-hero-eyebrow::after {
+  content: '';
+  display: block;
+  width: 28px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.wc-hero-title {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 900;
+  line-height: 1.1;
+  color: #ffffff;
+  letter-spacing: -1.5px;
+  margin: 0 0 20px;
+}
+.wc-hero-accent {
+  background: linear-gradient(135deg, #6366f1 0%, #00c875 60%, #6366f1 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: wc-gradient-shift 4s linear infinite;
+}
+@keyframes wc-gradient-shift {
+  from { background-position: 0% 50%; }
+  to   { background-position: 200% 50%; }
+}
+
+.wc-hero-sub {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.45);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+/* ── Cards grid ──────────────────────────────────────────────── */
+.wc-cards {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr;
+  gap: 20px;
+  padding: 0 32px 16px;
+  max-width: 1020px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: stretch;
+}
+@media (max-width: 720px) {
+  .wc-cards {
+    grid-template-columns: 1fr;
+    padding: 0 20px 16px;
+    gap: 18px;
+  }
+}
+
+/* ── Portal card (button) ────────────────────────────────────── */
+.wc-card {
+  position: relative;
+  background: transparent;
+  border: none;
+  border-radius: 28px;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+  opacity: 0;
+  transform: translateY(28px) scale(0.97);
+  animation: wc-card-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes wc-card-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* Glowing border via pseudo element */
+.wc-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 30px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 70%, transparent),
+    transparent 50%,
+    color-mix(in srgb, var(--accent) 30%, transparent)
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  z-index: -1;
+}
+.wc-card--hovered::before { opacity: 1; }
+
+/* White glass surface */
+.wc-card-inner {
+  background: #ffffff;
+  border-radius: 26px;
+  padding: 36px 32px 32px;
+  height: 100%;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.07),
+    0 8px 40px rgba(0,0,0,0.25),
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: box-shadow 0.3s ease, transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+.wc-card--hovered .wc-card-inner {
+  transform: translateY(-4px);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.07),
+    0 20px 64px rgba(0,0,0,0.3),
+    0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 0 48px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Ambient glow blob behind card */
+.wc-card-glow {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  top: -80px;
+  right: -60px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  filter: blur(60px);
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  opacity: 0.7;
+  z-index: 0;
+}
+.wc-card--hovered .wc-card-glow { opacity: 1; }
+
+/* Decorative corner sweep */
+.wc-card-inner::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle at top right,
+    color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+    transparent 70%);
+  pointer-events: none;
+}
+
+/* ── Card content ────────────────────────────────────────────── */
+.wc-card-icon {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 20px;
+  display: block;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--accent) 50%, transparent));
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), filter 0.3s ease;
+}
+.wc-card--hovered .wc-card-icon {
+  transform: scale(1.12) translateY(-3px);
+  filter: drop-shadow(0 0 24px color-mix(in srgb, var(--accent) 80%, transparent));
+}
+
+.wc-card-eyebrow {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.wc-card-title {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #000000;
+  letter-spacing: -0.5px;
+  margin: 0 0 10px;
+  line-height: 1.1;
+  position: relative;
+  z-index: 1;
+}
+
+.wc-card-sub {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #444;
+  line-height: 1.55;
+  margin: 0 0 22px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Feature list */
+.wc-card-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  position: relative;
+  z-index: 1;
+}
+.wc-card-features li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #000000;
+}
+.wc-feat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* CTA row */
+.wc-card-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: #000000;
+  letter-spacing: 0.02em;
+  position: relative;
+  z-index: 1;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+.wc-card--hovered .wc-card-cta {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.wc-cta-arrow {
+  font-size: 1.2rem;
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  color: var(--accent);
+}
+.wc-card--hovered .wc-cta-arrow {
+  transform: translateX(5px);
+}
+
+/* ── OR divider between cards ────────────────────────────────── */
+.wc-or-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  align-self: center;
+  justify-self: center;
+  flex-shrink: 0;
+  pointer-events: none;
+  user-select: none;
+}
+@media (max-width: 720px) {
+  .wc-or-divider { display: none; }
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+.wc-footer {
+  margin-top: auto;
+  padding: 32px 48px 36px;
+  text-align: center;
+}
+.wc-footer-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.wc-footer-logo { color: rgba(255,255,255,0.2); }
+.wc-footer-brand {
+  font-weight: 900;
+  color: #00c875;
+  letter-spacing: 0.04em;
+}
+.wc-footer-sep   { color: rgba(255,255,255,0.15); }
+.wc-footer-tagline {
+  font-style: italic;
+  color: rgba(255,255,255,0.28);
+}
+
+/* Thin neon line above footer */
+.wc-footer-bar {
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,200,117,0.45), transparent);
+  margin: 18px auto 0;
+}
+
+/* ── Responsive tweaks ───────────────────────────────────────── */
+@media (max-width: 480px) {
+  .wc-header   { padding: 20px 20px 0; }
+  .wc-hero     { padding: 44px 20px 32px; }
+  .wc-cards    { padding: 0 14px 12px; }
+  .wc-footer   { padding: 24px 20px 28px; }
+  .wc-hero-title { letter-spacing: -0.8px; }
+  .wc-card-inner { padding: 28px 22px 24px; }
+  .wc-card-title { font-size: 1.45rem; }
+}

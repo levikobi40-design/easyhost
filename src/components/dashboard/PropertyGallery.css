@@ -1,0 +1,131 @@
+.property-gallery {
+  width: 100%;
+}
+
+.property-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+/* Full gallery (e.g. Bazaar 41 images) — scroll instead of hiding extras */
+.property-gallery-grid--full {
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
+}
+
+@media (min-width: 480px) {
+  .property-gallery-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (max-width: 479px) {
+  .property-gallery-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.property-gallery-thumb {
+  aspect-ratio: 4/3;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: #f3f4f6;
+  border-radius: 8px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.property-gallery-thumb:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.property-gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Lightbox */
+.property-gallery-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.property-gallery-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.property-gallery-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.property-gallery-lightbox-prev,
+.property-gallery-lightbox-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.property-gallery-lightbox-prev {
+  right: 1rem;
+}
+
+.property-gallery-lightbox-next {
+  left: 1rem;
+}
+
+.property-gallery-lightbox-prev:hover,
+.property-gallery-lightbox-next:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.property-gallery-lightbox-img-wrap {
+  max-width: 90vw;
+  max-height: 85vh;
+}
+
+.property-gallery-lightbox-img-wrap img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 8px;
+}

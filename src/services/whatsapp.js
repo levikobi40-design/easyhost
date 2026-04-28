@@ -80,7 +80,7 @@ class WhatsAppService {
    */
   async sendViaTwilio(to, message) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/whatsapp/send`, {
+      const response = await fetch(`${API_BASE_URL}/whatsapp/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +110,7 @@ class WhatsAppService {
    */
   async sendViaMeta(to, message, templateName = null) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/whatsapp/send`, {
+      const response = await fetch(`${API_BASE_URL}/whatsapp/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -250,7 +250,7 @@ class WhatsAppService {
    */
   async getMessageStatus(messageId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/whatsapp/status/${messageId}`, {
+      const response = await fetch(`${API_BASE_URL}/whatsapp/status/${messageId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -274,7 +274,7 @@ class WhatsAppService {
    */
   async setupWebhook(callbackUrl) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/whatsapp/webhook/setup`, {
+      const response = await fetch(`${API_BASE_URL}/whatsapp/webhook/setup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

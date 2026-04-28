@@ -1,11 +1,12 @@
 {
   "branding": {
-    "name": "Easy Hotel AI",
+    "name": "EasyHost AI",
     "subtitle": "מערכת ניהול מלון יוקרתית מבוססת AI",
     "aiConcierge": "קונסיירז׳ AI",
     "aiShort": "AI"
   },
   "nav": {
+    "mainNavigation": "ניווט ראשי",
     "dashboard": "דשבורד",
     "premium": "פרמיום",
     "properties": "הנכסים שלי",
@@ -15,8 +16,8 @@
     "operator": "מעקב לידים",
     "analytics": "אנליטיקס",
     "field": "צוות שטח",
-    "enterprise": "Enterprise",
-    "godMode": "מצב אלוהים"
+    "enterprise": "ארגוני",
+    "godMode": "מצוינות תפעולית"
   },
   "languages": {
     "he": "עברית",
@@ -37,6 +38,8 @@
     "inactive": "לא פעיל"
   },
   "common": {
+    "pending": "ממתין",
+    "done": "בוצע",
     "close": "סגור",
     "cancel": "ביטול",
     "save": "שמור",
@@ -64,8 +67,26 @@
     "notifications": "התראות"
   },
   "sidebar": {
-    "aiAssistant": "AI Assistant",
-    "zeroTrust": "מאובטח Zero-Trust"
+    "aiAssistant": "עוזר AI",
+    "zeroTrust": "אבטחת Zero Trust",
+    "scanToManage": "סריקה לניהול"
+  },
+  "sidebarNav": {
+    "dashboard":  "🏠 סקירה כללית",
+    "analytics":  "📊 אנליטיקס",
+    "premium":    "🏨 מרכז נכסים",
+    "properties": "ניהול נכסים",
+    "inventory":  "🛏 מלאי חדרים",
+    "tasks":      "לוח משימות",
+    "crm":        "👥 ניהול לידים",
+    "operator":   "📡 מפעיל",
+    "field":      "⚡ סוכן שטח",
+    "scheduler":  "מתזמן משמרות",
+    "manualops":  "הפעלה ידנית",
+    "godmode":    "🔮 מצוינות תפעולית"
+  },
+  "godMode": {
+    "demoStaff": "צוות הדגמה"
   },
   "placeholders": {
     "roomsTitle": "ניהול חדרים",
@@ -83,7 +104,7 @@
     "statusOffline": "לא פעיל"
   },
   "dashboard": {
-    "title": "Easy Host AI",
+    "title": "EasyHost AI",
     "subtitle": "מערכת ניהול מלון חכמה מבוססת AI",
     "generateReport": "הפק דוח יומי",
     "actions": "פעולות ודוחות",
@@ -145,6 +166,12 @@
     },
     "trendLabelDefault": "מהחודש שעבר",
     "generatingReport": "מייצר דוח...",
+    "properties": "נכסים",
+    "activeTasks": "משימות פעילות",
+    "completed": "בוצע",
+    "incomingComplaints": "תלונות נכנסות",
+    "staffResponses": "תגובות צוות",
+    "simComplaints": "תלונות סימולציה",
     "sidebar": {
       "title": "סרגל צד",
       "hide": "הסתר",
@@ -263,9 +290,10 @@
   },
   "mayaChat": {
     "title": "מאיה",
-    "role": "מנהלת תפעול AI",
+    "role": "מנהלת אופרציה פעילה",
     "greeting": "שלום! אני מאיה, מנהלת ה-AI שלך. כאן בשבילך 🟢",
     "askPlaceholder": "שוחח עם מאיה...",
+    "send": "שליחה",
     "hint": "מאיה מנהלת 5 סוכנים חכמים שעובדים בשבילך",
     "leadsFoundLabel": "לידים שנמצאו:",
     "proactiveOccupancy": "זיהיתי פער בהזמנות לשבוע הבא; האם להפעיל את סוכן השיווק לקמפיין Airbnb?",
@@ -275,6 +303,7 @@
     "quickBar": "פעולות מהירות",
     "suggestionsBar": "הצעות פקודה",
     "dialogLabel": "מאיה — עוזרת AI",
+    "workingOnIt": "עובדת על זה…",
     "status": {
       "online": "🟢 מחוברת",
       "connecting": "⏳ מתחברת…"
@@ -288,8 +317,8 @@
     },
     "bypassBtn": "⚡ עקוף AI — צור משימה ידנית עכשיו",
     "bypassHint": "או הקלד /test-task [חדר] · /clean [חדר] · /towels [חדר] · /fix [חדר]",
-    "error429": "מאיה עמוסה כרגע (Google 429 — עומס זמני) 😮‍💨\nלחץ על כפתור 'משימה ידנית' כדי לעקוף את ה-AI",
-    "errorServer": "קובי, יש תקלה בחיבור לשרת גוגל. תבדוק את הטרמינל 🔴",
+    "error429": "מאיה עמוסה כרגע (עומס זמני בשרת ה-AI) 😮‍💨\nלחץ על כפתור 'משימה ידנית' כדי לעקוף את ה-AI",
+    "errorServer": "קובי, יש תקלה בחיבור לשרת מאיה (קלוד). תבדוק את הטרמינל 🔴",
     "errorNoServer": "לא ניתן להתחבר לשרת. תבדוק שה-Flask רץ.",
     "newTaskCreated": "✅ משימה חדשה נוצרה",
     "messageSent": "📡 הודעה נשלחה",
@@ -299,7 +328,11 @@
       "cleaning": "בקשת ניקיון",
       "post": "צור פוסט",
       "automation": "אוטומציה"
-    }
+    },
+    "priorityHigh": "🚨 דחוף",
+    "priorityNormal": "🟢 רגיל",
+    "markDone": "בוצע",
+    "markAsDone": "סמן כבוצע"
   },
   "notifications": {
     "title": "התראות",
@@ -375,7 +408,10 @@
     }
   },
   "staffView": {
-    "openTask": "משימה פתוחה"
+    "openTask": "משימה פתוחה",
+    "enRoute": "בדרך",
+    "finishMission": "סיים משימה",
+    "missionComplete": "המשימה הושלמה"
   },
   "orchestrator": {
     "messages": {

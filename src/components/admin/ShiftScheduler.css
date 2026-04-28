@@ -1,0 +1,168 @@
+.shift-scheduler {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+.shift-scheduler__hero {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.shift-scheduler__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 229, 200, 0.12);
+  border: 1px solid rgba(0, 229, 200, 0.25);
+  color: #00e5c8;
+  flex-shrink: 0;
+}
+
+.shift-scheduler__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #e8eef9;
+}
+
+.shift-scheduler__sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.95rem;
+  color: rgba(200, 214, 235, 0.7);
+  line-height: 1.5;
+}
+
+.shift-scheduler__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.35rem;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+  background: linear-gradient(145deg, #00e5c8, #00b89a);
+  color: #061018;
+  box-shadow: 0 4px 24px rgba(0, 229, 200, 0.25);
+}
+
+.shift-scheduler__cta:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.shift-scheduler__spin {
+  animation: ss-spin 0.9s linear infinite;
+}
+
+@keyframes ss-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shift-scheduler__error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+  font-size: 0.9rem;
+}
+
+.shift-scheduler__summary {
+  margin-top: 1.75rem;
+  padding: 1rem 1.15rem;
+  border-radius: 14px;
+  background: rgba(18, 26, 40, 0.65);
+  border: 1px solid rgba(0, 229, 200, 0.15);
+}
+
+.shift-scheduler__summary h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(200, 214, 235, 0.55);
+}
+
+.shift-scheduler__summary p {
+  margin: 0;
+  color: #e8eef9;
+  line-height: 1.55;
+}
+
+.shift-scheduler__list {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shift-scheduler__card {
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: rgba(12, 18, 28, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.shift-scheduler__card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.shift-scheduler__date {
+  font-weight: 800;
+  color: #00e5c8;
+  font-size: 0.95rem;
+}
+
+.shift-scheduler__focus {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(200, 214, 235, 0.5);
+}
+
+.shift-scheduler__card-mid {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #e8eef9;
+  font-size: 1.05rem;
+}
+
+.shift-scheduler__card-time {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: rgba(200, 214, 235, 0.75);
+}
+
+.shift-scheduler__notes {
+  margin: 0.6rem 0 0;
+  font-size: 0.88rem;
+  color: rgba(200, 214, 235, 0.65);
+  line-height: 1.45;
+}
+
+.shift-scheduler__empty {
+  margin-top: 1.5rem;
+  text-align: center;
+  color: rgba(200, 214, 235, 0.45);
+  font-size: 0.95rem;
+}

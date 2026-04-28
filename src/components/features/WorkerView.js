@@ -46,7 +46,7 @@ function getWorkerIdFromPath() {
 // Single-task PATCH helper
 // ─────────────────────────────────────────────────────────────
 async function patchTask(taskId, status) {
-  const res = await fetch(`${API_URL}/api/property-tasks/${taskId}`, {
+  const res = await fetch(`${API_URL}/property-tasks/${taskId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
@@ -209,7 +209,7 @@ function WorkerListView({ workerId, workerName }) {
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/property-tasks`);
+      const res  = await fetch(`${API_URL}/property-tasks`);
       const data = await res.json();
       const all  = Array.isArray(data) ? data : [];
       // Show pending + accepted for this worker (or all if workerId matches everyone)
@@ -268,7 +268,7 @@ function WorkerListView({ workerId, workerName }) {
       {/* Task list */}
       {loading && tasks.length === 0 ? (
         <div className="wv-center">
-          <Loader2 size={42} className="wv-spin" />
+          <Loader2 size={40} className="wv-spin" />
           <p>טוען משימות...</p>
         </div>
       ) : tasks.length === 0 ? (
@@ -312,7 +312,7 @@ function WorkerSingleView({ taskId, workerName: initName }) {
   const fetchTask = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/property-tasks/${taskId}`);
+      const res  = await fetch(`${API_URL}/property-tasks/${taskId}`);
       const data = await res.json();
       if (res.ok && data.task) { setTask(data.task); }
       else setError(data.error || 'המשימה לא נמצאה.');
@@ -327,7 +327,7 @@ function WorkerSingleView({ taskId, workerName: initName }) {
     fetchTask();
   };
 
-  if (loading) return <div className="wv-shell"><div className="wv-center"><Loader2 size={42} className="wv-spin" /><p>טוען משימה...</p></div></div>;
+  if (loading) return <div className="wv-shell"><div className="wv-center"><Loader2 size={40} className="wv-spin" /><p>טוען משימה...</p></div></div>;
   if (error)   return <div className="wv-shell"><div className="wv-center wv-error-box"><AlertCircle size={48} /><h2>שגיאה</h2><p>{error}</p></div></div>;
 
   if (!nameOk) return (

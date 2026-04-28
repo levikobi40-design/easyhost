@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "defaultManagerFirstName": "דורור",
+  "workers": [
+    {
+      "id": "somchai",
+      "names": ["Somchai", "somchai", "สมชาย", "สมชาย "],
+      "strength": "Speed — finishes turnover fast",
+      "language": "th",
+      "tone": "warm_encouraging",
+      "experience": "new",
+      "notes": "Respond with patience; celebrate small wins."
+    },
+    {
+      "id": "ahmed",
+      "names": ["Ahmed", "ahmed", "Ahmad", "אחמד"],
+      "strength": "Detail-oriented — great with linens and bathroom finish",
+      "language": "he",
+      "tone": "direct",
+      "experience": "veteran",
+      "notes": "Short, clear instructions; trust their judgment."
+    },
+    {
+      "id": "doror",
+      "names": ["Doror", "doror", "דורור"],
+      "strength": "Operations coordination",
+      "language": "he",
+      "tone": "warm_manager",
+      "experience": "veteran",
+      "notes": "Israeli manager context; proactive on stuck rooms."
+    }
+  ]
+}

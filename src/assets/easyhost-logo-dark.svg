@@ -1,0 +1,24 @@
+<svg width="140" height="140" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="EasyHost AI">
+  <defs>
+    <linearGradient id="darkBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e40af"/>
+      <stop offset="50%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="accentBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <filter id="glowDark" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="116" height="116" rx="28" fill="rgba(15,23,42,0.9)" stroke="url(#accentBlue)" stroke-width="2"/>
+  <path d="M70 34L36 62H46V98H94V62H104L70 34Z" fill="url(#darkBlue)" filter="url(#glowDark)"/>
+  <circle cx="103" cy="35" r="6" fill="url(#accentBlue)"/>
+  <circle cx="112" cy="44" r="3" fill="url(#accentBlue)"/>
+</svg>

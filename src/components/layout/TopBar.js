@@ -1,103 +1,236 @@
-import React from 'react';
-import { Menu, UserCircle } from 'lucide-react';
-import useTranslations from '../../hooks/useTranslations';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Menu, UserCircle, Layers, Building2, RefreshCw } from 'lucide-react';
 import useStore from '../../store/useStore';
+import i18n from '../../i18n';
 import NotificationCenter from '../notifications/NotificationCenter';
-import easyHostLogo from '../../assets/easyhost-logo.svg';
+import { API_URL } from '../../utils/apiClient';
+import { notifyTasksChanged } from '../../utils/taskSyncBridge';
 import './TopBar.css';
+import { useMission } from '../../context/MissionContext';
+import { isDashboardAdmin, hasDeveloperOrSettingsHub, isOperationRole } from '../../utils/dashboardRoles';
+
+/* ── Mode definitions ─────────────────────────────────────── */
+const SYSTEM_MODES = [
+  { value: 'host',  icon: '🏰', label: 'Owner Dashboard', sub: 'Overview'  },
+  { value: 'admin', icon: '👔', label: 'HQ Director',    sub: 'Manager View'     },
+  { value: 'field', icon: '⚡', label: 'Field Agent',    sub: 'Mission Map'      },
+  { value: 'sim',   icon: '🎮', label: 'Live Simulator', sub: 'Generate 7-Day Data', sim: true },
+];
 
 const TopBar = () => {
-  const { lang, setLang, role, setRole, toggleSidebar, tenants, activeTenantId, setActiveTenantId } = useStore();
-  const { t } = useTranslations();
+  const navigate = useNavigate();
+  const {
+    lang, setLang, role, setRole, toggleSidebar,
+    tenants, activeTenantId, setActiveTenantId,
+  } = useStore();
+  const { hardRefreshTasks } = useMission();
+  const [missionSyncing, setMissionSyncing] = useState(false);
 
-  // Always show the US / Israel pair regardless of market env var.
-  // IP detection in App.js auto-selects the right one on first visit.
+  const [menuOpen,   setMenuOpen]   = useState(false);
+  const [simLoading, setSimLoading] = useState(false);
+  const [simDone,    setSimDone]    = useState(false);
+  const orbRef = useRef(null);
+
   const languages = [
-    { code: 'en', label: 'English', flag: '🇺🇸' },
-    { code: 'he', label: 'עברית',   flag: '🇮🇱' },
+    { code: 'en', label: 'EN', flag: '🇺🇸' },
+    { code: 'he', label: 'HE', flag: '🇮🇱' },
   ];
 
+  const normalise = (r) => {
+    const map = { owner: 'host', manager: 'admin', host: 'host', staff: 'field', worker: 'field', operator: 'operator' };
+    return map[r] || r || 'host';
+  };
+  const activeRole = normalise(role);
+  const isAdminUI = hasDeveloperOrSettingsHub(role);
+  const showHotelsNav = isDashboardAdmin(role) || isOperationRole(role);
+
+  /* Close orb menu on outside click */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (orbRef.current && !orbRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
+  /* Live Simulator */
+  const handleSimulate = useCallback(async () => {
+    if (simLoading) return;
+    setSimLoading(true);
+    setSimDone(false);
+    setMenuOpen(false);
+    try {
+      const res = await fetch(`${API_URL}/simulate-week`, { method: 'POST' });
+      if (res.ok) {
+        setSimDone(true);
+        setTimeout(() => setSimDone(false), 4000);
+        window.dispatchEvent(new CustomEvent('simulate-complete'));
+        notifyTasksChanged();
+      }
+    } catch (err) {
+      console.error('[Simulator] fetch failed:', err);
+    } finally {
+      setSimLoading(false);
+    }
+  }, [simLoading]);
+
+  const handleModeClick = useCallback((mode) => {
+    if (mode.sim) {
+      handleSimulate();
+    } else {
+      setRole(mode.value);
+      setMenuOpen(false);
+    }
+  }, [handleSimulate, setRole]);
+
+  const handleMissionHardRefresh = useCallback(async () => {
+    if (missionSyncing) return;
+    setMissionSyncing(true);
+    try {
+      await hardRefreshTasks();
+    } catch (e) {
+      console.error('[TopBar] mission hard refresh:', e);
+    } finally {
+      setMissionSyncing(false);
+    }
+  }, [hardRefreshTasks, missionSyncing]);
+
   return (
-    <header className="top-bar glass">
-      <div className="top-bar-start">
-        <button
-          onClick={toggleSidebar}
-          className="menu-btn"
-        >
-          <Menu size={22} />
-        </button>
-        <div className="topbar-logo">
-          <img src={easyHostLogo} alt="Easy Host AI" className="topbar-logo-img" />
-          <span className="topbar-logo-text">Easy Host AI</span>
-        </div>
-        <div className="breadcrumb">
-          <span className="breadcrumb-item">{t('topbar.breadcrumbEnterprise')}</span>
-          <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-item active">{t('topbar.breadcrumbDashboard')}</span>
-        </div>
-      </div>
-
-      <div className="top-bar-end">
-        <div className="tenant-selector">
-          <select
-            value={activeTenantId}
-            onChange={(e) => setActiveTenantId(e.target.value)}
-            className="tenant-select"
-            aria-label="Select tenant"
-          >
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {/* Language Selector — 🇺🇸 / 🇮🇱 pill toggle */}
-        <div className="lang-selector lang-pill" role="group" aria-label="Language selector">
-          {languages.map((l) => (
+    <>
+      {/* ── Main top bar ──────────────────────────────────── */}
+      <header className="top-bar glass">
+        {/* Left: hamburger only — logo & branding in sidebar */}
+        <div className="top-bar-start">
+          <button onClick={toggleSidebar} className="menu-btn" aria-label="Toggle menu">
+            <Menu size={22} />
+          </button>
+          {showHotelsNav && (
             <button
-              key={l.code}
-              onClick={() => setLang(l.code)}
-              className={`lang-btn${lang === l.code ? ' active' : ''}`}
-              title={l.label}
-              aria-pressed={lang === l.code}
-              aria-label={`Switch to ${l.label}`}
+              type="button"
+              className="top-bar-hotels-btn"
+              onClick={() => navigate('/properties')}
+              aria-label={lang === 'he' ? 'מלונות — רשימת נכסים' : 'Hotels — properties list'}
+              title={lang === 'he' ? 'מלונות / נכסים' : 'Hotels / Properties'}
             >
-              <span className="lang-flag">{l.flag}</span>
-              <span className="lang-label">{l.label}</span>
+              <Building2 size={20} aria-hidden />
+              <span className="top-bar-hotels-label">{lang === 'he' ? 'מלונות' : 'Hotels'}</span>
             </button>
-          ))}
-        </div>
-
-        {/* Notifications */}
-        <NotificationCenter />
-
-        {/* Role Selector */}
-        <div className="role-selector">
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="role-select"
-            aria-label="Select role"
+          )}
+          <button
+            type="button"
+            className="top-bar-mission-refresh-btn"
+            onClick={handleMissionHardRefresh}
+            disabled={missionSyncing}
+            aria-label={lang === 'he' ? 'רענון לוח משימות וספירות' : 'Refresh tasks and status counts'}
+            title={lang === 'he' ? 'רענון לוח משימות (מסנכרן מסד נתונים)' : 'Refresh mission board & DB task counts'}
           >
-            <option value="host">{t('roles.host')}</option>
-            <option value="operator">{t('roles.operator')}</option>
-            <option value="field">{t('roles.field')}</option>
-          </select>
+            <RefreshCw size={18} className={missionSyncing ? 'top-bar-refresh-spin' : ''} aria-hidden />
+          </button>
         </div>
 
-        {/* User Menu */}
-        <div className="user-menu">
-          <div className="user-avatar">
-            <UserCircle size={24} />
+        {/* Right: lang + tenant + notifs + avatar */}
+        <div className="top-bar-end">
+          {showHotelsNav && tenants.length > 1 && (
+            <div className="tenant-selector">
+              <select
+                value={activeTenantId}
+                onChange={(e) => setActiveTenantId(e.target.value)}
+                className="tenant-select"
+                aria-label="Property Selector"
+              >
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="lang-selector lang-pill" role="group" aria-label="Language selector">
+            {languages.map((l) => (
+              <button
+                key={l.code}
+                onClick={() => {
+                  setLang(l.code);            // update Zustand store
+                  i18n.changeLanguage(l.code); // fire immediately — no async delay
+                }}
+                className={`lang-btn${lang === l.code ? ' active' : ''}`}
+                title={l.label}
+                aria-pressed={lang === l.code}
+              >
+                <span className="lang-flag">{l.flag}</span>
+                <span className="lang-label">{l.label}</span>
+              </button>
+            ))}
           </div>
-          <div className="user-info">
-            <span className="user-name">{t('topbar.userName')}</span>
-            <span className="user-role">{t(`roles.${role}`)}</span>
+
+          <NotificationCenter />
+
+          <div className="user-menu">
+            <div className="user-avatar">
+              <UserCircle size={24} />
+            </div>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* ── Floating Control Orb — dashboard admins only (simulator / mode switch) ───────── */}
+      {isAdminUI && (
+        <div className="ctrl-orb-wrap" ref={orbRef}>
+
+        {/* Backdrop blur when menu open */}
+        {menuOpen && (
+          <div className="ctrl-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+        )}
+
+        {/* The orb button */}
+        <button
+          className={`ctrl-orb${menuOpen ? ' open' : ''}${simDone ? ' sim-success' : ''}`}
+          onClick={() => setMenuOpen(v => !v)}
+          aria-label="System Mode"
+          title="System Mode"
+        >
+          {simLoading
+            ? <span className="ctrl-spin">⏳</span>
+            : simDone
+              ? <span style={{ fontSize: 20 }}>✅</span>
+              : <Layers size={20} strokeWidth={2.5} />}
+        </button>
+
+        {/* Floating glass menu */}
+        {menuOpen && (
+          <div className="ctrl-menu" role="menu">
+            <div className="ctrl-menu-header">⚙️ System Mode</div>
+            {SYSTEM_MODES.map((mode) => {
+              const isActive = !mode.sim && mode.value === activeRole;
+              const isSim    = Boolean(mode.sim);
+              return (
+                <button
+                  key={mode.value}
+                  className={`ctrl-menu-item${isActive ? ' active' : ''}${isSim ? ' sim-item' : ''}`}
+                  onClick={() => handleModeClick(mode)}
+                  disabled={isSim && simLoading}
+                  role="menuitem"
+                >
+                  <span className="ctrl-item-icon">
+                    {isSim && simLoading ? '⏳' : mode.icon}
+                  </span>
+                  <div className="ctrl-item-text">
+                    <span className="ctrl-item-label">{mode.label}</span>
+                    <span className="ctrl-item-sub">
+                      {isSim && simLoading ? 'Generating…' : mode.sub}
+                    </span>
+                  </div>
+                  {isActive && <span className="ctrl-item-check">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        </div>
+      )}
+    </>
   );
 };
 

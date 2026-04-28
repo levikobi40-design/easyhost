@@ -1,0 +1,254 @@
+.manual-ops {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 16px 48px;
+  font-family: 'Heebo', system-ui, sans-serif;
+}
+
+.manual-ops-header h1 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+  color: #0f172a;
+}
+
+.manual-ops-sub {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.manual-ops-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0 16px;
+}
+
+.manual-ops-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.manual-ops-tab.active {
+  border-color: #6366f1;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.manual-ops-panel {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  padding: 16px;
+}
+
+.manual-ops-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.manual-ops-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  font-size: 1rem;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+
+.manual-ops-form h3 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.manual-ops-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 560px) {
+  .manual-ops-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.manual-ops-staff-list {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.manual-ops-staff-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.manual-ops-phone {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.manual-ops-muted {
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.manual-ops-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+  font-size: 0.95rem;
+}
+
+.manual-ops-btn.primary {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.manual-ops-btn.ghost {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 8px 12px;
+  min-height: 36px;
+  font-size: 0.85rem;
+}
+
+.manual-ops-btn.wa {
+  background: #25d366;
+  color: #fff;
+  flex: 1;
+}
+
+.manual-ops-error {
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.manual-ops-success {
+  color: #059669;
+  font-size: 0.9rem;
+}
+
+.manual-ops-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.manual-ops-week-label {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.manual-ops-icon-btn {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.manual-ops-book-block {
+  margin-bottom: 16px;
+}
+
+.manual-ops-book-block h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+.manual-ops-book-block ul {
+  margin: 0;
+  padding: 0 16px 0 0;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.manual-ops-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 8px;
+  color: #4f46e5;
+  font-size: 0.85rem;
+}
+
+.manual-ops-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.manual-ops-url-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+@media (min-width: 480px) {
+  .manual-ops-url-row {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+.manual-ops-url {
+  flex: 1;
+  display: block;
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.spin {
+  animation: manual-ops-spin 0.8s linear infinite;
+}
+
+@keyframes manual-ops-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

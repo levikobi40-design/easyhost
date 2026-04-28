@@ -7,7 +7,7 @@ import './WorkerPortal.css';
  * WorkerPortal – mobile-first staff view.
  * Access via: /worker?task=<TASK_ID>&name=<STAFF_NAME>
  * When the worker clicks "Accept" or "Complete", it PATCHes
- * /api/property-tasks/<id> → status: Seen | Done.
+ * /property-tasks/<id> → status: Seen | Done.
  * The main dashboard table auto-refreshes and shows the updated status.
  */
 const STATUS_COLORS = {
@@ -34,7 +34,7 @@ const WorkerPortal = () => {
       return;
     }
     try {
-      const res  = await fetch(`${API_URL}/api/property-tasks/${taskId}`);
+      const res  = await fetch(`${API_URL}/property-tasks/${taskId}`);
       const data = await res.json();
       if (!res.ok || !data.task) throw new Error(data.error || 'משימה לא נמצאה');
       setTask(data.task);
@@ -51,7 +51,7 @@ const WorkerPortal = () => {
     if (!taskId || busy) return;
     setBusy(true);
     try {
-      const res = await fetch(`${API_URL}/api/property-tasks/${taskId}`, {
+      const res = await fetch(`${API_URL}/property-tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),

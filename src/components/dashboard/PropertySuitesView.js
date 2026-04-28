@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 function parsePrice(description) {
   if (!description) return '—';
@@ -6,14 +6,15 @@ function parsePrice(description) {
   return m ? m[1] : '—';
 }
 
-export default function PropertySuitesView({ suites, onAddSuite }) {
+function PropertySuitesView({ suites, onAddSuite }) {
+  const list = useMemo(() => (Array.isArray(suites) ? suites : []), [suites]);
   return (
     <div className="bg-white rounded-[40px] p-8 shadow-sm border border-gray-100" dir="rtl">
       <h3 className="text-2xl font-black text-gray-900 mb-6">סוגי חדרים ומחירים</h3>
 
       <div className="space-y-4">
-        {Array.isArray(suites) && suites.length > 0 ? (
-          suites.map((suite) => (
+        {list.length > 0 ? (
+          list.map((suite) => (
             <div
               key={suite.id}
               className="flex items-center justify-between p-6 border border-gray-100 rounded-[24px] hover:bg-gray-50 transition-all cursor-pointer group"
@@ -48,10 +49,12 @@ export default function PropertySuitesView({ suites, onAddSuite }) {
       <button
         type="button"
         onClick={() => typeof onAddSuite === 'function' && onAddSuite()}
-        className="w-full mt-8 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold hover:border-yellow-400 hover:text-yellow-600 transition-all"
+        className="w-full mt-8 py-4 rounded-2xl font-extrabold text-base text-white bg-gradient-to-l from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/30 border-2 border-white/20 hover:from-blue-500 hover:to-indigo-500 hover:shadow-xl hover:-translate-y-0.5 transition-all"
       >
         + הוסף סוג חדר נוסף
       </button>
     </div>
   );
 }
+
+export default React.memo(PropertySuitesView);

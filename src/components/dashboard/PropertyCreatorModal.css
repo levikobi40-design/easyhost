@@ -1,39 +1,222 @@
-.property-creator-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+/* Property Creator Modal — Airbnb Elite */
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap');
+
+/* Loader */
+.property-loader {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: property-spin 0.7s linear infinite;
+}
+@keyframes property-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* RTL panel — Hebrew modals */
+.property-creator-modal-panel {
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: isolate;
+}
+
+/* Force input text (RTL / autofill) — Maya chat inputs are excluded to preserve their dark theme. */
+[dir="rtl"] input:not(.maya-input-field),
+[dir="rtl"] textarea:not(.maya-input-field),
+[dir="rtl"] select {
+  color: #1a1a1a !important;
+  -webkit-text-fill-color: #1a1a1a !important;
+  text-align: right;
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+/* Amenities — selected: #222222 on #f7f7f7, subtle border (Airbnb-style) */
+.amenity-tile.amenity-tile--selected {
+  background: #f7f7f7 !important;
+  color: #222222 !important;
+  border-color: #d4d4d4 !important;
+}
+.amenity-tile.amenity-tile--selected span,
+.amenity-tile.amenity-tile--selected svg {
+  color: #222222 !important;
+  stroke: #222222 !important;
+}
+
+/* ── Image Uploader (Airbnb variant) — contained grid, no overflow ───────────────── */
+.image-uploader-airbnb {
+  margin-bottom: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.image-uploader-airbnb-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 140px;
+  padding: 1.5rem;
+  border: 1px dashed #e0e0e0;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.image-uploader-airbnb-zone:hover {
+  border-color: #b0b0b0;
+  background: #fafafa;
+}
+
+.image-uploader-airbnb .image-uploader-airbnb-zone .image-uploader-airbnb-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.image-uploader-airbnb .image-uploader-airbnb-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #1a1a1a;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.image-uploader-airbnb-zone:hover .image-uploader-airbnb-add-btn {
+  background: #e5e5e5;
+}
+
+/* Mosaic layout — hero + thumbs; images never spill out */
+.image-uploader-mosaic {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 0.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.image-uploader-hero {
+  position: relative;
+  grid-row: span 2;
+  min-height: 200px;
+  max-height: 280px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.image-uploader-hero-img {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.image-uploader-hero:hover .image-uploader-hero-img {
+  transform: scale(1.03);
+}
+
+.image-uploader-thumbs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.image-uploader-thumb-wrap {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 0;
+}
+.image-uploader-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.image-uploader-thumb-wrap:hover .image-uploader-thumb-img {
+  transform: scale(1.05);
+}
+
+.image-uploader-add-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  aspect-ratio: 1;
+  min-height: 0;
+  border: 1px dashed #e0e0e0;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+.image-uploader-add-more:hover {
+  border-color: #b0b0b0;
+  background: #f5f5f5;
+  color: #1a1a1a;
+}
+
+.image-uploader-remove {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.image-uploader-remove:hover {
+  background: rgba(220, 38, 38, 0.9);
 }
 
-.property-creator-modal {
-  max-height: 90vh;
-  overflow-y: auto;
+.image-uploader-hero .image-uploader-remove {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+}
+.image-uploader-remove-thumb {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  top: 0.25rem;
+  right: 0.25rem;
 }
 
-.property-creator-dropzone {
-  outline: none;
+.image-uploader-airbnb-error {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #dc2626;
 }
 
-/* Global modal rule - force black text on ALL inputs/textareas */
-.property-creator-backdrop input,
-.property-creator-backdrop textarea,
-.property-creator-modal input,
-.property-creator-modal textarea,
-.property-creator-backdrop input[type="text"],
-.property-creator-backdrop input[type="number"],
-.property-creator-modal input[type="text"],
-.property-creator-modal input[type="number"] {
-  color: #000000 !important;
-  background-color: #ffffff !important;
-  -webkit-text-fill-color: #000000 !important;
-}
-.property-creator-backdrop input::placeholder,
-.property-creator-backdrop textarea::placeholder,
-.property-creator-modal input::placeholder,
-.property-creator-modal textarea::placeholder {
-  color: #4b5563 !important;
+@media (max-width: 640px) {
+  .image-uploader-mosaic {
+    grid-template-columns: 1fr;
+  }
+  .image-uploader-hero {
+    grid-row: span 1;
+    min-height: 180px;
+  }
 }

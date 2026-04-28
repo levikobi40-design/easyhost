@@ -5,10 +5,60 @@
  */
 
 import { API_BASE_URL } from '../utils/constants';
-import { getAIPropertyContext, createPropertyTask, sendMayaCommand, getPropertyTasks, sendTaskNotification } from './api';
+import {
+  getAIPropertyContext,
+  createPropertyTask,
+  sendMayaCommand,
+  getPropertyTasks,
+  sendTaskNotification,
+} from './api';
 import useStore from '../store/useStore';
 import { MAYA_AI_RULES } from '../config/mayaRules';
 import i18n from '../i18n';
+import { notifyTasksChanged } from '../utils/taskSyncBridge';
+import '../utils/mayaBrain';
+import { getBazaarJaffaPolicyTextForMaya } from '../data/propertyData';
+
+/** Flask returns HTTP 200 with success:false for Gemini failures — never treat that as a successful chat turn. */
+function normalizeMayaCommandResult(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      success: false,
+      message: '',
+      displayMessage: '',
+      brainFailure: true,
+    };
+  }
+  const msg = raw.displayMessage || raw.message || raw.response || '';
+  const failed = raw.success === false || raw.brainFailure === true;
+  if (failed) {
+    return {
+      success: false,
+      message: msg,
+      displayMessage: msg,
+      brainFailure: true,
+      brainErrorCode: raw.brainErrorCode,
+      brainErrorDetail: raw.brainErrorDetail,
+      maintenanceMode: raw.maintenanceMode,
+      taskCreated: raw.taskCreated,
+      task: raw.task,
+      tasks: raw.tasks,
+      parsed: raw.parsed,
+    };
+  }
+  return {
+    success: true,
+    message: msg,
+    displayMessage: msg,
+    maintenanceMode: raw.maintenanceMode,
+    taskCreated: raw.taskCreated,
+    task: raw.task,
+    tasks: raw.tasks,
+    parsed: raw.parsed,
+    action: raw.action,
+    scheduleHint: raw.scheduleHint,
+  };
+}
 
 const getAuthHeaders = () => {
   try {
@@ -27,7 +77,7 @@ const getAuthHeaders = () => {
 };
 
 const MAYA_SYSTEM_PROMPT = `
-You are Maya, the Senior Project Manager for Easy Host AI.
+You are Maya, the Senior Project Manager for EasyHost AI.
 Be proactive, decisive, and operations-focused. Monitor occupancy, leads,
 and operational status. Suggest actions before being asked and route work
 to the correct agent via function calls.
@@ -37,6 +87,9 @@ ${MAYA_AI_RULES.STAFF_ACCESS.rule}
 ${MAYA_AI_RULES.STAFF_MEMORY?.rule || ''}
 ${MAYA_AI_RULES.ACTION_RULE.rule}
 ${MAYA_AI_RULES.DYNAMIC_DETAILS.rule}
+
+Authoritative Hotel Bazaar Jaffa guest policy (recite when asked; do not contradict):
+${getBazaarJaffaPolicyTextForMaya()}
 `.trim();
 
 // Agent Types
@@ -119,7 +172,7 @@ export class ScraperAgent extends BaseAgent {
   }
 
   async scanPlatforms(platforms, location = 'Greece') {
-    const response = await fetch(`${API_BASE_URL}/api/agents/scout/scan`, {
+    const response = await fetch(`${API_BASE_URL}/agents/scout/scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ platforms, location }),
@@ -491,8 +544,8 @@ export class OperationsAgent extends BaseAgent {
     const phone = relevantStaff?.phone_number || relevantStaff?.phone;
     const staffId = relevantStaff?.id || '';
     const displayMessage = phone
-      ? `I am notifying ${staffName} at ${phone}`
-      : `I am notifying ${staffName}. (Add their phone number in Staff settings for direct contact.)`;
+      ? `הקצאתי את המשימה ל-${staffName} (טלפון: ${phone}).`
+      : `הקצאתי את המשימה ל-${staffName}. הוסיפו מספר טלפון בניהול הצוות ליצירת קשר ישיר.`;
     
     const message = this.generateMessage(department, task, { staffName, propertyName });
     const readyToSendHe = phone && propertyName
@@ -645,9 +698,11 @@ class MayaOrchestrator {
   async getPropertyContext() {
     try {
       const ctx = await getAIPropertyContext();
-      return ctx.summary_for_ai || ctx.properties?.length
-        ? `Property context: ${ctx.summary_for_ai || 'No details.'}`
-        : '';
+      const n = (ctx.properties || []).length;
+      const summary =
+        (ctx.summary_for_ai || '').trim() ||
+        (n ? `Portfolio: ${n} properties (synced from /properties).` : '');
+      return summary ? `Property context: ${summary}` : '';
     } catch (e) {
       return '';
     }
@@ -660,6 +715,10 @@ class MayaOrchestrator {
    */
   async processCommand(command, options = {}) {
     const history = options.history || [];
+    const language = options.language || 'en';  // en | he — Maya responds in guest language
+    const onDelta = options.onDelta || null;
+    // Passed as 5th arg to sendMayaCommand so delta tokens reach the UI for every LLM path
+    const cmdOpts = onDelta ? { onDelta } : {};
     const lowerCommand = command.toLowerCase();
 
     // "Send this to Kobi" / "Send to Alma" - open WhatsApp for selected task
@@ -699,25 +758,27 @@ class MayaOrchestrator {
 
     if (lowerCommand.includes('נראה אותה מנהלת') || lowerCommand.includes('בוא נראה אותה מנהלת') || lowerCommand.includes('maya manage')) {
       try {
-        const tasks = await getPropertyTasks();
+        const tasks = await getPropertyTasks({ limit: 0 });
         const tasksForAnalysis = (tasks || []).map((t) => ({
           desc: (t.description || t.title || t.content || '').slice(0, 100),
           staff: t.staff_name || t.staffName || '',
           property: t.property_name || t.propertyName || '',
           status: t.status || 'Pending',
         }));
-        const result = await sendMayaCommand('בוא נראה אותה מנהלת', tasksForAnalysis, history);
-        if (result.success) {
+        const result = await sendMayaCommand('בוא נראה אותה מנהלת', tasksForAnalysis, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(result);
+        if (norm.success) {
           return {
             success: true,
-            message: result.message,
-            displayMessage: result.displayMessage || result.message,
+            message: norm.displayMessage,
+            displayMessage: norm.displayMessage,
           };
         }
+        return norm;
       } catch (e) {
         return {
           success: true,
-          message: `יש לנו ${(await getPropertyTasks()).filter((t) => (t.status || '').toLowerCase() !== 'done').length} משימות פתוחות. האם להוציא תזכורת?`,
+          message: `יש לנו ${(await getPropertyTasks({ limit: 0 })).filter((t) => (t.status || '').toLowerCase() !== 'done').length} משימות פתוחות. האם להוציא תזכורת?`,
           displayMessage: `יש לנו משימות פתוחות. האם להוציא תזכורת?`,
         };
       }
@@ -725,16 +786,20 @@ class MayaOrchestrator {
 
     if (lowerCommand.includes('daily report') || lowerCommand.includes('דוח יומי') || lowerCommand.includes('generate daily report')) {
       try {
-        const result = await sendMayaCommand(command, null, history);
-        if (result.success && result.message) {
+        const result = await sendMayaCommand(command, null, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(result);
+        if (norm.success && norm.displayMessage) {
           return {
             success: true,
-            message: result.message,
-            displayMessage: result.displayMessage || result.message,
+            message: norm.displayMessage,
+            displayMessage: norm.displayMessage,
           };
         }
+        if (!norm.success) {
+          return norm;
+        }
       } catch (e) {
-        const tasks = await getPropertyTasks();
+        const tasks = await getPropertyTasks({ limit: 0 });
         const today = new Date().toISOString().slice(0, 10);
         const doneToday = tasks.filter((t) => {
           const s = (t.status || '').toLowerCase();
@@ -750,9 +815,13 @@ class MayaOrchestrator {
     
     if (lowerCommand.includes('מצב סימולציה') || lowerCommand.includes('סימולציה') || lowerCommand.includes('simulation') || lowerCommand.includes('simulate') || lowerCommand.includes('free mode') || lowerCommand.includes('סיימת') || lowerCommand.includes('המפתח הוגדר')) {
       try {
-        const result = await sendMayaCommand(command, null, history);
-        if (result.success && result.message) {
-          return { success: true, message: result.message, displayMessage: result.displayMessage || result.message };
+        const result = await sendMayaCommand(command, null, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(result);
+        if (norm.success && norm.displayMessage) {
+          return { success: true, message: norm.displayMessage, displayMessage: norm.displayMessage };
+        }
+        if (!norm.success) {
+          return norm;
         }
       } catch (e) {
         console.warn('[Maya] simulation check:', e);
@@ -765,9 +834,13 @@ class MayaOrchestrator {
 
     if (lowerCommand.includes('100 clients') || lowerCommand.includes('100 לקוחות') || lowerCommand.includes('מאה לקוחות') || lowerCommand.includes('התשתית') || /\b100\+?\s*(לקוחות|clients)/.test(lowerCommand)) {
       try {
-        const result = await sendMayaCommand(command, null, history);
-        if (result.success && result.message) {
-          return { success: true, message: result.message, displayMessage: result.displayMessage || result.message };
+        const result = await sendMayaCommand(command, null, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(result);
+        if (norm.success && norm.displayMessage) {
+          return { success: true, message: norm.displayMessage, displayMessage: norm.displayMessage };
+        }
+        if (!norm.success) {
+          return norm;
         }
       } catch (e) {
         console.warn('[Maya] 100-clients check:', e);
@@ -779,113 +852,107 @@ class MayaOrchestrator {
       };
     }
 
-    if (lowerCommand.includes('property') || lowerCommand.includes('villa') || lowerCommand.includes('נכס') || lowerCommand.includes('ווילה') || lowerCommand.includes('guests') || lowerCommand.includes('אורחים') || lowerCommand.includes('bedroom') || lowerCommand.includes('כמה חדרים') || lowerCommand.includes('how many')) {
-      const ctx = await getAIPropertyContext();
-      const summary = ctx.summary_for_ai || 'No properties in database.';
-      return {
-        success: true,
-        message: summary,
-        displayMessage: summary,
-        properties: ctx.properties,
-      };
-    }
-    
-    if (lowerCommand.includes('staff') || lowerCommand.includes('עובד') || lowerCommand.includes('מנקה') || lowerCommand.includes('who to contact')) {
-      const ctx = await getAIPropertyContext();
-      const lines = [];
-      if (ctx.staff_by_property) {
-        for (const [pid, staff] of Object.entries(ctx.staff_by_property)) {
-          const prop = (ctx.properties || []).find((p) => p.id === pid);
-          const pName = prop?.name || pid;
-          const sStr = staff.map((s) => `${s.name} (${s.role})`).join(', ') || 'None';
-          lines.push(`${pName}: ${sStr}`);
+    if (
+      (/מי\s*עובד|who\s+works|מי\s+במשמרת/i.test(command) && (/היום|today|עכשיו/i.test(command) || lowerCommand.includes('today')))
+    ) {
+      try {
+        const result = await sendMayaCommand(command, null, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(result);
+        if (norm.success && norm.displayMessage) {
+          return {
+            success: true,
+            message: norm.displayMessage,
+            displayMessage: norm.displayMessage,
+          };
         }
+        if (!norm.success) {
+          return norm;
+        }
+      } catch (e) {
+        console.warn('[Maya] who-works route:', e?.message);
       }
-      const msg = lines.length ? lines.join('\n') : 'No staff assigned.';
-      return { success: true, message: msg, displayMessage: msg };
     }
-    
-    if (lowerCommand.includes('lead') || lowerCommand.includes('scan') || lowerCommand.includes('airbnb') || lowerCommand.includes('ליד') || lowerCommand.includes('סריקה')) {
-      return await this.executeTask(AGENT_TYPES.SCRAPER, { platforms: ['airbnb', 'booking'] });
+
+    if (/סידור\s*עבודה|תכיני\s*סידור|הכנ[יי]\s*סידור|prepare\s*(?:a\s*)?(?:work\s*)?schedule|make\s*(?:the\s*)?shift\s*plan/i.test(command)) {
+      try {
+        const result = await sendMayaCommand(command, null, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(result);
+        if (norm.success && norm.displayMessage) {
+          return {
+            success: true,
+            message: norm.displayMessage,
+            displayMessage: norm.displayMessage,
+            scheduleHint: result.scheduleHint,
+          };
+        }
+        if (!norm.success) {
+          return norm;
+        }
+      } catch (e) {
+        console.warn('[Maya] work-schedule route:', e?.message);
+      }
     }
-    
-    if (lowerCommand.includes('post') || lowerCommand.includes('marketing') || lowerCommand.includes('campaign') || lowerCommand.includes('פוסט') || lowerCommand.includes('שיווק') || lowerCommand.includes('קמפיין')) {
-      return await this.executeTask(AGENT_TYPES.MARKETING, {
-        type: 'social_post',
-        content: { text: 'New hotel post', platforms: ['instagram', 'facebook'] },
-      });
-    }
-    
-    if (lowerCommand.includes('video') || lowerCommand.includes('image') || lowerCommand.includes('edit') || lowerCommand.includes('וידאו') || lowerCommand.includes('תמונ') || lowerCommand.includes('עריכה')) {
-      return await this.executeTask(AGENT_TYPES.CREATIVE, {
-        type: 'enhance_images',
-        images: ['https://example.com/room1.jpg'],
-      });
-    }
-    
-    if (lowerCommand.includes('demo') || lowerCommand.includes('deal') || lowerCommand.includes('sales') || lowerCommand.includes('דמו') || lowerCommand.includes('מכיר') || lowerCommand.includes('עסקה')) {
-      return await this.executeTask(AGENT_TYPES.SALES, {
-        type: 'send_demo',
-        lead: { id: Date.now(), name: 'New lead' },
-      });
-    }
-    
+
     const taskTriggers = /towel|clean|maintenance|room|fix|repair|broken|service|needs cleaning|prepare|guests|מגבת|ניקיון|תחזוקה|חדר|dirty|מלוכלך|תקן|הכובס|מנקה|שירות|תיקון|לשלוח|cleaner|tell the cleaner|tell\s+\w+\s+to|add\s+task|create\s+task|עלמה|קובי|אבי|tell\s+alma|tell\s+kobi|קצר|חשמל|electrical|short circuit|נשרפה|נשרף|מנורה|תקלה|בעיה|דליפה|נזילה|יש תקלה|תתקן|לפתוח משימה/i;
     if (taskTriggers.test(command)) {
       try {
-        const geminiResult = await sendMayaCommand(command, null, history);
-        if (geminiResult.success) {
-          const taskCreated = geminiResult.taskCreated || geminiResult.action === 'add_task' || !!geminiResult.task;
-          if (taskCreated) {
-            window.dispatchEvent(new CustomEvent('maya-task-created', { detail: { task: geminiResult.task } }));
-          }
+        const mayaResult = await sendMayaCommand(command, null, history, language, cmdOpts);
+        const norm = normalizeMayaCommandResult(mayaResult);
+        if (!norm.success) {
+          return norm;
+        }
+        const taskCreated = mayaResult.taskCreated || mayaResult.action === 'add_task' || !!mayaResult.task;
+        if (taskCreated) {
+          notifyTasksChanged({ task: mayaResult.task });
           return {
             success: true,
-            message: geminiResult.message || geminiResult.displayMessage,
-            displayMessage: geminiResult.displayMessage || geminiResult.message,
+            message: mayaResult.message || mayaResult.displayMessage || mayaResult.response,
+            displayMessage: mayaResult.displayMessage || mayaResult.message || mayaResult.response,
             taskCreated,
           };
         }
-        if (geminiResult.displayMessage || geminiResult.message) {
+        if (mayaResult.displayMessage || mayaResult.message || mayaResult.response) {
           return {
             success: true,
-            message: geminiResult.displayMessage || geminiResult.message,
-            displayMessage: geminiResult.displayMessage || geminiResult.message,
+            message: mayaResult.displayMessage || mayaResult.message || mayaResult.response,
+            displayMessage: mayaResult.displayMessage || mayaResult.message || mayaResult.response,
           };
         }
       } catch (e) {
-        if (e?.status === 503 || (e?.message || '').includes('מתחבר') || (e?.message || '').toLowerCase().includes('failed')) {
-          throw e;
-        }
-        console.warn('[Maya] Gemini fallback:', e?.message);
+        console.warn('[Maya] task route:', e?.message || e);
+        throw e;
       }
-      const roomMatch = command.match(/\d+/);
-      const room = roomMatch ? roomMatch[0] : '101';
-      const ctx = await getAIPropertyContext();
-      const propertyContext = ctx.summary_for_ai || '';
-      const staffList = ctx.staff_by_property
-        ? Object.values(ctx.staff_by_property).flat()
-        : [];
-      const staffByProperty = ctx.staff_by_property || {};
-      const properties = ctx.properties || [];
-      const isMaintenance = /maintenance|fix|תחזוקה|תקן/i.test(command);
-      const isCleaning = /clean|towel|dirty|מגבת|ניקיון|מלוכלך|מנקה|הכובס/i.test(command);
-      const taskType = isMaintenance ? 'maintenance_request' : isCleaning ? 'request_cleaning' : 'request_towels';
-      return await this.executeTask(AGENT_TYPES.OPERATIONS, {
-        type: taskType,
-        room,
-        description: command,
-        propertyContext,
-        staff: staffList,
-        staffByProperty,
-        properties,
-      });
     }
-    
-    // Default response
+
+    // Default: full Maya brain (Gemini + PROPERTY_KNOWLEDGE) via Flask
+    try {
+      const mayaResult = await sendMayaCommand(command, null, history, language, cmdOpts);
+      const norm = normalizeMayaCommandResult(mayaResult);
+      if (!norm.success) {
+        return norm;
+      }
+      const msg = norm.displayMessage || '';
+      if (msg || mayaResult.maintenanceMode) {
+        return {
+          success: true,
+          message: msg || i18n.t('orchestrator.messages.unknown'),
+          displayMessage: msg,
+          maintenanceMode: mayaResult.maintenanceMode,
+          taskCreated: mayaResult.taskCreated,
+          task: mayaResult.task,
+          parsed: mayaResult.parsed,
+        };
+      }
+    } catch (e) {
+      console.warn('[Maya] /ai/maya-command failed:', e?.message || e);
+      throw e;
+    }
+
+    const unknown = i18n.t('orchestrator.messages.unknown');
     return {
       success: true,
-      message: i18n.t('orchestrator.messages.unknown'),
+      message: unknown,
+      displayMessage: unknown,
     };
   }
 
@@ -900,7 +967,7 @@ class MayaOrchestrator {
    * Generate daily report
    */
   async generateDailyReport() {
-    const response = await fetch(`${API_BASE_URL}/api/reports/daily`, {
+    const response = await fetch(`${API_BASE_URL}/reports/daily`, {
       headers: { ...getAuthHeaders() },
     });
     if (!response.ok) {

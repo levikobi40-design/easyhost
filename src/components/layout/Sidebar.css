@@ -5,17 +5,24 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 1rem;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1.5rem 20px;
+  /* ── Single authoritative dark navy ── */
+  background: #0b1120 !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-left: 1px solid rgba(0, 255, 136, 0.15);
+  box-shadow: -4px 0 40px rgba(0, 0, 0, 0.7);
   z-index: 100;
   transition: width 0.3s ease;
+  overflow: hidden;
+  color: #ffffff !important;
 }
 
-/* Hebrew: force sidebar to right */
+/* Hebrew: sidebar on the right */
 .sidebar.sidebar-rtl {
   right: 0 !important;
   left: auto !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid rgba(0, 255, 136, 0.12);
   border-right: none;
 }
 
@@ -23,28 +30,55 @@
   right: auto;
   left: 0;
   border-left: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 1px solid rgba(0, 255, 136, 0.12);
 }
 
-/* Logo */
+/* Logo — Neon Blue Hotel: perfectly aligned */
 .sidebar-logo {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.75rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0.25rem;
   margin-bottom: 2rem;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+.sidebar.collapsed .sidebar-logo {
+  justify-content: center;
+  padding: 0.5rem;
+}
+.sidebar.sidebar-rtl .sidebar-logo {
+  justify-content: flex-start;
+}
+.sidebar.sidebar-rtl.collapsed .sidebar-logo {
+  justify-content: center;
 }
 
 .logo-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #eab308, #f59e0b);
+  width: 44px;
+  height: 44px;
+  background: #000000;
   border-radius: 0.75rem;
+  border: 2px solid #00ff88;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #020617;
+  color: #ffffff;
   flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(0,255,136,0.3);
+}
+
+.logo-icon-neon {
+  border-color: #3b82f6;
+  color: #60a5fa;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.5), 0 0 32px rgba(59, 130, 246, 0.2);
+}
+
+.sidebar-logo-dark-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
 }
 
 .logo-icon-stack {
@@ -62,11 +96,12 @@
 }
 
 .logo-text {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: white;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
+  letter-spacing: 0.02em;
 }
 
 /* Navigation */
@@ -82,15 +117,18 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.875rem 1rem;
+  padding: 0.75rem 0.875rem;
   background: transparent;
   border: none;
   border-radius: 0.75rem;
-  color: #94a3b8;
+  color: #ffffff !important;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.18s, color 0.18s;
   width: 100%;
   text-align: right;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 [dir="ltr"] .nav-item {
@@ -98,24 +136,45 @@
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: white;
+  background: rgba(0, 255, 136, 0.09);
+  color: #ffffff;
 }
 
 .nav-item.active {
-  background: rgba(234, 179, 8, 0.1);
-  color: #eab308;
+  background: rgba(0, 255, 136, 0.14);
+  color: #00ff88;
 }
 
 .nav-item svg {
   flex-shrink: 0;
+  min-width: 22px;
+  /* SVG inherits currentColor from .nav-item */
+}
+
+.nav-item.active svg {
+  color: #00ff88;
 }
 
 .nav-label {
   font-size: 0.875rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
+  font-weight: 900;
+  color: #ffffff !important;
+  flex: 1;
+  min-width: 0;
+  transition: opacity 0.25s, max-width 0.25s;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.nav-item:hover .nav-label {
+  color: #ffffff;
+}
+
+.nav-item.active .nav-label {
+  color: #00ff88;
+  font-weight: 900;
 }
 
 .active-indicator {
@@ -125,8 +184,9 @@
   transform: translateY(-50%);
   width: 3px;
   height: 60%;
-  background: linear-gradient(to bottom, #eab308, #f59e0b);
+  background: #00ff88;
   border-radius: 3px;
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.7);
 }
 
 [dir="ltr"] .active-indicator {
@@ -134,43 +194,57 @@
   left: 0;
 }
 
-/* AI Assistant Button */
+/* AI Assistant / Command Center — aligned with nav items */
 .sidebar-action {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ai-assistant-sidebar-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.875rem;
-  background: linear-gradient(135deg, rgba(234, 179, 8, 0.2), rgba(139, 92, 246, 0.2));
-  border: 1px solid rgba(234, 179, 8, 0.3);
+  padding: 0.75rem 0.875rem;
+  text-align: right;
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
   border-radius: 0.75rem;
-  color: #eab308;
-  font-size: 0.875rem;
-  font-weight: 500;
+  color: #00ff88;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.2s;
   white-space: nowrap;
   overflow: hidden;
 }
 
 .ai-assistant-sidebar-btn:hover {
-  background: linear-gradient(135deg, rgba(234, 179, 8, 0.3), rgba(139, 92, 246, 0.3));
-  box-shadow: 0 0 20px rgba(234, 179, 8, 0.2);
+  background: rgba(0, 255, 136, 0.18);
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.2);
+  color: #ffffff;
 }
 
 .sidebar.collapsed .ai-assistant-sidebar-btn {
   padding: 0.875rem;
+  justify-content: center;
 }
 
 .sidebar.collapsed .ai-assistant-sidebar-btn span {
   display: none;
+}
+
+[dir="ltr"] .ai-assistant-sidebar-btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+[dir="ltr"] .sidebar.collapsed .ai-assistant-sidebar-btn {
+  justify-content: center;
 }
 
 /* Toggle Button */
@@ -181,16 +255,17 @@
   transform: translateY(-50%);
   width: 28px;
   height: 28px;
-  background: linear-gradient(135deg, #1e293b, #0f172a);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0b1120;
+  border: 1px solid rgba(0, 255, 136, 0.35);
   border-radius: 50%;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
   z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
 
 [dir="ltr"] .sidebar-toggle {
@@ -199,9 +274,9 @@
 }
 
 .sidebar-toggle:hover {
-  background: linear-gradient(135deg, #334155, #1e293b);
-  color: white;
-  border-color: rgba(234, 179, 8, 0.3);
+  border-color: #00ff88;
+  color: #00ff88;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
 }
 
 /* QR Code - bottom left of sidebar */
@@ -260,20 +335,21 @@
 .sidebar-qr-placeholder {
   margin-top: 0.75rem;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
   text-align: center;
 }
 
 .sidebar-qr-label {
   font-size: 0.8rem;
-  color: #e2e8f0;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
   margin: 0;
   white-space: nowrap;
-  font-weight: 500;
 }
 
 .sidebar-qr-code {
@@ -292,7 +368,7 @@
 .sidebar-footer {
   margin-top: auto;
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -303,12 +379,13 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.75rem;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 0.6rem;
+  background: rgba(0, 255, 136, 0.07);
+  border: 1px solid rgba(0, 255, 136, 0.2);
   border-radius: 0.5rem;
-  color: #10b981;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -327,9 +404,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   align-items: center;
   justify-content: center;
@@ -342,8 +419,8 @@
 }
 
 .sidebar-close-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: #fee2e2;
+  border-color: #ef4444;
   color: #ef4444;
 }
 
@@ -380,22 +457,22 @@
     /* RTL (Hebrew): slides in from the right */
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.15);
   }
 
   .sidebar.open {
     transform: translateX(0) !important;
-    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.6);
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.18);
   }
 
   /* LTR (English): slides in from the left */
   [dir="ltr"] .sidebar {
     transform: translateX(-100%);
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.15);
   }
 
   [dir="ltr"] .sidebar.open {
-    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.6);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.18);
   }
 
   /* Desktop collapse chevron — hidden on mobile (use X button instead) */
@@ -428,6 +505,34 @@
   .sidebar-qr-placeholder {
     display: none;
   }
+}
+
+/* ── RTL: collapse-toggle button sits on the inner (left) edge ── */
+[dir="rtl"] .sidebar-toggle {
+  left: -14px;
+  right: auto;
+}
+
+/* ── Hard-lock: every child element transparent so #0b1120 shows through ── */
+.sidebar * {
+  background-color: transparent !important;
+}
+/* Text lock — override any Tailwind or global style that might colour text */
+.sidebar,
+.sidebar .logo-text,
+.sidebar .nav-item,
+.sidebar .nav-label,
+.sidebar .security-badge,
+.sidebar .ai-assistant-sidebar-btn,
+.sidebar .sidebar-qr-placeholder,
+.sidebar .sidebar-qr-label,
+.sidebar .sidebar-close-btn {
+  color: #ffffff !important;
+  font-weight: 900 !important;
+}
+.sidebar .nav-item.active,
+.sidebar .nav-item.active .nav-label {
+  color: #00ff88 !important;
 }
 
 /* ── God Mode nav item — gold glow ────────────────────────── */

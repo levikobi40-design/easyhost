@@ -1,7 +1,7 @@
 import React from 'react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
-import MayaChat from '../maya/MayaChat';
+import Chat from '../chat/Chat';
 import AccessibilityWidget from '../accessibility/AccessibilityWidget';
 import useStore from '../../store/useStore';
 
@@ -17,12 +17,12 @@ const Layout = ({ activeView, setActiveView, children }) => {
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
       <main id="main-content" className="main-content">
         <TopBar />
-        <div className="view-container" key={`view-${activeView}`}>
+        <div className="view-container">
           {children}
         </div>
       </main>
       {/* Maya WhatsApp UI - always mounted when Layout is shown */}
-      <MayaChat />
+      <Chat />
       {/* Accessibility Widget — Israeli law (WCAG 2.1 AA) */}
       <AccessibilityWidget />
       <div className="bg-effects">

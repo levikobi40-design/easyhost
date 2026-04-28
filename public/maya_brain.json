@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "enterprise_global_rules": {
+    "checkInTime": "15:00",
+    "roomsDefaultCheckIn": "15:00",
+    "lateCheckoutFee": 170,
+    "notes_he": "ברירת מחדל לכל הסניפים — ניתן לדרוס לנכס בודד. דוגמה: צ'ק-אין 15:00 לכל ROOMS."
+  },
+  "rooms_rental_categories": [
+    {
+      "id": "monthly",
+      "titleHe": "ארוך טווח (חודשי)",
+      "titleEn": "Long-term (Monthly)",
+      "items": ["Private Offices", "Designated Desks", "משרדים פרטיים", "שולחנות קבועים"]
+    },
+    {
+      "id": "daily",
+      "titleHe": "יומי",
+      "titleEn": "Daily",
+      "items": ["Hot Desks", "Daily Offices", "שולחנות חמים", "משרד יומי"]
+    },
+    {
+      "id": "hourly",
+      "titleHe": "לפי שעה",
+      "titleEn": "Hourly",
+      "items": ["Meeting Rooms", "Cinema", "Event Spaces", "חדרי ישיבות", "מיני-סינמה", "חללי אירוע"]
+    }
+  ],
+  "wework_rental_options": [
+    { "id": "daily_access", "titleHe": "גישה יומית", "titleEn": "Daily Access" },
+    { "id": "meeting_rooms", "titleHe": "חדרי ישיבות", "titleEn": "Meeting Rooms" },
+    { "id": "hot_desk", "titleHe": "מנוי לחלל עבודה", "titleEn": "Hot Desk" },
+    { "id": "dedicated_desk", "titleHe": "עמדת עבודה קבועה", "titleEn": "Dedicated Desk" },
+    { "id": "private_office", "titleHe": "משרד פרטי", "titleEn": "Private Office" },
+    { "id": "full_floor", "titleHe": "קומה שלמה", "titleEn": "Full Floor" }
+  ]
+}

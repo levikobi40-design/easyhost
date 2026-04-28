@@ -5,9 +5,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Force all inputs visible - black text, white background. No white-on-white. */
-input,
-textarea {
+/* Force all inputs visible - black text, white background. No white-on-white.
+   Maya chat inputs are excluded — they keep their own dark theme. */
+input:not(.maya-input-field),
+textarea:not(.maya-input-field) {
   color: black !important;
   background-color: white !important;
 }
@@ -15,8 +16,8 @@ select {
   color: black !important;
   background-color: white !important;
 }
-input::placeholder,
-textarea::placeholder {
+input:not(.maya-input-field)::placeholder,
+textarea:not(.maya-input-field)::placeholder {
   color: #4b5563 !important;
 }
 

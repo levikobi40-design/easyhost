@@ -5,7 +5,7 @@ import { AI_ASSISTANT_URL } from '../../utils/constants';
 import './Header.css';
 
 /**
- * Easy Host AI Header - Premium navigation with glassmorphism
+ * EasyHost AI Header - Premium navigation with glassmorphism
  */
 const Header = ({ lang, setLang, role, setRole, page, setPage, t }) => {
   const handleAIAssistantClick = () => {
@@ -17,7 +17,7 @@ const Header = ({ lang, setLang, role, setRole, page, setPage, t }) => {
       <div className="header-content">
         {/* Brand Logo */}
         <div className="header-section header-brand">
-          <span className="brand-logo">Easy Host AI</span>
+          <span className="brand-logo">EasyHost AI</span>
           <span className="brand-ai-badge">AI</span>
         </div>
 

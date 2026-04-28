@@ -1,25 +1,31 @@
 /* ── Accessibility Widget — floating panel ── */
 
+/* Bottom-left, below Maya voice dock — portal to body avoids layout/stacking from parents */
 .a11y-widget {
-  position: fixed;
-  bottom: 90px;      /* sits above the Maya FAB */
-  left: 16px;        /* LTR: bottom-left, opposite corner from Maya (bottom-right) */
-  right: auto;
-  z-index: 10000;
+  position: fixed !important;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 12px !important;
+  right: auto !important;
+  top: auto !important;
+  z-index: 1200;
   direction: rtl;
   font-family: inherit;
+  pointer-events: none;
+}
+.a11y-widget .a11y-trigger,
+.a11y-widget .a11y-panel {
+  pointer-events: auto;
 }
 
-/* RTL (Hebrew): Maya FAB moves to bottom-left, so we move accessibility to bottom-right */
 [dir="rtl"] .a11y-widget {
-  left: auto;
-  right: 16px;
+  left: 12px !important;
+  right: auto !important;
 }
 
-/* Mobile: extra bottom clearance so it clears browser chrome */
 @media (max-width: 768px) {
   .a11y-widget {
-    bottom: 100px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 10px !important;
   }
 }
 
@@ -43,11 +49,12 @@
 .a11y-trigger:hover  { transform: scale(1.08); box-shadow: 0 6px 24px rgba(7,94,84,0.7); }
 .a11y-trigger:focus  { outline: 3px solid #25D366; outline-offset: 3px; }
 
-/* Panel */
+/* Panel opens upward from bottom-left trigger */
 .a11y-panel {
   position: absolute;
-  bottom: 56px;
-  left: 0;          /* LTR: panel opens to the right */
+  bottom: calc(100% + 8px);
+  top: auto;
+  left: 0;
   right: auto;
   width: 240px;
   background: #ffffff;
@@ -55,17 +62,16 @@
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.28);
   overflow: hidden;
-  animation: a11ySlideUp 0.18s ease;
+  animation: a11yPanelIn 0.18s ease;
 }
 
-/* RTL: panel opens to the left (anchored to right edge of trigger) */
 [dir="rtl"] .a11y-panel {
-  left: auto;
-  right: 0;
+  left: 0;
+  right: auto;
 }
 
-@keyframes a11ySlideUp {
-  from { opacity: 0; transform: translateY(12px); }
+@keyframes a11yPanelIn {
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 

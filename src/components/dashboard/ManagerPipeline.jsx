@@ -4,10 +4,11 @@
  * Tab 1: "Completed Today" — scrolling feed with completion times
  * Tab 2: "Worker Productivity" — glassmorphism table with per-worker stats
  *
- * Polls /api/completed-today (feed) and /api/worker-productivity (table).
+ * Polls /completed-today (feed) and /worker-productivity (table).
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { API_URL } from '../../utils/apiClient';
+import { patchEnterpriseGlobalRules, stripOverrideFieldFromAll } from '../../hooks/useEnterpriseRules';
 
 /* ── CSS ─────────────────────────────────────────────────── */
 const CSS = `
@@ -106,10 +107,11 @@ function FeedTab() {
     if (!silent) setLoading(true);
     setSpin(true);
     try {
-      const res  = await fetch(`${API_URL}/api/completed-today`);
+      const res  = await fetch(`${API_URL}/completed-today`);
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
-      setTasks(Array.isArray(data) ? data : data.tasks || []);
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.tasks) ? data.tasks : []);
+      setTasks(list);
       setSync(new Date());
     } catch { /* stale */ }
     finally { setLoading(false); setSpin(false); }
@@ -226,9 +228,11 @@ function ProductivityTab() {
     if (!silent) setLoading(true);
     setSpin(true);
     try {
-      const res = await fetch(`${API_URL}/api/worker-productivity`);
+      const res = await fetch(`${API_URL}/worker-productivity`);
       if (!res.ok) throw new Error(res.status);
-      setRows(await res.json());
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.rows) ? data.rows : (Array.isArray(data?.workers) ? data.workers : []));
+      setRows(list);
       setSync(new Date());
     } catch { /* stale */ }
     finally { setLoading(false); setSpin(false); }
@@ -302,11 +306,11 @@ function ProductivityTab() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <div style={{
                         width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                        background: `hsl(${(i * 67) % 360},55%,42%)`,
+                        background: `hsl(${(i * 67) % 360},55%,${38 + (i % 6)}%)`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 12, fontWeight: 900, color: '#fff',
-                      }}>{(r.worker||'?')[0].toUpperCase()}</div>
-                      {r.worker}
+                      }}>{String(r.worker ?? '?')[0].toUpperCase()}</div>
+                      {r.worker != null ? String(r.worker) : '—'}
                     </div>
                   </td>
                   <td style={{ padding: '10px 12px', color: '#34d399', fontWeight: 800, textAlign: 'center' }}>
@@ -349,6 +353,122 @@ function ProductivityTab() {
 }
 
 /* ══════════════════════════════════════════════════════
+   TAB 3 — Automation rules (Maya) — safe defaults, no fragile API deps
+═══════════════════════════════════════════════════════ */
+function AutomationTab() {
+  const [rule, setRule] = useState(
+    'אם חדר ישיבות בסקיי טאוור נשמר — לשלוח לצוות ניקיון התראה 15 דקות לפני.',
+  );
+  const [batchLateFee, setBatchLateFee] = useState('300');
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  const runBatchLateCheckout = useCallback(() => {
+    const fee = Math.max(0, Number(String(batchLateFee).replace(/,/g, '')) || 300);
+    setBatchBusy(true);
+    try {
+      patchEnterpriseGlobalRules({ lateCheckoutFee: fee });
+      stripOverrideFieldFromAll('lateCheckoutFee');
+      const msg = `קובי, עדכנתי את דמי צ'ק-אאוט מאוחר ל-${fee} ₪ לכל הנכסים דרך הכלל הגלובלי. הסרתי עקיפות מקומיות של דמי צ'ק-אאוט כדי שכולם יירשו את הערך החדש.`;
+      window.dispatchEvent(new CustomEvent('maya-enterprise-batch-report', { detail: { message: msg } }));
+    } finally {
+      setBatchBusy(false);
+    }
+  }, [batchLateFee]);
+
+  return (
+    <div style={{ padding: '16px 18px', direction: 'rtl', color: 'rgba(255,255,255,0.88)' }}>
+      <p style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.55 }}>
+        הגדר כללים אוטומטיים — מאיה תתאם עם לוח המשימות וההתראות. לדוגמה: התראת ניקיון לפני פגישה בסניף.
+      </p>
+      <div
+        style={{
+          marginBottom: 16,
+          padding: 14,
+          borderRadius: 12,
+          background: 'rgba(0,0,0,0.22)',
+          border: '1px solid rgba(255,255,255,0.1)',
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>פעולות המוניות (Enterprise)</div>
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginBottom: 10, lineHeight: 1.5 }}>
+          עדכון דמי צ'ק-אאוט מאוחר לכל הנכסים בבת אחת (כלל גלובלי + ניקוי עקיפות מקומיות של אותו שדה).
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            סכום (₪)
+            <input
+              type="number"
+              min={0}
+              value={batchLateFee}
+              onChange={(e) => setBatchLateFee(e.target.value)}
+              style={{
+                width: 100,
+                padding: '8px 10px',
+                borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'rgba(0,0,0,0.25)',
+                color: '#fff',
+                fontSize: 14,
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={batchBusy}
+            onClick={runBatchLateCheckout}
+            style={{
+              padding: '10px 16px',
+              borderRadius: 12,
+              border: 'none',
+              cursor: batchBusy ? 'wait' : 'pointer',
+              fontWeight: 800,
+              fontSize: 12,
+              background: batchBusy ? 'rgba(255,255,255,0.15)' : 'linear-gradient(135deg,#1e3a5f,#2563eb)',
+              color: '#fff',
+            }}
+          >
+            {batchBusy ? 'מעדכן…' : 'החל על כל הנכסים'}
+          </button>
+        </div>
+      </div>
+      <textarea
+        value={rule}
+        onChange={(e) => setRule(e.target.value)}
+        rows={4}
+        style={{
+          width: '100%',
+          borderRadius: 12,
+          padding: 12,
+          border: '1px solid rgba(255,255,255,0.15)',
+          background: 'rgba(0,0,0,0.25)',
+          color: '#fff',
+          fontSize: 13,
+          boxSizing: 'border-box',
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('maya-automation-rule', { detail: { text: rule } }));
+        }}
+        style={{
+          marginTop: 12,
+          padding: '10px 18px',
+          borderRadius: 12,
+          border: 'none',
+          cursor: 'pointer',
+          fontWeight: 800,
+          background: 'linear-gradient(135deg,#075E54,#25D366)',
+          color: '#fff',
+        }}
+      >
+        שלח למאיה לאישור
+      </button>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
    Root component
 ═══════════════════════════════════════════════════════ */
 export default function ManagerPipeline() {
@@ -357,6 +477,7 @@ export default function ManagerPipeline() {
   const TABS = [
     { id: 'feed',         label: '🏆 הושלם היום' },
     { id: 'productivity', label: '📊 ביצועי עובדים' },
+    { id: 'automation',   label: '⚙️ אוטומציה' },
   ];
 
   return (
@@ -400,6 +521,9 @@ export default function ManagerPipeline() {
         </div>
         <div role="tabpanel" id="tabpanel-productivity" aria-labelledby="tab-productivity" hidden={tab !== 'productivity'}>
           {tab === 'productivity' && <ProductivityTab />}
+        </div>
+        <div role="tabpanel" id="tabpanel-automation" aria-labelledby="tab-automation" hidden={tab !== 'automation'}>
+          {tab === 'automation' && <AutomationTab />}
         </div>
       </div>
     </>

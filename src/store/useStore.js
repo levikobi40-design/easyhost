@@ -28,13 +28,21 @@ export const useStore = create(
       }),
 
       tenants: [
-        { id: 'demo', name: 'Demo Hotels' },
+        { id: 'demo', name: 'Active Portfolios' },
+        { id: 'BAZAAR_JAFFA', name: 'Hotel Bazaar Jaffa' },
         { id: 'pilot-1', name: 'Pilot Group 1' },
         { id: 'pilot-2', name: 'Pilot Group 2' },
       ],
       activeTenantId: 'demo',
       // Only use setActiveTenantId for intentional tenant-switching (logs out).
-      setActiveTenantId: (activeTenantId) => set({ activeTenantId, authToken: null, isAuthenticated: false }),
+      setActiveTenantId: (activeTenantId) => {
+        try {
+          localStorage.removeItem('admin_token');
+        } catch (_) { /* ignore */ }
+        set({ activeTenantId, authToken: null, isAuthenticated: false });
+      },
+      /** Set tenant without clearing auth — e.g. Bikta phone routing after field clock-in. */
+      setActiveTenantIdKeepAuth: (activeTenantId) => set({ activeTenantId }),
 
       fieldLanguage: 'en',
       setFieldLanguage: (fieldLanguage) => set({ fieldLanguage }),
@@ -42,6 +50,10 @@ export const useStore = create(
       staffProfile: { staffId: '', name: '', phone: '', goldPoints: 0, rank: null, rankTier: 'starter', language: '' },
       setStaffProfile: (profile) => set({ staffProfile: profile }),
       
+      // Currency — USD default, configurable (ILS for Israeli market)
+      currency: process.env.REACT_APP_CURRENCY || 'USD',
+      setCurrency: (currency) => set({ currency }),
+
       // Language
       lang: 'en',
       setLang: (lang) => {
@@ -65,6 +77,8 @@ export const useStore = create(
       
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleMayaChat: () => set((state) => ({ mayaChatOpen: !state.mayaChatOpen })),
+      /** Explicit open/close (e.g. Bikta matrix — open Maya without toggling). */
+      setMayaChatOpen: (open) => set({ mayaChatOpen: !!open }),
       toggleNotifications: () => set((state) => ({ notificationsPanelOpen: !state.notificationsPanelOpen })),
       
       // Real-time Notifications
@@ -138,8 +152,78 @@ export const useStore = create(
           },
         ],
       })),
+
+      /** Patch an existing message by id (used for live-streaming token append). */
+      patchMayaMessage: (id, patch) =>
+        set((state) => ({
+          mayaMessages: state.mayaMessages.map((m) =>
+            m.id === id ? { ...m, ...patch } : m
+          ),
+        })),
+
+      /** Replace chat bubbles from server-backed maya_service history (cross-browser). */
+      hydrateMayaChatFromServer: (rows) =>
+        set(() => {
+          const list = Array.isArray(rows) ? rows : [];
+          if (!list.length) return {};
+          const mapped = list.map((m, idx) => ({
+            id: m.id != null ? m.id : `srv-${idx}-${m.timestamp || idx}`,
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
+            timestamp: m.timestamp || new Date().toISOString(),
+          }));
+          return { mayaMessages: mapped };
+        }),
       
       setMayaTyping: (isTyping) => set({ mayaIsTyping: isTyping }),
+
+      /** Task / automation lines — not in main chat (Activity drawer). */
+      mayaActivityLog: [],
+      mayaBatchProcessing: false,
+      setMayaBatchProcessing: (v) => set({ mayaBatchProcessing: !!v }),
+      addMayaActivityEntry: (entry) =>
+        set((state) => ({
+          mayaActivityLog: [
+            {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              ts: new Date().toISOString(),
+              ...entry,
+            },
+            ...state.mayaActivityLog,
+          ].slice(0, 500),
+        })),
+
+      /** Reset Maya for Bikta (clears loop / stale context; server adds hospitality prompt). */
+      resetMayaChatForBikta: () =>
+        set({
+          mayaIsTyping: false,
+          mayaActivityLog: [],
+          mayaMessages: [
+            {
+              id: Date.now(),
+              role: 'assistant',
+              content:
+                'שלום! אני מאיה — העוזרת החכמה של הבקתה נס ציונה. איך אפשר לעזור היום?',
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        }),
+
+      /** Pilot: Hotel Bazaar Jaffa — Kobi / EasyHost greeting. */
+      resetMayaChatForBazaar: () =>
+        set({
+          mayaIsTyping: false,
+          mayaActivityLog: [],
+          mayaMessages: [
+            {
+              id: Date.now(),
+              role: 'assistant',
+              content:
+                'אהלן קובי, ניקיתי את כל נתוני הדמו. מלון בזאר מוכן עם 41 התמונות שלו. איך אפשר לעזור?',
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        }),
       
       // Leads CRM State
       leads: [],
@@ -203,12 +287,12 @@ export const useStore = create(
       
       // Rooms State
       rooms: [
-        { id: 101, name: 'Royal Suite', status: 'occupied', guest: 'David Cohen', checkOut: '2026-01-28', image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=400' },
-        { id: 102, name: 'Ocean Suite', status: 'available', guest: null, checkOut: null, image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=400' },
-        { id: 103, name: 'Diamond Suite', status: 'cleaning', guest: null, checkOut: null, image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=400' },
-        { id: 104, name: 'Sunset Suite', status: 'occupied', guest: 'Sarah Miller', checkOut: '2026-01-30', image: 'https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=400' },
-        { id: 201, name: 'VIP Penthouse', status: 'maintenance', guest: null, checkOut: null, image: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=400' },
-        { id: 202, name: 'Modern Suite', status: 'occupied', guest: 'John Smith', checkOut: '2026-01-26', image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=400' },
+        { id: 101, name: 'Bazaar Jaffa — Superior', status: 'occupied', guest: 'יוסי לוי', checkOut: '2026-01-28', image: '/assets/images/hotels/bazaar/01.jpg' },
+        { id: 102, name: 'Bazaar Jaffa — Deluxe', status: 'available', guest: null, checkOut: null, image: '/assets/images/hotels/bazaar/02.jpg' },
+        { id: 103, name: 'Bazaar Jaffa — Junior Suite', status: 'cleaning', guest: null, checkOut: null, image: '/assets/images/hotels/bazaar/03.jpg' },
+        { id: 104, name: 'Bazaar Jaffa — Sea View Deluxe', status: 'occupied', guest: 'מיכל אברהם', checkOut: '2026-01-30', image: '/assets/images/hotels/bazaar/04.jpg' },
+        { id: 201, name: 'Bazaar Jaffa — Penthouse', status: 'maintenance', guest: null, checkOut: null, image: '/assets/images/hotels/bazaar/05.jpg' },
+        { id: 202, name: 'Bazaar Jaffa — Classic', status: 'occupied', guest: 'רועי כהן', checkOut: '2026-01-26', image: '/assets/images/hotels/bazaar/06.jpg' },
       ],
       
       updateRoom: (id, updates) => set((state) => ({
@@ -242,6 +326,7 @@ export const useStore = create(
       name: 'hotel-enterprise-storage',
       partialize: (state) => ({
         lang: state.lang,
+        currency: state.currency,
         role: state.role,
         sidebarOpen: state.sidebarOpen,
         activeTenantId: state.activeTenantId,
@@ -251,11 +336,29 @@ export const useStore = create(
         calendarMode: state.calendarMode,
         mayaChatPosition: state.mayaChatPosition,
       }),
-      onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+      onRehydrateStorage: () => (_state, _error) => {
+        queueMicrotask(() => {
+          try {
+            const s = useStore.getState();
+            useStore.setState({
+              hasHydrated: true,
+              isAuthenticated: Boolean(s.authToken),
+            });
+          } catch (_) {}
+        });
       },
     }
   )
 );
+
+if (typeof useStore?.persist?.onFinishHydration === 'function') {
+  useStore.persist.onFinishHydration(() => {
+    const s = useStore.getState();
+    useStore.setState({
+      hasHydrated: true,
+      isAuthenticated: Boolean(s.authToken),
+    });
+  });
+}
 
 export default useStore;

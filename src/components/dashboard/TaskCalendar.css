@@ -120,6 +120,17 @@
   gap: 1.5rem;
 }
 
+/* Virtual list — only ~10–20 rows mounted; outer scrolls */
+.task-calendar-virtual-host {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.task-calendar-grid-cell {
+  min-width: 0;
+}
+
 .task-card {
   background: white;
   border-radius: 1rem;
@@ -130,6 +141,36 @@
   min-width: 0;
   overflow: hidden;
   cursor: default;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px;
+}
+
+/* Property thumbnail — Hotel icon or image so card never looks empty */
+.task-card-thumb {
+  position: relative;
+  height: 72px;
+  margin: -1.5rem -1.5rem 1rem -1.5rem;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem 1rem 0 0;
+  overflow: hidden;
+}
+.task-card-thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  width: 100%;
+  height: 100%;
+}
+.task-card-thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .task-card:hover {
@@ -144,6 +185,59 @@
 
 .task-card.task-pending {
   border-color: #fecaca;
+}
+
+.task-card.task-pinned-checkin {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35), 0 8px 24px rgba(37, 99, 235, 0.12);
+}
+.task-pin-banner {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1d4ed8;
+  background: rgba(219, 234, 254, 0.9);
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.task-card.task-delayed {
+  border-color: rgba(234, 179, 8, 0.45);
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.2);
+}
+
+.task-status-badge.delayed {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(180, 83, 9, 0.2) 100%);
+  color: #facc15;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+}
+
+.task-undo-btn {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: rgba(37, 99, 235, 0.15);
+  color: #93c5fd;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.task-undo-btn:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.28);
+  border-color: rgba(96, 165, 250, 0.55);
+}
+.task-undo-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.task-card.task-in-progress {
+  border-color: #f97316;
+  background: #fff7ed;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.15);
 }
 
 .task-card.task-seen {
@@ -179,6 +273,11 @@
 .task-status-badge.pending {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.task-status-badge.in_progress {
+  background: #ffedd5;
+  color: #c2410c;
 }
 
 .task-status-badge.done {
@@ -444,12 +543,21 @@
 
 /* ── Task photo thumbnail ─────────────────────────────────── */
 .task-photo-link {
+  position: relative;
   display: block;
   margin-top: 0.5rem;
   border-radius: 0.5rem;
   overflow: hidden;
-  border: 1px solid #e5e7eb;
+  border: 1.5px solid #e5e7eb;
   width: fit-content;
+  background: none;
+  padding: 0;
+  cursor: zoom-in;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.task-photo-link:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
 }
 
 .task-photo-thumb {
@@ -458,13 +566,89 @@
   max-width: 240px;
   max-height: 140px;
   object-fit: cover;
-  border-radius: 0.5rem;
-  transition: opacity 0.2s;
+  border-radius: 0.4rem;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.task-photo-link:hover .task-photo-thumb {
+  opacity: 0.88;
+  transform: scale(1.02);
 }
 
-.task-photo-link:hover .task-photo-thumb {
-  opacity: 0.85;
+.task-photo-expand {
+  position: absolute;
+  bottom: 5px;
+  right: 6px;
+  font-size: 0.75rem;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.18s;
+  pointer-events: none;
 }
+.task-photo-link:hover .task-photo-expand { opacity: 1; }
+
+/* ── Lightbox ─────────────────────────────────────────────── */
+.tc-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.80);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tc-lightbox {
+  position: relative;
+  background: #fff;
+  border-radius: 1rem;
+  padding: 1rem;
+  max-width: 92vw;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.5);
+}
+
+.tc-lightbox-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(0,0,0,0.08);
+  border: none;
+  color: #374151;
+  font-size: 1rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  transition: background 0.15s;
+}
+.tc-lightbox-close:hover { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
+
+.tc-lightbox-img {
+  max-width: 82vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 0.6rem;
+  display: block;
+}
+
+.tc-lightbox-open {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #3b82f6;
+  text-decoration: none;
+}
+.tc-lightbox-open:hover { text-decoration: underline; }
 
 /* ── Maximum readability: all text inside white task cards is black ── */
 .task-card h1,
@@ -480,4 +664,129 @@
 .task-card .task-description,
 .task-card .task-meta-row {
   color: #000000;
+}
+
+/* ── Unacknowledged: pulsing red ─────────────────────────────────────────── */
+@keyframes task-pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.12), 0 1px 3px rgba(0,0,0,0.08); }
+  50%       { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0.32), 0 4px 20px rgba(239,68,68,0.22); }
+}
+.task-card.task-unack {
+  border-color: #ef4444 !important;
+  animation: task-pulse-red 1.6s ease-in-out infinite;
+}
+.task-status-badge.unack {
+  background: #fee2e2;
+  color: #b91c1c;
+  font-weight: 900;
+}
+.task-unack-warning {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #b91c1c;
+  background: #fff1f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 4px 10px;
+  margin: 6px 0 2px;
+}
+
+/* ── Escalated: orange/amber solid ──────────────────────────────────────── */
+.task-card.task-escalated {
+  border-color: #f97316 !important;
+  background: #fff7ed;
+}
+.task-status-badge.searching {
+  background: #ede9fe;
+  color: #5b21b6;
+  font-weight: 900;
+}
+.task-status-badge.escalated {
+  background: #ffedd5;
+  color: #c2410c;
+  font-weight: 900;
+}
+.task-escalated-notice {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #c2410c;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  padding: 4px 10px;
+  margin: 6px 0 2px;
+}
+
+/* ── Acknowledged / Seen: solid blue ─────────────────────────────────────── */
+.task-card.task-seen {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 2px 12px rgba(59,130,246,0.15);
+}
+.task-status-badge.seen {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 900;
+}
+
+.task-cleaner-wa {
+  margin: 8px 0 4px;
+}
+.task-cleaner-wa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #86efac;
+  background: #ecfdf5;
+  color: #047857;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.task-cleaner-wa-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* Hotel Bazaar Jaffa — room grid (images from public/assets/images/hotels/bazaar/) */
+.task-calendar--bazaar {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.bazaar-hotel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 1rem;
+}
+.bazaar-hotel-card {
+  background: #fff;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+.bazaar-hotel-card-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #f3f4f6;
+}
+.bazaar-hotel-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.bazaar-hotel-card-label {
+  margin: 0;
+  padding: 0.65rem 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  color: #111827;
+  line-height: 1.35;
 }
