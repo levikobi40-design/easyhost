@@ -1,0 +1,31 @@
+.property-management-dashboard {
+  max-width: 640px;
+}
+
+.property-management-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+}
+
+.ai-automation-card,
+.property-staff-card {
+  transition: box-shadow 0.2s ease;
+}
+
+.ai-automation-card:hover,
+.property-staff-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.add-employee-form input,
+.add-employee-form select {
+  outline: none;
+}
+
+.add-employee-form input:focus,
+.add-employee-form select:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}

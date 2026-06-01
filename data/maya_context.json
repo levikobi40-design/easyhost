@@ -1,0 +1,71 @@
+{
+"v": 1,
+"by_tenant": {
+"default": {
+"updated_at": 1780250600.125209,
+"total_open": 60,
+"active_tasks": [
+{
+"id": "669accdb-d954-4b65-9da3-736fc8614ce7",
+"description": "[SIM-ENGINE] מיני בר — מילוי מלאי חדר 122",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "831e2c9a-f538-4d32-8094-fbc1059d3696",
+"description": "[SIM-ENGINE] תחזוקה — בדיקת מזגן/מים חדר 121",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "8fdcb2c5-9fdc-49a5-bd04-f87a9ba14ac0",
+"description": "[SIM-ENGINE] ניקיון חדר 120 — לפי עומס תפוסה",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "516a24b1-2537-40a0-b0c5-494e867791a5",
+"description": "[SIM-ENGINE] מיני בר — מילוי מלאי חדר 119",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "f0e9ff07-8876-45e2-bf53-7517ebb7eb31",
+"description": "[SIM-ENGINE] ניקיון חדר 118 — לפי עומס תפוסה",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "ba340b75-5f7a-45a8-ba88-dbd057c62bba",
+"description": "[SIM-ENGINE] מיני בר — מילוי מלאי חדר 117",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "e3088146-03c9-4266-a592-926c925b04d4",
+"description": "[SIM-ENGINE] ניקיון חדר 116 — לפי עומס תפוסה",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "7e375d84-48b2-4e8a-8c6d-49a838aa8109",
+"description": "[SIM-ENGINE] תחזוקה — בדיקת מזגן/מים חדר 114",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "1f48c0be-432b-49a9-8ab9-fbaf0634e36f",
+"description": "[SIM-ENGINE] ניקיון חדר 113 — לפי עומס תפוסה",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+},
+{
+"id": "ac093934-3dd2-469d-87e8-fc8edeb0b84c",
+"description": "[SIM-ENGINE] ניקיון חדר 112 — לפי עומס תפוסה",
+"property_name": "Hotel Bazaar Jaffa",
+"status": "Pending"
+}
+]
+}
+}
+}

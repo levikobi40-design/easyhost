@@ -1,0 +1,33 @@
+.table-container {
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    direction: rtl;
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  
+  thead {
+    background-color: #e7e7e7;
+  }
+  
+  th, td {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    text-align: center;
+  }
+  
+  tr:hover {
+    background-color: #f5f5f5;
+  }
+  
+  h2 {
+    margin-bottom: 16px;
+    color: #333;
+  }
+  

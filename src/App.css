@@ -1,0 +1,484 @@
+/* Enterprise App Layout — Dark Luxury Theme */
+.app-enterprise {
+  min-height: 100vh;
+  min-height: 100dvh;   /* shrinks when mobile keyboard opens */
+  position: relative;
+  overflow-x: hidden;
+  background: #0f172a;
+}
+
+/* layout-rtl: sidebar forced right via .sidebar-rtl (right:0, left:auto) + main-content margin-right */
+
+/* Main Content Area */
+.main-content {
+  min-height: 100vh;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+  background: #0f172a;
+}
+
+/* Sidebar position: right when RTL (Hebrew), left when LTR (English) */
+.app-enterprise.layout-rtl.sidebar-open .main-content {
+  margin-right: 260px;
+  margin-left: 0;
+}
+
+.app-enterprise.layout-rtl.sidebar-collapsed .main-content {
+  margin-right: 80px;
+  margin-left: 0;
+}
+
+.app-enterprise:not(.layout-rtl).sidebar-open .main-content {
+  margin-left: 260px;
+  margin-right: 0;
+}
+
+.app-enterprise:not(.layout-rtl).sidebar-collapsed .main-content {
+  margin-left: 80px;
+  margin-right: 0;
+}
+
+.view-container {
+  padding: 0.5rem 1.5rem 2rem;
+  background: transparent;
+}
+
+/* Glassmorphism card base */
+.glass-card {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+}
+
+.clockin-shell {
+  min-height: 100vh;
+  padding: 2rem 1.5rem;
+  background: radial-gradient(circle at top, rgba(212, 175, 55, 0.12), transparent 55%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.95), rgba(2, 6, 23, 0.85));
+}
+
+/* View Placeholder */
+.view-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+}
+
+.view-placeholder h2 {
+  font-size: 1.5rem;
+  color: white;
+  margin-bottom: 0.5rem;
+}
+
+.view-placeholder p {
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+/* Agents View */
+.agents-view {
+  padding: 2rem;
+}
+
+.view-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+}
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.agent-detail-card {
+  padding: 1.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agent-detail-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.4);
+}
+
+.agent-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.agent-emoji {
+  font-size: 2.5rem;
+}
+
+.agent-header h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  color: white;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-pill.online {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.status-pill.busy {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+.status-pill.offline {
+  background: rgba(100, 116, 139, 0.2);
+  color: #64748b;
+}
+
+.agent-stats {
+  display: flex;
+  gap: 2rem;
+}
+
+.agent-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-stat .value {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #eab308, #f59e0b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.agent-stat .label {
+  font-size: 0.75rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Background Effects */
+.bg-effects {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.bg-gradient-1 {
+  position: absolute;
+  top: -50%;
+  right: -25%;
+  width: 80%;
+  height: 80%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.2) 0%, transparent 70%);
+  animation: float 20s ease-in-out infinite;
+}
+
+.bg-gradient-2 {
+  position: absolute;
+  bottom: -30%;
+  left: -20%;
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.14) 0%, transparent 70%);
+  animation: float 25s ease-in-out infinite reverse;
+}
+
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 50px 50px;
+  opacity: 0.35;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(5%, 5%) rotate(2deg);
+  }
+  50% {
+    transform: translate(0, 10%) rotate(0deg);
+  }
+  75% {
+    transform: translate(-5%, 5%) rotate(-2deg);
+  }
+}
+
+/* Glass Card Styles (for components using tailwind.css) */
+.glass-card {
+  background: rgba(2, 6, 23, 0.6);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  background: rgba(2, 6, 23, 0.7);
+  border-color: rgba(34, 211, 238, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -10px rgba(2, 6, 23, 0.65);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass {
+  background: rgba(2, 6, 23, 0.5);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+/* Button Styles */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #D4AF37, #F9E27D);
+  color: #020617;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 30px rgba(212, 175, 55, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 0 40px rgba(212, 175, 55, 0.5);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #D4AF37, #F9E27D);
+  color: #0b0f14;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  box-shadow: 0 0 24px rgba(212, 175, 55, 0.35);
+}
+
+/* Text Gradient */
+.text-gradient {
+  background: linear-gradient(135deg, #D4AF37, #F9E27D);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Badge Styles */
+.badge-success {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 1rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ── Mobile layout: no sidebar margin, full-width content ─── */
+@media (max-width: 768px) {
+  /* Sidebar slides over content as a drawer — no margin needed */
+  .app-enterprise.sidebar-open .main-content,
+  .app-enterprise.sidebar-collapsed .main-content,
+  [dir="rtl"] .app-enterprise .main-content,
+  [dir="ltr"] .app-enterprise .main-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .view-container {
+    padding: 0 0.75rem 1.25rem;
+  }
+
+  .agents-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* ── Prevent iOS/Android auto-zoom on focus ──────────────────
+     Browsers zoom in when an input has font-size < 16px.
+     Maya chat inputs are excluded — MayaChat.css handles their own 16px rule. */
+  input:not(.maya-input-field),
+  textarea:not(.maya-input-field),
+  select,
+  [contenteditable] {
+    font-size: 16px !important;
+  }
+}
+
+/* תיקון לטבלה בטלפון */
+@media (max-width: 600px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* הפיכת השורות לכרטיסים אם הטבלה עדיין רחבה מדי */
+  .task-row {
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+    display: block;
+    padding: 10px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACCESSIBILITY — WCAG AA  (added globally)
+   ═══════════════════════════════════════════════════════ */
+
+/* Skip-to-main-content link — visible only on keyboard focus */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.6rem 1.2rem;
+  background: #075E54;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid #25D366;
+  outline-offset: 2px;
+}
+
+/* ── Focus ring — keyboard users get a clear indicator ── */
+:focus-visible {
+  outline: 3px solid #25D366 !important;
+  outline-offset: 3px !important;
+  border-radius: 4px;
+}
+
+/* Remove focus ring for mouse/touch users (pointer devices) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Minimum 44×44 px touch targets (WCAG 2.5.5) ── */
+button,
+[role="button"],
+a,
+input[type="checkbox"],
+input[type="radio"],
+select {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Icon-only small buttons that intentionally stay compact
+   (e.g. sidebar toggle, message-send) get at least 44px via padding */
+.sidebar-toggle,
+.maya-send-btn,
+.maya-fab {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── WCAG AA contrast — muted text on dark glass surfaces ── */
+/* Only raise opacity of truly low-contrast muted helpers.
+   Never override chat bubble text — those have their own light backgrounds. */
+.maya-hdr-status,
+.nav-label,
+.sidebar-footer .security-badge span {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+/* ── Accessibility: high-contrast mode (toggled by AccessibilityWidget) ── */
+html.a11y-high-contrast .msg-bubble      { background: #ffffff !important; color: #000000 !important; }
+html.a11y-high-contrast .msg-bubble.user { background: #cce5ff !important; color: #000000 !important; }
+html.a11y-high-contrast .msg-meta        { color: #333333 !important; }
+html.a11y-high-contrast .nav-item        { color: #ffffff !important; }
+html.a11y-high-contrast .main-content    { background: #ffffff !important; color: #000000 !important; }
+
+/* ── Accessibility: large-text mode ── */
+html.a11y-large-text                     { font-size: 120% !important; }
+html.a11y-large-text .nav-label,
+html.a11y-large-text .msg-bubble p       { font-size: 1.1rem !important; }
+
+/* ── Accessibility: underline-links mode ── */
+html.a11y-underline-links a,
+html.a11y-underline-links [role="link"]  { text-decoration: underline !important; }
+
+/* ── Accessibility: reduce-motion mode ── */
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after         { animation: none !important; transition: none !important; }
+
+/* ── Keyboard-navigable task rows ── */
+.task-row:focus,
+[data-task-row]:focus {
+  outline: 3px solid #25D366;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ── High-contrast active nav indicator ── */
+.nav-item[aria-current="page"] {
+  background: rgba(37, 211, 102, 0.18) !important;
+  border-left: 3px solid #25D366;
+}
+[dir="rtl"] .nav-item[aria-current="page"] {
+  border-left: none;
+  border-right: 3px solid #25D366;
+}
