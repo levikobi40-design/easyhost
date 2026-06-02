@@ -1,0 +1,108 @@
+.eh-skel-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 45%, #f1f5f9 90%);
+  background-size: 200% 100%;
+  animation: eh-skel-pan 1.25s ease-in-out infinite;
+}
+
+@keyframes eh-skel-pan {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.eh-skel-task-board {
+  width: 100%;
+}
+
+.eh-skel-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.eh-skel-pill {
+  display: inline-block;
+  height: 2.25rem;
+  width: 5rem;
+  border-radius: 9999px;
+}
+
+.eh-skel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.eh-skel-card {
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+  min-height: 120px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.eh-skel-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.eh-skel-dot {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.35rem;
+  background: #e2e8f0;
+}
+
+.eh-skel-line {
+  display: block;
+  height: 0.65rem;
+  border-radius: 4px;
+  background: #e2e8f0;
+  margin-bottom: 0.45rem;
+}
+
+.eh-skel-line--title {
+  flex: 1;
+  height: 0.75rem;
+  max-width: 70%;
+}
+
+.eh-skel-line--muted {
+  opacity: 0.85;
+  width: 92%;
+}
+
+.eh-skel-line--short {
+  width: 40%;
+  margin-bottom: 0;
+}
+
+.eh-skel-props .properties-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.eh-skel-prop-card {
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.eh-skel-prop-img {
+  height: 140px;
+  background: #e2e8f0;
+}
+
+.eh-skel-prop-body {
+  padding: 1rem;
+}

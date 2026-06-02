@@ -1,0 +1,87 @@
+services:
+  - type: web
+    name: easyhost
+    runtime: python
+    plan: free
+    buildCommand: "npm install && CI=false node ./node_modules/react-scripts/bin/react-scripts.js build && pip install -r requirements.txt"
+    # Gunicorn always starts — DB init runs eagerly inside app.py at import time.
+    # Visit /init-db in the browser to manually force schema creation + seed data.
+    startCommand: "gunicorn app:app --workers 1 --timeout 120"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.6"
+      - key: NODE_VERSION
+        value: "22"
+
+      # ── Supabase credentials ─────────────────────────────────────────────
+      # Three separate values — all are different:
+      #
+      # SUPABASE_URL         → https://PROJECT_REF.supabase.co
+      #                        (Supabase → Settings → General)
+      #
+      # SUPABASE_KEY         → service-role/secret key  (starts with sb_secret_ or eyJ)
+      #                        (Supabase → Settings → API → "secret" key)
+      #                        Used for REST API calls only
+      #
+      # SUPABASE_DB_PASSWORD → the PostgreSQL database password  ← THIS is what SQLAlchemy needs
+      #                        (Supabase → Settings → Database → Database Password)
+      #                        Click "Reset" to get a new one if you forgot it
+      #
+      # Alternatively, skip all three and just set DATABASE_URL to the full URI:
+      #   postgresql://postgres.PROJECT_REF:DB_PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+
+      # ── AI ───────────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # ── Cloudinary image hosting ─────────────────────────────────────────
+      # Get free credentials at https://cloudinary.com/users/register_free
+      # Dashboard → API Keys → Copy Cloud Name / API Key / API Secret
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ── Twilio ───────────────────────────────────────────────────────────
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_PHONE_FROM
+        sync: false
+      - key: OWNER_PHONE
+        sync: false
+      - key: STAFF_PHONE
+        sync: false
+      - key: TWILIO_SIMULATE
+        value: "1"
+
+      # ── Frontend / build ─────────────────────────────────────────────────
+      - key: REACT_APP_API_URL
+        value: "https://easyhost.onrender.com"
+      - key: API_BASE_URL
+        value: "https://easyhost.onrender.com"
+      # The above values are baked into the React build at compile time.
+      # apiClient.js also hard-pins to the production URL when running on *.onrender.com.
+      - key: DISABLE_ESLINT_PLUGIN
+        value: "true"
+      - key: CI
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOW_DEMO_AUTH
+        value: "false"
+      - key: AUTH_DISABLED
+        value: "false"

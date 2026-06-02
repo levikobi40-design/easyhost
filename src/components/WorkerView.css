@@ -1,0 +1,284 @@
+/* Premium dark worker shell — luxury hotel ambience */
+.wv-premium-root {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+.wv-premium-root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 120% 80% at 20% 10%, rgba(0, 180, 160, 0.22), transparent 50%),
+    radial-gradient(ellipse 90% 70% at 85% 30%, rgba(40, 90, 140, 0.35), transparent 55%),
+    radial-gradient(ellipse 100% 60% at 50% 100%, rgba(0, 229, 200, 0.08), transparent 45%),
+    linear-gradient(165deg, #050a12 0%, #0a121c 35%, #060d18 70%, #03060c 100%);
+  filter: blur(0px) brightness(0.95) saturate(1.05);
+  transform: scale(1);
+}
+
+.wv-premium-root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 229, 200, 0.12), transparent 55%),
+    linear-gradient(180deg, rgba(6, 10, 18, 0.92) 0%, rgba(10, 14, 23, 0.96) 100%);
+  pointer-events: none;
+}
+
+.wv-premium-content {
+  position: relative;
+  z-index: 1;
+}
+
+.wv-neon-glow {
+  box-shadow:
+    0 0 0 1px rgba(0, 229, 200, 0.25),
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 48px rgba(0, 229, 200, 0.08);
+}
+
+.wv-btn-complete {
+  background: linear-gradient(145deg, #00e5c8 0%, #00b89a 100%) !important;
+  color: #061018 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 4px 24px rgba(0, 229, 200, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+.wv-btn-complete:disabled {
+  opacity: 0.4 !important;
+  box-shadow: none !important;
+}
+
+/* ── Visual urgency (pending): &lt;3 min green | 3–5 min orange pulse | ≥5 min red ── */
+.wv-focus-urgency-green {
+  border: 4px solid #22c55e !important;
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.28),
+    0 12px 40px rgba(0, 0, 0, 0.4) !important;
+}
+.wv-focus-urgency-warn {
+  border: 4px solid #f59e0b !important;
+  animation: wvUrgencyFlash 1.1s ease-in-out infinite;
+  box-shadow: 0 0 22px rgba(245, 158, 11, 0.4) !important;
+}
+.wv-focus-urgency-red {
+  border: 4px solid #dc2626 !important;
+  box-shadow: 0 0 32px rgba(220, 38, 38, 0.5) !important;
+}
+.wv-focus-in-progress-calm {
+  border: 4px solid #22c55e !important;
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.2),
+    0 12px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* In progress — orange (worker confirmed / saw task) */
+.wv-focus-in-progress-run {
+  border: 4px solid #f97316 !important;
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.35),
+    0 12px 36px rgba(249, 115, 22, 0.25) !important;
+}
+@keyframes wvUrgencyFlash {
+  0%,
+  100% {
+    border-color: #f59e0b;
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.38);
+  }
+  50% {
+    border-color: #facc15;
+    box-shadow: 0 0 26px rgba(250, 204, 21, 0.5);
+  }
+}
+
+/* VIP escalation — server sets task.escalated + priority critical */
+@keyframes wvEscalatePulse {
+  0%,
+  100% {
+    border-color: #ef4444;
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.45);
+  }
+  50% {
+    border-color: #fca5a5;
+    box-shadow: 0 0 36px rgba(239, 68, 68, 0.7);
+  }
+}
+.wv-task-escalated-pulse {
+  border: 4px solid #ef4444 !important;
+  animation: wvEscalatePulse 1.15s ease-in-out infinite !important;
+}
+
+/* Priority modal — above worker chrome */
+.wv-priority-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(5, 10, 18, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.wv-priority-modal-panel {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 1rem;
+  padding: 1.25rem 1.25rem 1.5rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  border: 1px solid #e5e7eb;
+}
+.wv-priority-modal-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.wv-priority-modal-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #111827;
+}
+.wv-priority-modal-sub {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+.wv-modal-board-card {
+  margin-bottom: 1rem;
+}
+.wv-priority-modal-ok {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(145deg, #00e5c8 0%, #00b89a 100%);
+  box-shadow: 0 4px 16px rgba(0, 229, 200, 0.35);
+}
+
+/* Maya mini-chat (worker) */
+.wv-maya-chat {
+  background: rgba(18, 26, 40, 0.92);
+  border: 1px solid rgba(0, 229, 200, 0.22);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+.wv-maya-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.wv-maya-chat-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(0, 229, 200, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+.wv-maya-chat-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #e8eef9;
+  letter-spacing: 0.04em;
+}
+.wv-maya-chat-msg {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #e8eef9;
+  font-weight: 600;
+}
+.wv-maya-chat-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wv-maya-btn {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.wv-maya-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wv-maya-btn-primary {
+  background: linear-gradient(145deg, #00e5c8 0%, #00b89a 100%);
+  color: #061018;
+}
+.wv-maya-btn-muted {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(200, 214, 235, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.wv-maya-btn-outline {
+  background: transparent;
+  color: #00e5c8;
+  border: 1px solid rgba(0, 229, 200, 0.45);
+}
+.wv-maya-btn-not-available {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+}
+.wv-maya-intervention {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+}
+.wv-maya-intervention-text {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fef3c7;
+}
+.wv-maya-intervention-dismiss {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8eef9;
+  cursor: pointer;
+}
+.wv-btn-done-he {
+  font-size: clamp(1.35rem, 5vw, 1.55rem) !important;
+}

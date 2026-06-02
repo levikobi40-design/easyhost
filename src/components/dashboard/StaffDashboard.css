@@ -1,0 +1,67 @@
+/* StaffDashboard — extends GuestDashboard visual concept */
+
+.staff-dashboard {
+  /* reuses .guest-dashboard from GuestDashboard.css */
+}
+
+.staff-task-grid {
+  /* same grid as guest */
+}
+
+.staff-task-tile .staff-tile-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  font-size: 0.7rem;
+  color: #374151;
+}
+
+.staff-tile-room {
+  font-weight: 700;
+}
+
+.staff-tile-mission {
+  font-weight: 600;
+}
+
+.staff-tile-composition {
+  color: #6b7280;
+  font-size: 0.65rem;
+}
+
+.staff-tile-action {
+  font-size: 0.6rem;
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.staff-loading,
+.staff-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+  padding: 24px;
+  font-size: 1rem;
+}
+
+.staff-success-toast {
+  background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+}
+
+.staff-tab-placeholder {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 48px 24px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.staff-tab-placeholder p {
+  margin: 0;
+  font-size: 1rem;
+}

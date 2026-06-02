@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="mbg" cx="30%" cy="20%" r="85%">
+      <stop offset="0%"   stop-color="#0d1b2a"/>
+      <stop offset="100%" stop-color="#060a14"/>
+    </radialGradient>
+    <linearGradient id="mg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#00ff88"/>
+      <stop offset="100%" stop-color="#00c875"/>
+    </linearGradient>
+    <linearGradient id="mp" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <filter id="mglow">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed background (no clip  fills entire safe zone) -->
+  <rect width="512" height="512" fill="url(#mbg)"/>
+
+  <!-- Glows -->
+  <circle cx="130" cy="100" r="160" fill="#6366f1" opacity="0.09"/>
+  <circle cx="390" cy="430" r="180" fill="#00c875" opacity="0.09"/>
+
+  <!-- Building  slightly smaller to stay in safe zone (e80px inset all sides) -->
+  <rect x="172" y="210" width="168" height="192" rx="7" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+  <!-- Neon roof line -->
+  <rect x="172" y="210" width="168" height="4" rx="2" fill="url(#mg)" filter="url(#mglow)"/>
+
+  <!-- Windows -->
+  <rect x="196" y="236" width="26" height="18" rx="3" fill="url(#mg)" opacity="0.85" filter="url(#mglow)"/>
+  <rect x="243" y="236" width="26" height="18" rx="3" fill="rgba(255,255,255,0.15)"/>
+  <rect x="290" y="236" width="26" height="18" rx="3" fill="url(#mp)" opacity="0.8"/>
+  <rect x="196" y="278" width="26" height="18" rx="3" fill="rgba(255,255,255,0.1)"/>
+  <rect x="243" y="278" width="26" height="18" rx="3" fill="url(#mg)" opacity="0.7" filter="url(#mglow)"/>
+  <rect x="290" y="278" width="26" height="18" rx="3" fill="rgba(255,255,255,0.1)"/>
+  <rect x="196" y="320" width="26" height="18" rx="3" fill="url(#mp)" opacity="0.6"/>
+  <rect x="243" y="320" width="26" height="18" rx="3" fill="rgba(255,255,255,0.08)"/>
+  <rect x="290" y="320" width="26" height="18" rx="3" fill="url(#mg)" opacity="0.65"/>
+  <rect x="196" y="362" width="26" height="18" rx="3" fill="rgba(255,255,255,0.08)"/>
+  <rect x="243" y="362" width="26" height="18" rx="3" fill="rgba(255,255,255,0.06)"/>
+  <rect x="290" y="362" width="26" height="18" rx="3" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Door -->
+  <rect x="240" y="374" width="32" height="28" rx="5" fill="rgba(0,200,117,0.15)" stroke="url(#mg)" stroke-width="1.5"/>
+
+  <!-- Ground base -->
+  <rect x="120" y="402" width="272" height="8" rx="3" fill="rgba(255,255,255,0.07)"/>
+
+  <!-- Antenna + rings -->
+  <line x1="256" y1="210" x2="256" y2="174" stroke="rgba(255,255,255,0.2)" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="256" cy="166" r="8"  fill="none" stroke="url(#mg)" stroke-width="2" filter="url(#mglow)"/>
+  <circle cx="256" cy="166" r="16" fill="none" stroke="url(#mg)" stroke-width="1.2" opacity="0.5"/>
+  <circle cx="256" cy="166" r="4"  fill="url(#mg)" filter="url(#mglow)"/>
+
+  <!-- EH badge -->
+  <rect x="350" y="438" width="82" height="34" rx="10" fill="rgba(0,200,117,0.2)" stroke="url(#mg)" stroke-width="1.5"/>
+  <text x="391" y="460" text-anchor="middle" font-family="Inter,Segoe UI,sans-serif" font-size="17" font-weight="900" letter-spacing="1" fill="#ffffff">EH</text>
+</svg>
