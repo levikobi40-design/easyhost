@@ -1,6 +1,7 @@
 import os
 import sys
 
+# ── Deployment: 2026-06-07 ────────────────────────────────────────────────────
 # ── Windows: reconfigure stdout/stderr to UTF-8 so emoji print statements never crash ──
 # Must happen before any print() call. Python 3.7+ supports reconfigure().
 for _stream in (sys.stdout, sys.stderr):
