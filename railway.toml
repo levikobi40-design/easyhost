@@ -1,5 +1,6 @@
 [build]
-builder = "nixpacks"
+builder = "railpack"
+buildCommand = "pip install -r requirements.txt && npm install && REACT_APP_API_URL=${REACT_APP_API_URL:-https://energetic-consideration-production-6e7a.up.railway.app} CI=false npm run build"
 
 [deploy]
 startCommand = "gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"
