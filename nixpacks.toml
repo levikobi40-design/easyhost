@@ -9,7 +9,7 @@ cmds = [
 
 [phases.build]
 cmds = [
-  "CI=false npm run build"
+  "REACT_APP_API_URL=${REACT_APP_API_URL:-https://energetic-consideration-production-6e7a.up.railway.app} CI=false npm run build"
 ]
 
 [start]

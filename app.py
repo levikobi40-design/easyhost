@@ -1273,7 +1273,8 @@ CORS(app, resources={r"/*": _CORS_RESOURCE_KW})
 
 # ── Session & Cookie config ──────────────────────────────────────────────────
 from datetime import timedelta
-app.config["SECRET_KEY"]              = os.getenv("JWT_SECRET", os.urandom(32).hex())
+_jwt_secret_env = os.getenv("JWT_SECRET", "").strip()
+app.config["SECRET_KEY"]              = _jwt_secret_env or os.urandom(32).hex()
 app.config["SESSION_PERMANENT"]       = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 # Production (Render / Railway / Heroku) — cross-site cookies require Secure + SameSite=None.
@@ -1298,6 +1299,13 @@ def _detect_production() -> bool:
 
 _is_production = _detect_production()
 print(f"[startup] Production mode: {_is_production}", flush=True)
+if _is_production and not _jwt_secret_env:
+    print(
+        "[CRITICAL] JWT_SECRET is not set in environment — using an ephemeral random secret. "
+        "Every restart will invalidate ALL user sessions and tokens (401 on every page load). "
+        "Fix: add JWT_SECRET to your Railway Variables and redeploy.",
+        flush=True,
+    )
 app.config["SESSION_COOKIE_SECURE"]   = _is_production
 app.config["SESSION_COOKIE_SAMESITE"] = "None" if _is_production else "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
