@@ -6,6 +6,7 @@ import useCurrency from '../../hooks/useCurrency';
 import { toWhatsAppPhone } from '../../utils/phone';
 import { API_URL } from '../../config.js';
 import { getDashboardSummary, getStatsSummary, updatePropertyTaskStatus } from '../../services/api';
+import { hasValidAuthToken } from '../../utils/apiClient';
 import { useProperties } from '../../context/PropertiesContext';
 import { useMission } from '../../context/MissionContext';
 import StaffGrid from './StaffGrid';
@@ -345,12 +346,19 @@ export default function PremiumDashboard() {
     updateTaskInList,
   } = mission;
   // Stabilize via ref so useCallback consumers never need it as a dep.
-  const patchTaskInMissionRef = useRef(updateTaskInList);
+  // Initial value uses the same guard as the effect so it's never undefined on
+  // the very first render (e.g. fast mount/unmount during tab switching).
+  const patchTaskInMissionRef = useRef(
+    typeof updateTaskInList === 'function' ? updateTaskInList : () => {},
+  );
   useEffect(() => {
     patchTaskInMissionRef.current =
       typeof updateTaskInList === 'function' ? updateTaskInList : () => {};
   }, [updateTaskInList]);
-  const tasks = useMemo(() => dedupeTasksById(missionTasks), [missionTasks]);
+
+  // Explicit null/undefined guard at call-site — dedupeTasksById also guards
+  // internally, but this makes intent clear and prevents any edge-case crash.
+  const tasks = useMemo(() => dedupeTasksById(missionTasks ?? []), [missionTasks]);
   const [summary, setSummary] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -370,6 +378,8 @@ export default function PremiumDashboard() {
   useEffect(() => { fetchPropertiesRef.current = fetchProperties; }, [fetchProperties]);
 
   const loadDashboardData = useCallback(async () => {
+    // Never bootstrap before the user has a valid JWT — prevents 401 loops.
+    if (!hasValidAuthToken()) return false;
     const loadId = ++loadRef.current;
     setLoading(true);
     try {
@@ -426,6 +436,7 @@ export default function PremiumDashboard() {
    *  MissionContext already handles the task list itself; we just sync the counters. */
   useEffect(() => {
     const onTasksRefresh = () => {
+      if (!hasValidAuthToken()) return;
       getStatsSummary().then((st) => {
         if (st) setStats(st);
       }).catch(() => {});
@@ -438,6 +449,7 @@ export default function PremiumDashboard() {
 
   useEffect(() => {
     const onTaskCreated = () => {
+      if (!hasValidAuthToken()) return;
       fetchTasksRef.current({ fullList: true }).then(() =>
         getStatsSummary().then((st) => {
           if (st) setStats(st);
@@ -463,8 +475,11 @@ export default function PremiumDashboard() {
         addMayaMessage({ role: 'assistant', content: line });
         toggleMayaChat(true);
       }
-      await fetchProperties(true);
-      await fetchTasks({ fullList: true });
+      // Use stable refs instead of the raw context functions so this callback
+      // is never recreated when context re-renders (fetchProperties / fetchTasks
+      // can change identity on each render if the context value is not memoized).
+      await fetchPropertiesRef.current(true);
+      await fetchTasksRef.current({ fullList: true });
       await loadDashboardData();
       window.dispatchEvent(new CustomEvent('properties-refresh', { detail: { force: true } }));
     } catch (e) {
@@ -472,7 +487,8 @@ export default function PremiumDashboard() {
     } finally {
       setSimRefreshing(false);
     }
-  }, [addMayaMessage, fetchProperties, fetchTasks, loadDashboardData, toggleMayaChat]);
+    // fetchPropertiesRef / fetchTasksRef are refs — always current, no dep needed.
+  }, [addMayaMessage, loadDashboardData, toggleMayaChat]);
 
   const handleToggleStatus = useCallback(async (taskId, newStatus, task) => {
     try {

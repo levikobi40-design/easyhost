@@ -2184,16 +2184,25 @@ export const getLatestBooking = async () => {
  * @returns {Promise<object>}
  */
 export const getDashboardSummary = async () => {
+  const authHeaders = getAuthHeaders();
+  // Bail out immediately if there is no valid token — prevents unauthenticated
+  // loops that flood the console with 401 errors before login.
+  if (!authHeaders.Authorization) return null;
   try {
     const response = await fetch(`${API_URL}/v1/dashboard/summary`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      credentials: 'include',
     });
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url: `${API_URL}/v1/dashboard/summary`, status: 401 } }));
+      return null;
+    }
     if (!response.ok) throw new Error('Failed to fetch dashboard summary');
     return await response.json();
   } catch (error) {
     console.error('Error fetching dashboard summary:', error);
-    return { revenue: '$0', active_tasks_count: 0, upcoming: [], status: 'Unavailable' };
+    return null;
   }
 };
 
@@ -2207,15 +2216,18 @@ export const getDashboardSummary = async () => {
  * @returns {Promise<{daily_revenue: Array, occupancy: Array, total_revenue: number}>}
  */
 export const getRevenueTrend = async () => {
-  let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    try {
-      const auth = await getDemoAuthToken('default');
-      if (auth?.token) headers = { ...headers, Authorization: `Bearer ${auth.token}` };
-    } catch (_) {}
-  }
+  const authHeaders = getAuthHeaders();
+  if (!authHeaders.Authorization) return { daily_revenue: [], occupancy: [], total_revenue: 0 };
   try {
-    const response = await fetch(`${API_URL}/bookings/revenue-trend`, { method: 'GET', headers });
+    const response = await fetch(`${API_URL}/bookings/revenue-trend`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      credentials: 'include',
+    });
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url: `${API_URL}/bookings/revenue-trend`, status: 401 } }));
+      return { daily_revenue: [], occupancy: [], total_revenue: 0 };
+    }
     if (!response.ok) throw new Error('Failed to fetch revenue trend');
     return await response.json();
   } catch (error) {
@@ -2225,32 +2237,28 @@ export const getRevenueTrend = async () => {
 };
 
 export const getStatsSummary = async () => {
-  let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    try {
-      const auth = await getDemoAuthToken('default');
-      if (auth?.token) headers = { ...headers, Authorization: `Bearer ${auth.token}` };
-    } catch (_) {}
-  }
+  const authHeaders = getAuthHeaders();
+  // Bail out immediately if there is no valid token — the demo-auth fallback
+  // below was a security hole that caused infinite 401 loops in production.
+  if (!authHeaders.Authorization) return null;
   try {
-    const response = await fetch(`${API_URL}/stats/summary`, { method: 'GET', headers });
+    const response = await fetch(`${API_URL}/stats/summary`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      credentials: 'include',
+    });
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url: `${API_URL}/stats/summary`, status: 401 } }));
+      return null;
+    }
     if (!response.ok) throw new Error('Failed to fetch stats summary');
     return await response.json();
   } catch (error) {
     console.error('Error fetching stats summary:', error);
-    return {
-      total_properties: 0,
-      tasks_by_status: { Pending: 0, Done: 0 },
-      total_tasks: 0,
-      total_active_tasks: 0,
-      legacy_tasks_table_total: 0,
-      staff_workload: {},
-      total_capacity: 0,
-      top_staff: [],
-      occupancy_pct: null,
-    };
+    return null;
   }
 };
+
 
 /** GET/POST /api/ops/bootstrap-data — seed pilot + Bazaar/WeWork portfolio + hotel-ops tasks (after DB purge).
  * Guarded by a module-level flag so multiple callers (App, EnterpriseDashboard, TaskCalendar…) only
