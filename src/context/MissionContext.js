@@ -352,16 +352,35 @@ export function MissionProvider({ children }) {
     };
   }, [pollTasksQuiet, skipMissionFetch]);
 
+  /** Sanitise a raw task object so rendering never crashes on unexpected shapes. */
+  const sanitiseTask = useCallback((raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = raw.id != null ? String(raw.id) : null;
+    if (!id) return null;
+    return {
+      ...raw,
+      id,
+      property_id:   raw.property_id   != null ? String(raw.property_id)   : '',
+      property_name: raw.property_name != null ? String(raw.property_name) : '',
+      description:   raw.description   != null ? String(raw.description)   : '',
+      title:         raw.title         != null ? String(raw.title)         : String(raw.description ?? ''),
+      staff_name:    raw.staff_name    != null ? String(raw.staff_name)    : '',
+      staff_phone:   raw.staff_phone   != null ? String(raw.staff_phone)   : '',
+      status:        raw.status        != null ? String(raw.status)        : 'Pending',
+    };
+  }, []);
+
   const prependTask = useCallback((newTask) => {
     if (skipMissionFetch) return;
-    if (!newTask?.id) return;
+    const safe = sanitiseTask(newTask);
+    if (!safe) return;
     setTasks((prev) => {
       const p = prev ?? [];
-      if (p.some((t) => t.id === newTask.id)) return p;
-      return [newTask, ...p];
+      if (p.some((t) => t.id === safe.id)) return p;
+      return [safe, ...p];
     });
     syncTotalFromServer().catch(() => {});
-  }, [skipMissionFetch, syncTotalFromServer]);
+  }, [skipMissionFetch, syncTotalFromServer, sanitiseTask]);
 
   const updateTaskInList = useCallback((taskId, updater) => {
     setTasks((prev) =>

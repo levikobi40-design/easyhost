@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { CalendarCheck, FileText, ChevronDown } from 'lucide-react';
+import { CalendarCheck, FileText, ChevronDown, Plus } from 'lucide-react';
 import { updatePropertyTaskStatus, sendMayaCommand, getPropertyStaff, bootstrapOperationalData, fetchDailyPropertyTasksReport } from '../../services/api';
 import { API_URL } from '../../utils/apiClient';
 import { useProperties } from '../../context/PropertiesContext';
@@ -12,6 +12,7 @@ import { maya } from '../../services/agentOrchestrator';
 import { toWhatsAppPhone } from '../../utils/phone';
 import { taskCalendarSafeStr as safeStr, getTaskCalendarWhatsAppMessage as getWhatsAppMessage } from '../../utils/taskCalendarWhatsApp';
 import TaskCalendarTaskCard from './TaskCalendarTaskCard';
+import TaskCreatorModal from './TaskCreatorModal';
 import { missionTaskIsInProgress, missionTaskIsSeen, missionTaskIsDone } from '../../utils/taskCalendarStatus';
 import { TaskBoardSkeleton } from '../common/DashboardSkeletons';
 import './TaskCalendar.css';
@@ -98,6 +99,7 @@ export default function TaskCalendar() {
     return () => window.removeEventListener('maya-task-created', onTaskCreated);
   }, [prependTask]);
 
+  const [showTaskCreator, setShowTaskCreator] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
   const [cleanerLoading, setCleanerLoading] = useState({});
   const [undoOffer, setUndoOffer] = useState(null);
@@ -445,6 +447,14 @@ export default function TaskCalendar() {
 
   return (
     <div className="task-calendar p-10 bg-[#FBFBFB] min-h-screen" dir="rtl">
+      <TaskCreatorModal
+        isOpen={showTaskCreator}
+        onClose={() => setShowTaskCreator(false)}
+        onSuccess={(task) => {
+          prependTask(task);
+          setShowTaskCreator(false);
+        }}
+      />
       <div className="task-status-bar">
         <span className="task-status-total">
           <strong>{totalCount}</strong> משימות סה"כ
@@ -518,6 +528,16 @@ export default function TaskCalendar() {
               הושלם
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowTaskCreator(true)}
+            className="task-management-btn"
+            style={{ background: 'rgba(0,255,136,0.12)', borderColor: 'rgba(0,255,136,0.4)', color: '#00ff88' }}
+            title="הוסף משימה ידנית"
+          >
+            <Plus size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
+            הוסף משימה
+          </button>
           <button
             type="button"
             onClick={handleManagementAnalysis}
