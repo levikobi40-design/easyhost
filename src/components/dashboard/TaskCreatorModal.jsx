@@ -1,8 +1,18 @@
-import React, { useState, useCallback } from 'react';
-import { X, Plus } from 'lucide-react';
+import React, { useState, useCallback, useRef } from 'react';
+import { X, Plus, Camera } from 'lucide-react';
 import { useProperties } from '../../context/PropertiesContext';
 import { withAuthFetchInit } from '../../utils/apiClient';
 import { API_URL } from '../../utils/apiClient';
+
+/** Read a File as a base64 data-URI (server upload optional for tasks). */
+function fileToDataUri(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 const TASK_TYPES = [
   { id: 'cleaning',    label: 'ניקיון' },
@@ -30,8 +40,12 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
   const [staffName,    setStaffName]    = useState('');
   const [staffPhone,   setStaffPhone]   = useState('');
   const [dueAt,        setDueAt]        = useState('');
+  const [photoUrl,     setPhotoUrl]     = useState('');
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState(null);
+  const photoInputRef = useRef(null);
 
   const selectedProp = propsList.find((p) => String(p.id) === propertyId);
 
@@ -42,8 +56,51 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
     setStaffName('');
     setStaffPhone('');
     setDueAt('');
+    setPhotoUrl('');
+    setPhotoPreview('');
     setError(null);
     setLoading(false);
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  }, []);
+
+  const handlePhotoSelect = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Always reset input value so the same file can be re-selected
+    e.target.value = '';
+    setPhotoLoading(true);
+    setError(null);
+    try {
+      // Show local preview immediately (blob URL)
+      const preview = URL.createObjectURL(file);
+      setPhotoPreview(preview);
+
+      // Try server upload first; fall back to base64 data URI for offline/mobile
+      try {
+        const { uploadImages } = await import('../../services/api');
+        const result = await uploadImages([file], null);
+        const serverUrl = Array.isArray(result?.urls) && result.urls[0];
+        if (serverUrl) {
+          setPhotoUrl(serverUrl);
+          URL.revokeObjectURL(preview);
+          setPhotoPreview(serverUrl);
+          return;
+        }
+      } catch (_serverErr) {
+        console.warn('[TaskCreatorModal] server upload failed, using base64:', _serverErr?.message);
+      }
+
+      // Base64 fallback — works offline / on cold Railway starts
+      const dataUri = await fileToDataUri(file);
+      setPhotoUrl(dataUri);
+      setPhotoPreview(dataUri);
+    } catch (err) {
+      setError('שגיאה בטעינת התמונה — נסה שוב');
+      setPhotoPreview('');
+      setPhotoUrl('');
+    } finally {
+      setPhotoLoading(false);
+    }
   }, []);
 
   const handleClose = useCallback(() => {
@@ -69,6 +126,7 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
         staff_name:    staffName.trim() || undefined,
         staff_phone:   staffPhone.trim() || undefined,
         due_at:        dueAt || undefined,
+        photo_url:     photoUrl || undefined,
         status:        'Pending',
       };
 
@@ -243,6 +301,59 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
                 style={inputStyle}
               />
             </label>
+          </div>
+
+          {/* Photo upload */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ color: '#9ca3af', fontSize: 12, fontWeight: 700 }}>תמונה (אופציונלי)</span>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={handlePhotoSelect}
+            />
+            {photoPreview ? (
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', width: '100%', height: 120 }}>
+                <img
+                  src={photoPreview}
+                  alt="תצוגה מקדימה"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => { setPhotoPreview(''); setPhotoUrl(''); if (photoInputRef.current) photoInputRef.current.value = ''; }}
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    background: 'rgba(0,0,0,0.6)', border: 'none',
+                    borderRadius: '50%', width: 28, height: 28,
+                    color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  aria-label="הסר תמונה"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoLoading}
+                style={{
+                  ...inputStyle,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, height: 44, cursor: photoLoading ? 'not-allowed' : 'pointer',
+                  opacity: photoLoading ? 0.7 : 1,
+                }}
+              >
+                {photoLoading
+                  ? <><span style={{ animation: 'spin .7s linear infinite', display: 'inline-block' }}>⏳</span> טוען...</>
+                  : <><Camera size={16} /> צלם / בחר תמונה</>
+                }
+              </button>
+            )}
           </div>
 
           {/* Due date */}

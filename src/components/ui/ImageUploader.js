@@ -1,12 +1,27 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { UploadCloud, X } from 'lucide-react';
 import { uploadImages } from '../../services/api';
+
+/** Read a File as a base64 data-URI (used as mobile fallback when server upload fails). */
+function fileToDataUri(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], propertyId = null, variant = 'default' }) => {
   const [previewUrls, setPreviewUrls] = useState([]);
   const [uploadedUrls, setUploadedUrls] = useState(Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : []);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Ref tracks the live uploadedUrls so handleFileSelect never needs it as a
+  // useCallback dep — prevents input re-mount (iOS file-picker reset) on each upload.
+  const uploadedUrlsRef = useRef(uploadedUrls);
+  useEffect(() => { uploadedUrlsRef.current = uploadedUrls; }, [uploadedUrls]);
 
   // Serialise initialUrls content so the effect only re-runs when the list
   // actually changes, not on every parent render that creates a new array ref.
@@ -17,31 +32,29 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
     const next = Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : [];
     setUploadedUrls((prev) => {
       // Never reduce the displayed image count from a parent-driven sync.
-      // If the parent passes fewer URLs than what we already show (e.g. because
-      // it re-rendered with stale backend data while an upload is in flight),
-      // keep the current list so freshly-uploaded images don't disappear.
       if (next.length === 0) return prev;
       if (next.length < prev.length) {
-        // Merge: keep everything that was already showing plus what the parent has.
         const merged = [...new Set([...prev, ...next])];
         return merged;
       }
       return next;
     });
-    // initialUrls is intentionally tracked via initialUrlsKey (content equality),
-    // not by reference, to prevent spurious resets on parent re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, initialUrlsKey]);
 
   useEffect(() => {
     return () => {
-      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
+      });
     };
   }, [previewUrls]);
 
   const handleFileSelect = useCallback(
     async (files) => {
-      const list = Array.from(files || []).filter((f) => f.type?.startsWith('image/')).slice(0, maxFiles - uploadedUrls.length);
+      const list = Array.from(files || [])
+        .filter((f) => f.type?.startsWith('image/'))
+        .slice(0, maxFiles - uploadedUrlsRef.current.length);
       if (list.length === 0) return;
 
       const localPreviews = list.map((f) => URL.createObjectURL(f));
@@ -50,24 +63,40 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
       setIsUploading(true);
 
       try {
+        // ── Attempt server upload ────────────────────────────────────────────
         const result = await uploadImages(list, propertyId);
         const urls = Array.isArray(result?.urls) ? result.urls : [];
-        let next;
-        setUploadedUrls((prev) => {
-          const prevArr = Array.isArray(prev) ? prev : [];
-          next = [...urls, ...prevArr];
-          return next;
-        });
+
+        // FIX: compute `next` from the ref (stable, no deps) — never inside a
+        // setState updater (updater runs async in React 18; accessing `next`
+        // outside would give undefined and wipe the parent's photoUrls state).
+        const next = [...urls, ...uploadedUrlsRef.current];
+        setUploadedUrls(next);
         typeof onUploadComplete === 'function' && onUploadComplete(next);
         setPreviewUrls([]);
-      } catch (e) {
-        setError(e?.message || 'שגיאה בהעלאת תמונות');
-        setPreviewUrls((prev) => prev.slice(0, -list.length));
+      } catch (serverErr) {
+        // ── Base64 fallback — keeps images visible when server upload fails
+        //    (network timeout on mobile, cold-start Railway delay, 401, etc.)
+        console.warn('[ImageUploader] server upload failed, falling back to base64:', serverErr?.message);
+        try {
+          const dataUris = await Promise.all(list.map(fileToDataUri));
+          const next = [...dataUris, ...uploadedUrlsRef.current];
+          setUploadedUrls(next);
+          typeof onUploadComplete === 'function' && onUploadComplete(next);
+          setPreviewUrls([]);
+          // Show a soft warning — upload worked locally, will store as data URI
+          setError('תמונה נשמרה זמנית (מצב לא מקוון). תועלה לשרת בשמירה.');
+        } catch (b64Err) {
+          setError(serverErr?.message || 'שגיאה בהעלאת תמונות');
+          // Don't wipe preview — keep the blob URL visible so user sees their choice
+        }
       } finally {
         setIsUploading(false);
       }
     },
-    [maxFiles, uploadedUrls, onUploadComplete, propertyId]
+    // uploadedUrls intentionally NOT in deps — use uploadedUrlsRef to avoid
+    // re-creating this callback (and re-mounting the <input>) on every upload.
+    [maxFiles, onUploadComplete, propertyId],
   );
 
   const handleInputChange = (e) => {
