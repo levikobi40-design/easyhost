@@ -337,7 +337,7 @@ const QuickActionStaff = ({ topStaff }) => {
 export default function PremiumDashboard() {
   const navigate = useNavigate();
   const { format } = useCurrency();
-  const { refresh: fetchProperties } = useProperties();
+  const { refresh: fetchProperties, properties, dbLoadStatus } = useProperties();
   const mission = useMission();
   const {
     tasks: missionTasks,
@@ -365,6 +365,7 @@ export default function PremiumDashboard() {
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [showRevenueModal, setShowRevenueModal] = useState(false);
   const [simRefreshing, setSimRefreshing] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const loadRef = useRef(0);
   const bootstrapOnceRef = useRef(false);
 
@@ -379,7 +380,7 @@ export default function PremiumDashboard() {
 
   const loadDashboardData = useCallback(async () => {
     // Never bootstrap before the user has a valid JWT — prevents 401 loops.
-    if (!hasValidAuthToken()) return false;
+    if (!hasValidAuthToken()) { setLoading(false); return false; }
     const loadId = ++loadRef.current;
     setLoading(true);
     try {
@@ -518,6 +519,21 @@ export default function PremiumDashboard() {
     }
   }, [addMayaMessage, addNotification, toggleMayaChat]); // patchTaskInMissionRef is a ref — always current, no dep needed
 
+  const handleSeedSampleData = useCallback(async () => {
+    setSeeding(true);
+    try {
+      const { bootstrapOperationalData } = await import('../../services/api');
+      bootstrapOnceRef.current = false; // allow re-run
+      await bootstrapOperationalData();
+      await loadDashboardData();
+      window.dispatchEvent(new CustomEvent('properties-refresh', { detail: { force: true } }));
+    } catch (e) {
+      window.alert(e?.message || 'שגיאה ביצירת נתוני דמו');
+    } finally {
+      setSeeding(false);
+    }
+  }, [loadDashboardData]);
+
   const tasksByStatusData = stats?.tasks_by_status
     ? [
         { name: 'ממתינות', value: stats.tasks_by_status.Pending || 0, fill: TASK_CHART_COLORS[0] },
@@ -554,26 +570,91 @@ export default function PremiumDashboard() {
           <h1 className="text-3xl font-black text-gray-900 dark:text-white" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             בוקר טוב, מנהל
           </h1>
-          <p className="text-gray-700 dark:text-gray-300 font-semibold">כל הנכסים שלך תחת שליטה. הנה מה שקורה היום.</p>
+          <p className="text-gray-700 dark:text-gray-300 font-semibold">
+            כל הנכסים שלך תחת שליטה. הנה מה שקורה היום.
+          </p>
+          {!loading && dbLoadStatus === 'error' && (
+            <p className="mt-1 text-xs font-semibold text-amber-400">
+              ⚠ מסד הנתונים לא זמין — מוצגים נתונים מקומיים
+            </p>
+          )}
+          {!loading && dbLoadStatus === 'cache' && (
+            <p className="mt-1 text-xs font-semibold text-blue-400">
+              📦 מוצגים נתונים מהמטמון
+            </p>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => setShowPropertyModal(true)}
-          className="px-6 py-3 rounded-2xl font-black transition-all"
-          style={{
-            background: 'rgba(15,23,41,0.85)',
-            color: '#ffffff',
-            border: '1.5px solid rgba(0,255,136,0.55)',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            fontWeight: 900,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#00ff88'; e.currentTarget.style.background = 'rgba(0,255,136,0.08)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,255,136,0.55)'; e.currentTarget.style.background = 'rgba(15,23,41,0.85)'; }}
-        >
-          + הוסף נכס חדש
-        </button>
+        <div className="flex items-center gap-3" style={{ flexWrap: 'wrap' }}>
+          {!loading && (stats?.total_properties ?? 0) === 0 && (
+            <button
+              type="button"
+              onClick={handleSeedSampleData}
+              disabled={seeding}
+              className="px-5 py-3 rounded-2xl font-bold transition-all text-sm"
+              style={{
+                background: seeding ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)',
+                color: '#f59e0b',
+                border: '1.5px solid rgba(245,158,11,0.45)',
+                cursor: seeding ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap',
+                opacity: seeding ? 0.7 : 1,
+              }}
+            >
+              {seeding ? 'יוצר נתונים…' : '⚡ צור נתוני דמו'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowPropertyModal(true)}
+            className="px-6 py-3 rounded-2xl font-black transition-all"
+            style={{
+              background: 'rgba(15,23,41,0.85)',
+              color: '#ffffff',
+              border: '1.5px solid rgba(0,255,136,0.55)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              fontWeight: 900,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#00ff88'; e.currentTarget.style.background = 'rgba(0,255,136,0.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,255,136,0.55)'; e.currentTarget.style.background = 'rgba(15,23,41,0.85)'; }}
+          >
+            + הוסף נכס חדש
+          </button>
+        </div>
       </div>
+
+      {/* ── Empty-DB onboarding banner ────────────────────────────────────────── */}
+      {!loading && (stats?.total_properties ?? 0) === 0 && (stats?.total_tasks ?? 0) === 0 && (
+        <div
+          className="mb-8 p-5 rounded-2xl border border-amber-500/30 bg-amber-500/8"
+          style={{ background: 'rgba(245,158,11,0.06)' }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-amber-400 font-bold text-base">מסד הנתונים ריק</p>
+              <p className="text-gray-400 text-sm mt-0.5">
+                לא נמצאו נכסים או משימות. לחץ על <strong className="text-amber-300">⚡ צור נתוני דמו</strong> ליצירת מידע לבדיקה,
+                או על <strong className="text-emerald-400">+ הוסף נכס חדש</strong> להתחלה ידנית.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSeedSampleData}
+              disabled={seeding}
+              className="shrink-0 px-6 py-2.5 rounded-xl font-bold text-sm transition-all"
+              style={{
+                background: seeding ? 'rgba(245,158,11,0.2)' : 'rgba(245,158,11,0.15)',
+                color: '#f59e0b',
+                border: '1.5px solid rgba(245,158,11,0.5)',
+                cursor: seeding ? 'not-allowed' : 'pointer',
+                opacity: seeding ? 0.7 : 1,
+              }}
+            >
+              {seeding ? 'יוצר…' : '⚡ צור נתוני דמו לבדיקה'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         {/* Revenue KPI — clickable → breakdown modal */}
@@ -587,7 +668,11 @@ export default function PremiumDashboard() {
         />
         <KPICard
           title="נכסים"
-          value={String(stats?.total_properties ?? 0)}
+          value={loading ? '…' : String(
+            (stats?.total_properties ?? 0) > 0
+              ? stats.total_properties
+              : properties.length
+          )}
           icon={Home}
           color="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
           onClick={() => navigate('/properties')}
