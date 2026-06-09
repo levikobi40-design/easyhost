@@ -35,35 +35,57 @@ if (typeof window !== 'undefined') {
  */
 export const hasValidAuthToken = () => {
   try {
+    // Check all three storage keys — same priority order as getAuthHeaders()
     const raw = localStorage.getItem('hotel-enterprise-storage');
-    if (!raw) return false;
-    const token = JSON.parse(raw)?.state?.authToken;
-    if (!token || typeof token !== 'string') return false;
-    if (token.startsWith('demo-offline-')) return false;
-    return token.split('.').length === 3;
+    const t1  = raw ? JSON.parse(raw)?.state?.authToken : null;
+    if (_isRealJwt(t1)) return true;
+
+    const loginRaw = localStorage.getItem('hotel-login-state');
+    const t2 = loginRaw ? JSON.parse(loginRaw)?.token : null;
+    if (_isRealJwt(t2)) return true;
+
+    const t3 = localStorage.getItem('easyhost_auth_token');
+    return _isRealJwt(t3);
   } catch { return false; }
 };
 
+/** Returns true only for real 3-part JWTs (not demo-offline-* placeholders). */
+const _isRealJwt = (t) =>
+  t && typeof t === 'string' && !t.startsWith('demo-offline-') && t.split('.').length === 3;
+
 export const getAuthHeaders = () => {
   try {
+    // ── Primary: Zustand persisted store (hotel-enterprise-storage) ──────────
     const raw = localStorage.getItem('hotel-enterprise-storage');
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
+    const parsed = raw ? JSON.parse(raw) : null;
     const token    = parsed?.state?.authToken;
     const tenantId = parsed?.state?.activeTenantId;
-    const headers  = {};
-    // Only attach a proper 3-part JWT. demo-offline-* placeholders are not
-    // real JWTs and will always be rejected by the backend with 401.
-    if (
-      token &&
-      typeof token === 'string' &&
-      !token.startsWith('demo-offline-') &&
-      token.split('.').length === 3
-    ) {
-      headers.Authorization = `Bearer ${token}`;
+    if (_isRealJwt(token)) {
+      const h = { Authorization: `Bearer ${token}` };
+      if (tenantId) h['X-Tenant-Id'] = tenantId;
+      return h;
     }
-    if (tenantId) headers['X-Tenant-Id'] = tenantId;
-    return headers;
+
+    // ── Fallback 1: LoginPage stored state (hotel-login-state) ───────────────
+    // LoginPage.js calls saveLoginState() which writes here independently of
+    // the Zustand store. On iOS PWA the Zustand write sometimes silently fails.
+    const loginRaw = localStorage.getItem('hotel-login-state');
+    if (loginRaw) {
+      const ls = JSON.parse(loginRaw);
+      if (_isRealJwt(ls?.token)) {
+        const h = { Authorization: `Bearer ${ls.token}` };
+        if (ls.tenantId) h['X-Tenant-Id'] = ls.tenantId;
+        return h;
+      }
+    }
+
+    // ── Fallback 2: direct token key written by applyAuth() ──────────────────
+    const direct = localStorage.getItem('easyhost_auth_token');
+    if (_isRealJwt(direct)) {
+      return { Authorization: `Bearer ${direct}` };
+    }
+
+    return {};
   } catch { return {}; }
 };
 

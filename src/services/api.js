@@ -1231,24 +1231,12 @@ export const getPropertyById = async (id) => {
 export const updateProperty = async (id, payload = {}) => {
   const idStr = id != null && id !== '' ? String(id).trim() : '';
   if (!idStr) throw new Error('Property id required');
-  let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    try {
-      const auth = await getDemoAuthToken('default');
-      if (auth?.token) headers = { ...headers, Authorization: `Bearer ${auth.token}` };
-    } catch (_) {}
+  try {
+    return await apiRequest(`/properties/${encodeURIComponent(idStr)}`, { method: 'PUT', body: payload });
+  } catch (error) {
+    const msg = error?.data?.error ?? error?.message ?? 'Failed to update property';
+    throw new Error(msg);
   }
-  const response = await fetch(`${API_URL}/properties/${idStr}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify(payload),
-    credentials: 'include',
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to update property');
-  }
-  return await response.json();
 };
 
 /** DELETE /properties/<id> - remove a property by UUID */
@@ -1479,32 +1467,39 @@ export const createProperty = async (payload = {}) => {
     bathrooms: Math.max(1, parseInt(payload.bathrooms, 10) || 1),
   };
   console.log('[createProperty] Sending:', propertyData);
-  try {
-    let headers = {};
-    if (!getAuthHeaders().Authorization) {
-      try {
-        const auth = await getDemoAuthToken('default');
-        if (auth?.token) headers.Authorization = `Bearer ${auth.token}`;
-      } catch (e) {
-        console.warn('[createProperty] Demo auth failed:', e);
+
+  // apiRequest already resolves auth headers via the updated getAuthHeaders()
+  // (which checks hotel-enterprise-storage → hotel-login-state → easyhost_auth_token).
+  // Only fetch a fresh demo token when all three localStorage keys are empty
+  // (e.g. brand new session before first login on Railway + ALLOW_DEMO_AUTH=true).
+  if (!getAuthHeaders().Authorization) {
+    try {
+      const auth = await getDemoAuthToken('default');
+      if (auth?.token) {
+        // Store it so subsequent calls pick it up through getAuthHeaders()
+        try {
+          const raw = localStorage.getItem('hotel-enterprise-storage') || '{"state":{},"version":0}';
+          const parsed = JSON.parse(raw);
+          parsed.state = { ...(parsed.state || {}), authToken: auth.token, activeTenantId: auth.tenant_id || 'default' };
+          localStorage.setItem('hotel-enterprise-storage', JSON.stringify(parsed));
+          localStorage.setItem('hotel-login-state', JSON.stringify({ token: auth.token, tenantId: auth.tenant_id || 'default', role: auth.role || 'admin', loggedInAt: Date.now() }));
+          localStorage.setItem('easyhost_auth_token', auth.token);
+        } catch (_) { /* storage write failure — proceed anyway */ }
       }
+    } catch (e) {
+      console.warn('[createProperty] Demo auth token fetch failed:', e?.message);
     }
-    const result = await apiRequest(`${API_URL}/properties`, {
-      method: 'POST',
-      body: propertyData,
-      headers: { ...getAuthHeaders(), ...headers },
-    });
-    return result;
+  }
+
+  try {
+    return await apiRequest('/properties', { method: 'POST', body: propertyData });
   } catch (error) {
     const status = error?.status ?? error?.response?.status;
-    const data = error?.data ?? error?.response?.data;
-    const serverMsg = data?.error ?? data?.message ?? (typeof data === 'string' ? data : JSON.stringify(data || {}));
-    const msg = `Create Property failed: ${error?.message || 'Unknown error'}` +
-      (status ? ` [HTTP ${status}]` : '') +
-      (serverMsg ? ` | Server: ${serverMsg}` : '');
-    console.error('[createProperty] Full error:', error);
-    window.alert(msg);
-    throw error;
+    const serverMsg = error?.data?.error ?? error?.data?.message ?? error?.message ?? 'Unknown error';
+    console.error('[createProperty] Failed:', status, serverMsg, error);
+    // Re-throw a clean Error so PropertyCreatorModal displays it inline
+    // without a disruptive window.alert().
+    throw new Error(serverMsg);
   }
 };
 

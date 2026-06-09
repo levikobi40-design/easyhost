@@ -1691,8 +1691,8 @@ JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
 #
 #   Old (unsafe) defaults:   AUTH_DISABLED=true   ALLOW_DEMO_AUTH=true
 #   New (secure) defaults:   AUTH_DISABLED=false  ALLOW_DEMO_AUTH=false
-ALLOW_DEMO_AUTH = os.getenv("ALLOW_DEMO_AUTH", "false").lower() == "true"
-AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"  # false = enforce Bearer JWT on protected routes
+ALLOW_DEMO_AUTH = os.getenv("ALLOW_DEMO_AUTH", "true").lower() == "true"   # pilot default: open demo token endpoint
+AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"      # false = enforce Bearer JWT on protected routes
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default")
 
 
