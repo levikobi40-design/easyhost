@@ -13,42 +13,32 @@ function fileToDataUri(file) {
 }
 
 const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], propertyId = null, variant = 'default' }) => {
-  const [previewUrls, setPreviewUrls] = useState([]);
+  // Single source of truth: all displayed images (both local data-URIs and
+  // confirmed server URLs) live here. No separate previewUrls state.
   const [uploadedUrls, setUploadedUrls] = useState(Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : []);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Ref tracks the live uploadedUrls so handleFileSelect never needs it as a
-  // useCallback dep — prevents input re-mount (iOS file-picker reset) on each upload.
+  // Ref tracks the live list without adding it to useCallback deps —
+  // prevents handleFileSelect from being recreated on every upload
+  // (which would cause the <input> to re-mount and reset on iOS).
   const uploadedUrlsRef = useRef(uploadedUrls);
   useEffect(() => { uploadedUrlsRef.current = uploadedUrls; }, [uploadedUrls]);
 
-  // Serialise initialUrls content so the effect only re-runs when the list
-  // actually changes, not on every parent render that creates a new array ref.
-  const initialUrlsKey = JSON.stringify(
-    Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : [],
-  );
+  // Serialise initialUrls content so the sync effect only re-runs when the
+  // actual list changes, not when the parent creates a new array reference.
+  const initialUrlsKey = (Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : []).join('||');
   useEffect(() => {
     const next = Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : [];
     setUploadedUrls((prev) => {
-      // Never reduce the displayed image count from a parent-driven sync.
-      if (next.length === 0) return prev;
+      if (next.length === 0) return prev;            // never wipe on empty sync
       if (next.length < prev.length) {
-        const merged = [...new Set([...prev, ...next])];
-        return merged;
+        return [...new Set([...prev, ...next])];     // merge, keep local extras
       }
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, initialUrlsKey]);
-
-  useEffect(() => {
-    return () => {
-      previewUrls.forEach((url) => {
-        try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
-      });
-    };
-  }, [previewUrls]);
 
   const handleFileSelect = useCallback(
     async (files) => {
@@ -57,90 +47,88 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
         .slice(0, maxFiles - uploadedUrlsRef.current.length);
       if (list.length === 0) return;
 
-      const localPreviews = list.map((f) => URL.createObjectURL(f));
-      setPreviewUrls((prev) => [...prev, ...localPreviews]);
       setError(null);
       setIsUploading(true);
 
+      // ── STEP 1: Convert to base64 data URIs immediately ─────────────────
+      // We intentionally avoid URL.createObjectURL here. On iOS Safari, blob
+      // URLs are invalidated when the app returns from the photo-picker
+      // background transition — the image flashes and disappears ~1 second
+      // after selection. Data URIs live entirely in memory and survive any
+      // app-lifecycle event, keeping the preview stable indefinitely.
+      let dataUris;
       try {
-        // ── Attempt server upload ────────────────────────────────────────────
-        const result = await uploadImages(list, propertyId);
-        const urls = Array.isArray(result?.urls) ? result.urls : [];
+        dataUris = await Promise.all(list.map(fileToDataUri));
+      } catch (readErr) {
+        console.error('[ImageUploader] FileReader failed:', readErr);
+        setError('שגיאה בקריאת הקובץ — נסה שוב');
+        setIsUploading(false);
+        return;
+      }
 
-        // FIX: compute `next` from the ref (stable, no deps) — never inside a
-        // setState updater (updater runs async in React 18; accessing `next`
-        // outside would give undefined and wipe the parent's photoUrls state).
-        const next = [...urls, ...uploadedUrlsRef.current];
-        setUploadedUrls(next);
-        typeof onUploadComplete === 'function' && onUploadComplete(next);
-        setPreviewUrls([]);
-      } catch (serverErr) {
-        // ── Base64 fallback — keeps images visible when server upload fails
-        //    (network timeout on mobile, cold-start Railway delay, 401, etc.)
-        console.warn('[ImageUploader] server upload failed, falling back to base64:', serverErr?.message);
-        try {
-          const dataUris = await Promise.all(list.map(fileToDataUri));
-          const next = [...dataUris, ...uploadedUrlsRef.current];
-          setUploadedUrls(next);
-          typeof onUploadComplete === 'function' && onUploadComplete(next);
-          setPreviewUrls([]);
-          // Show a soft warning — upload worked locally, will store as data URI
-          setError('תמונה נשמרה זמנית (מצב לא מקוון). תועלה לשרת בשמירה.');
-        } catch (b64Err) {
-          setError(serverErr?.message || 'שגיאה בהעלאת תמונות');
-          // Don't wipe preview — keep the blob URL visible so user sees their choice
+      // Show the data-URI preview right away — persistent on iOS.
+      const withDataUris = [...dataUris, ...uploadedUrlsRef.current];
+      setUploadedUrls(withDataUris);
+      typeof onUploadComplete === 'function' && onUploadComplete(withDataUris);
+
+      // ── STEP 2: Try to upgrade to a server URL silently ─────────────────
+      // The property form already has the data URI; the upload just improves
+      // storage efficiency. A failure here is non-fatal.
+      try {
+        const result = await uploadImages(list, propertyId);
+        const serverUrls = Array.isArray(result?.urls) ? result.urls.filter(Boolean) : [];
+        if (serverUrls.length > 0) {
+          // Replace data-URI placeholders with the confirmed server URLs.
+          const upgraded = [
+            ...serverUrls,
+            ...uploadedUrlsRef.current.filter((u) => !dataUris.includes(u)),
+          ];
+          setUploadedUrls(upgraded);
+          typeof onUploadComplete === 'function' && onUploadComplete(upgraded);
         }
+      } catch (serverErr) {
+        // Silent fallback — data URI is already stored, property can still be saved.
+        console.warn('[ImageUploader] server upload failed, keeping data URI:', serverErr?.message);
+        setError('תמונה נשמרה זמנית (ללא חיבור לשרת). תישמר מלאה עם שמירת הנכס.');
       } finally {
         setIsUploading(false);
       }
     },
-    // uploadedUrls intentionally NOT in deps — use uploadedUrlsRef to avoid
-    // re-creating this callback (and re-mounting the <input>) on every upload.
     [maxFiles, onUploadComplete, propertyId],
   );
 
-  const handleInputChange = (e) => {
-    handleFileSelect(e.target.files);
-    e.target.value = '';
-  };
+  const handleInputChange = useCallback((e) => {
+    // Copy files before resetting the input so the FileList reference stays
+    // valid throughout the async handleFileSelect execution on iOS.
+    const filesCopy = e.target.files;
+    handleFileSelect(filesCopy);
+    // Reset input value after handing off files so the same file can be
+    // re-selected without triggering a no-change event.
+    try { e.target.value = ''; } catch (_) { /* read-only in some browsers */ }
+  }, [handleFileSelect]);
 
-  const handleDrop = (e) => {
+  const handleDrop = useCallback((e) => {
     e.preventDefault();
     handleFileSelect(e.dataTransfer?.files);
-  };
+  }, [handleFileSelect]);
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
+  const handleDragOver = (e) => { e.preventDefault(); };
 
-  const removePreview = (index) => {
-    setPreviewUrls((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      URL.revokeObjectURL(prev[index]);
-      return next;
-    });
-  };
-
-  const removeUploaded = (index) => {
-    const next = uploadedUrls.filter((_, i) => i !== index);
+  const removeUploaded = useCallback((index) => {
+    const next = uploadedUrlsRef.current.filter((_, i) => i !== index);
     setUploadedUrls(next);
     typeof onUploadComplete === 'function' && onUploadComplete(next);
-  };
+  }, [onUploadComplete]);
 
-  const allPreviews = [...previewUrls, ...uploadedUrls];
+  // All images — now a single list (no separate blob-URL previews).
+  const allPreviews = uploadedUrls;
   const isAirbnb = variant === 'airbnb';
 
-  const removeByIndex = (idx) => {
-    if (idx < previewUrls.length) {
-      URL.revokeObjectURL(previewUrls[idx]);
-      setPreviewUrls((prev) => prev.filter((_, i) => i !== idx));
-    } else {
-      const uploadIdx = idx - previewUrls.length;
-      const next = uploadedUrls.filter((_, i) => i !== uploadIdx);
-      setUploadedUrls(next);
-      typeof onUploadComplete === 'function' && onUploadComplete(next);
-    }
-  };
+  const removeByIndex = useCallback((idx) => {
+    const next = uploadedUrlsRef.current.filter((_, i) => i !== idx);
+    setUploadedUrls(next);
+    typeof onUploadComplete === 'function' && onUploadComplete(next);
+  }, [onUploadComplete]);
 
   if (isAirbnb) {
     return (
@@ -264,30 +252,18 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
 
       {allPreviews.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mt-6">
-          {previewUrls.map((url, i) => (
-            <div key={`preview-${i}`} className="relative h-24 rounded-xl overflow-hidden border border-slate-700 bg-slate-800 group">
+          {allPreviews.map((url, i) => (
+            <div key={`img-${i}`} className="relative h-24 rounded-xl overflow-hidden border border-slate-700 bg-slate-800 group">
               <img src={url} alt="Preview" className="w-full h-full object-cover" />
               {!isUploading && (
                 <button
                   type="button"
-                  onClick={() => removePreview(i)}
+                  onClick={() => removeByIndex(i)}
                   className="absolute top-1 right-1 bg-slate-900/80 text-slate-300 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/80 hover:text-white"
                 >
                   <X size={14} />
                 </button>
               )}
-            </div>
-          ))}
-          {uploadedUrls.map((url, i) => (
-            <div key={`uploaded-${i}`} className="relative h-24 rounded-xl overflow-hidden border border-slate-700 bg-slate-800 group">
-              <img src={url} alt="Uploaded" className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => removeUploaded(i)}
-                className="absolute top-1 right-1 bg-slate-900/80 text-slate-300 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/80 hover:text-white"
-              >
-                <X size={14} />
-              </button>
             </div>
           ))}
         </div>
