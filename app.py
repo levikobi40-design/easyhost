@@ -1277,6 +1277,7 @@ _jwt_secret_env = os.getenv("JWT_SECRET", "").strip()
 app.config["SECRET_KEY"]              = _jwt_secret_env or os.urandom(32).hex()
 app.config["SESSION_PERMANENT"]       = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["MAX_CONTENT_LENGTH"]      = 20 * 1024 * 1024  # 20 MB — allows large base64 image payloads
 # Production (Render / Railway / Heroku) — cross-site cookies require Secure + SameSite=None.
 # Railway sets several RAILWAY_* vars; check all of them plus a manual override.
 def _detect_production() -> bool:
@@ -1542,6 +1543,32 @@ def _compress_image(file_stream, max_px=1200, quality=78):
         print(f"[compress_image] PIL unavailable or failed ({_ce}), saving original")
         file_stream.seek(0)
         return file_stream.read(), None   # None ext = keep original ext
+
+
+def _save_base64_image(data_uri, tenant_id, subfolder="properties"):
+    """
+    Convert a base64 data URI (data:image/...;base64,...) to a real file on disk.
+    Returns the public URL if successful, or the original data_uri string on failure.
+    Used so mobile clients can POST base64 images inside JSON without bloating the DB.
+    """
+    if not data_uri or not str(data_uri).startswith("data:image/"):
+        return data_uri
+    try:
+        import base64 as _b64
+        from io import BytesIO as _BytesIO
+        header, b64data = data_uri.split(",", 1)
+        img_bytes = _b64.b64decode(b64data)
+        compressed, new_ext = _compress_image(_BytesIO(img_bytes))
+        ext = new_ext or "jpg"
+        unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
+        target_dir = os.path.join(UPLOAD_ROOT, str(tenant_id or "shared"), subfolder)
+        os.makedirs(target_dir, exist_ok=True)
+        with open(os.path.join(target_dir, unique_name), "wb") as _fh:
+            _fh.write(compressed)
+        return f"{API_BASE_URL}/uploads/{tenant_id or 'shared'}/{subfolder}/{unique_name}"
+    except Exception as _b64err:
+        print(f"[_save_base64_image] conversion failed: {_b64err}", flush=True)
+        return data_uri  # keep as-is so the property still saves
 
 
 # Serve uploaded files - must be early to avoid being shadowed
@@ -11703,7 +11730,7 @@ def create_property():
             resp.headers["X-Portfolio-Error-Recovery"] = "1"
             return resp, 200
 
-    print("[create_property] Received:", request.get_json(silent=True), "files:", list(request.files.keys()) if request.files else [])
+    print("[create_property] Received keys:", list((request.get_json(silent=True) or {}).keys()), "files:", list(request.files.keys()) if request.files else [])
     try:
         data = request.get_json(silent=True) or request.form.to_dict() or {}
         tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
@@ -11728,6 +11755,15 @@ def create_property():
             pu = str(photo_url).strip()
             if pu not in combined_imgs:
                 combined_imgs = [pu] + [p for p in combined_imgs if p != pu]
+
+        # ── Convert any base64 data URIs to real files so the DB doesn't store
+        #    megabyte-sized strings (mobile clients fall back to base64 when the
+        #    dedicated /api/upload endpoint is unavailable).
+        photo_url = _save_base64_image(photo_url, tenant_id) if photo_url else photo_url
+        combined_imgs = [_save_base64_image(u, tenant_id) for u in combined_imgs]
+        if not photo_url and combined_imgs:
+            photo_url = combined_imgs[0]
+
         # Always persist the full gallery (even a single image) in description so
         # list_manual_rooms can reliably populate pictures[] via _split_description_gallery.
         if combined_imgs:
@@ -11885,13 +11921,12 @@ def update_property(property_id):
                         s = str(x).strip() if x is not None else ""
                         if s and s not in pics_in:
                             pics_in.append(s)
+            # ── Convert base64 data URIs to real files (mobile fallback) ──────
+            pics_in = [_save_base64_image(u, tenant_id) for u in pics_in]
             if pics_in:
                 room.photo_url = pics_in[0]
                 base_main = (data["description"] if "description" in data else old_main) or ""
                 bm, _ = _split_description_gallery(base_main)
-                # Merge incoming pics with the existing gallery so that an
-                # upload-only call (which only sends the new URL) never erases
-                # pre-existing images.  New URLs go first (highest priority).
                 merged_pics = list(dict.fromkeys(pics_in + [g for g in old_gal if g not in pics_in]))
                 room.description = _merge_description_gallery(bm, merged_pics)
             else:
@@ -11899,7 +11934,8 @@ def update_property(property_id):
                     inc_main, _ = _split_description_gallery(data.get("description") or "")
                     room.description = _merge_description_gallery(inc_main, old_gal)
                 if "photo_url" in data:
-                    room.photo_url = data.get("photo_url") or ""
+                    raw_pu = data.get("photo_url") or ""
+                    room.photo_url = _save_base64_image(raw_pu, tenant_id) if raw_pu else ""
             if "amenities" in data:
                 room.amenities = json.dumps(data.get("amenities") or [])
             if "status" in data:
@@ -11991,18 +12027,46 @@ def delete_property(property_id):
     try:
         room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
         if not room:
+            # Tenant-drift fallback
+            room = session.query(ManualRoomModel).filter_by(id=pid).first()
+        if not room:
             return jsonify({"error": "Property not found", "id": pid}), 404
+
+        # ── Cascade: remove child records first to avoid FK constraint errors ──
+        deleted_tasks = 0
+        deleted_staff = 0
+        if PropertyTaskModel:
+            try:
+                deleted_tasks = session.query(PropertyTaskModel).filter(
+                    PropertyTaskModel.property_id == pid
+                ).delete(synchronize_session=False)
+            except Exception as _te:
+                print(f"[delete_property] task cascade warning: {_te}", flush=True)
+        if PropertyStaffModel:
+            try:
+                deleted_staff = session.query(PropertyStaffModel).filter(
+                    PropertyStaffModel.property_id == pid
+                ).delete(synchronize_session=False)
+            except Exception as _se:
+                print(f"[delete_property] staff cascade warning: {_se}", flush=True)
+
         session.delete(room)
         session.commit()
+        print(
+            f"[delete_property] deleted property {pid} "
+            f"(cascaded {deleted_tasks} tasks, {deleted_staff} staff)",
+            flush=True,
+        )
         try:
             _STATUS_GRID_CACHE["ts"] = 0.0
             _STATUS_GRID_CACHE["payload"] = None
             _STATUS_GRID_CACHE["key"] = None
         except Exception:
             pass
-        return jsonify({"ok": True, "deleted": pid}), 200
+        return jsonify({"ok": True, "deleted": pid, "cascaded_tasks": deleted_tasks, "cascaded_staff": deleted_staff}), 200
     except Exception as e:
         session.rollback()
+        print(f"[delete_property] Error: {e}", flush=True)
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
