@@ -114,12 +114,6 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
 
   const handleDragOver = (e) => { e.preventDefault(); };
 
-  const removeUploaded = useCallback((index) => {
-    const next = uploadedUrlsRef.current.filter((_, i) => i !== index);
-    setUploadedUrls(next);
-    typeof onUploadComplete === 'function' && onUploadComplete(next);
-  }, [onUploadComplete]);
-
   // All images — now a single list (no separate blob-URL previews).
   const allPreviews = uploadedUrls;
   const isAirbnb = variant === 'airbnb';

@@ -183,7 +183,7 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
       setLoading(false);
     }
   }, [
-    propertyId, description, taskType, staffName, staffPhone, dueAt,
+    propertyId, description, taskType, staffName, staffPhone, dueAt, photoUrl,
     selectedProp, reset, onClose, onSuccess,
   ]);
 
