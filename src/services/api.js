@@ -1255,19 +1255,9 @@ export const updateProperty = async (id, payload = {}) => {
 export const deleteProperty = async (id) => {
   const idStr = id != null && id !== '' ? String(id).trim() : '';
   if (!idStr) throw new Error('Property id required');
-  let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    try {
-      const auth = await getDemoAuthToken('default');
-      if (auth?.token) headers = { ...headers, Authorization: `Bearer ${auth.token}` };
-    } catch (_) {}
-  }
-  const response = await fetch(`${API_URL}/properties/${idStr}`, { method: 'DELETE', headers, credentials: 'include' });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to delete property');
-  }
-  return await response.json();
+  // Use the centralised apiRequest helper so auth headers, 401 dispatch,
+  // and the Railway URL are all resolved consistently (especially on mobile).
+  return apiRequest(`/properties/${encodeURIComponent(idStr)}`, { method: 'DELETE' });
 };
 
 /** GET /properties/<id>/staff — optional role filter (e.g. cleaning) for WhatsApp targets */

@@ -12000,7 +12000,11 @@ def delete_property(property_id):
     """DELETE /api/properties/<id> - remove property from manual_rooms by UUID."""
     if request.method == "OPTIONS":
         return Response(status=204)
-    pid = str(property_id).strip() if property_id else ""
+    try:
+        from urllib.parse import unquote as _url_unquote
+        pid = _url_unquote(str(property_id)).strip() if property_id else ""
+    except Exception:
+        pid = str(property_id).strip() if property_id else ""
     if not pid:
         return jsonify({"error": "Missing property id"}), 400
     tenant_id = DEFAULT_TENANT_ID
@@ -12027,7 +12031,7 @@ def delete_property(property_id):
     try:
         room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
         if not room:
-            # Tenant-drift fallback
+            # Tenant-drift fallback: look up by id alone (handles seeded rows with a different tenant_id)
             room = session.query(ManualRoomModel).filter_by(id=pid).first()
         if not room:
             return jsonify({"error": "Property not found", "id": pid}), 404
