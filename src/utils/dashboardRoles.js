@@ -15,8 +15,24 @@ export function hasDeveloperOrSettingsHub(role) {
 
 export function isDashboardAdmin(role) {
   const r = String(role || '').toLowerCase().trim();
-  /** `host` = default owner dashboard role from API/store — full management UI. STAFF uses `staff` / `manager`. */
-  return r === 'admin' || r === 'owner' || r === 'host' || r === 'superadmin' || r === 'god';
+  /**
+   * Full management UI roles:
+   * - `host`   = default owner dashboard role from API/store.
+   * - `client` / `property_owner` = self-registered owners (backend /api/auth/register
+   *   canonical role) — they own their tenant and get the full manager layout;
+   *   the backend already scopes every query to their tenant_id.
+   * - `manager` = management staff — full dashboard like owners.
+   */
+  return (
+    r === 'admin' ||
+    r === 'owner' ||
+    r === 'host' ||
+    r === 'client' ||
+    r === 'property_owner' ||
+    r === 'manager' ||
+    r === 'superadmin' ||
+    r === 'god'
+  );
 }
 
 /**

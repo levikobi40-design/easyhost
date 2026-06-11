@@ -110,7 +110,7 @@ function AuthModal({ portal, onClose, onAuthed }) {
     // Persist the JWT to all storage keys + Zustand so getAuthHeaders()
     // attaches it to every subsequent API call (tenant/role-scoped queries).
     applyAuth(data.token, data.tenant_id, data.role, loginSuccess);
-    onAuthed();
+    onAuthed(data.role);
   }, [loginSuccess, onAuthed]);
 
   const handleSubmit = async (e) => {
@@ -161,7 +161,7 @@ function AuthModal({ portal, onClose, onAuthed }) {
     try {
       const data = await getDemoAuthToken('default');
       applyAuth(data.token, data.tenant_id || 'default', data.role || 'admin', loginSuccess);
-      onAuthed();
+      onAuthed(data.role || 'admin');
     } catch {
       setError('Demo unavailable — the server may be starting up. Try again shortly.');
     } finally {
@@ -355,10 +355,14 @@ export default function Welcome({ onSelectOwner, onSelectField }) {
         <AuthModal
           portal={authPortal}
           onClose={() => setAuthPortal(null)}
-          onAuthed={() => {
-            const portal = authPortal;
+          onAuthed={(role) => {
             setAuthPortal(null);
-            proceed(portal);
+            // Route by the REAL role from the JWT, not by which card was
+            // clicked: owners/managers always get the full manager layout,
+            // workers always get the limited quest/clock-in flow.
+            const r = String(role || '').toLowerCase().trim();
+            const isWorker = r === 'staff' || r === 'worker' || r === 'field' || r === 'maintenance';
+            proceed(isWorker ? 'field' : 'owner');
           }}
         />
       )}
