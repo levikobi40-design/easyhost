@@ -7,6 +7,7 @@ node_modules
 # ── Local Python runtime (never commit the interpreter) ─────────────────────
 python-3.11.9/
 python-3*/
+python-3*
 
 # ── Build / cache output ─────────────────────────────────────────────────────
 /build

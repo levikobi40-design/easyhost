@@ -161,13 +161,27 @@ export const loginAuth = async (email, password) => {
   return data;
 };
 
-export const registerAuth = async (email, password) => {
+/**
+ * Register a new user with an isolated tenant.
+ * extra: { company, role: 'client'|'worker', worker_handle, company_code }
+ *  - company      → display name for the newly provisioned tenant
+ *  - role         → 'client' (property owner, default) or 'worker'
+ *  - company_code → workers only: existing tenant id to join instead of a new tenant
+ */
+export const registerAuth = async (email, password, extra = {}) => {
   const url = `${API_URL}/auth/register`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      password,
+      company: extra.company || undefined,
+      role: extra.role || undefined,
+      worker_handle: extra.worker_handle || undefined,
+      company_code: extra.company_code || undefined,
+    }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

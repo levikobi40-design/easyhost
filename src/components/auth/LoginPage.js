@@ -42,7 +42,7 @@ function resolveTenantForToken(token, tenantId) {
   return tid;
 }
 
-function applyAuth(token, tenantId, role, loginSuccess) {
+export function applyAuth(token, tenantId, role, loginSuccess) {
   const tid = resolveTenantForToken(token, tenantId);
   loginSuccess(token, tid, role || 'owner');
   saveLoginState(token, tid, role);

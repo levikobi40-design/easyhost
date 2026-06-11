@@ -912,6 +912,18 @@
 "role": "assistant",
 "content": "בסדר גמור, פתחתי משימת תחזוקה לחדר 46\n\nהמשימה נוצרה במערכת. הודעת WhatsApp תסונכרן מאוחר יותר. (Task created locally. WhatsApp notification will sync later.)",
 "meta": {}
+},
+{
+"ts": "2026-06-11T07:25:22.954955+00:00",
+"role": "user",
+"content": "היי מאיה את מחוברת",
+"meta": {}
+},
+{
+"ts": "2026-06-11T07:25:22.982991+00:00",
+"role": "assistant",
+"content": "היי קובי, כן, אני מחוברת ומוכנה לעזור. איך אני יכולה לסייע לך היום?",
+"meta": {}
 }
 ]
 }

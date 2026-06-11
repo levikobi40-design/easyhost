@@ -1,5 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import './Welcome.css';
+import useStore from '../../store/useStore';
+import { loginAuth, registerAuth, getDemoAuthToken } from '../../services/api';
+import { hasValidAuthToken } from '../../utils/apiClient';
+import { applyAuth } from './LoginPage';
 
 /* ── Ambient particle canvas ──────────────────────────────── */
 function ParticleCanvas() {
@@ -88,12 +92,195 @@ function PortalCard({ accent, icon, eyebrow, title, subtitle, features, cta, onC
   );
 }
 
+/* ── Auth modal: real login / registration before entering a portal ── */
+function AuthModal({ portal, onClose, onAuthed }) {
+  const { loginSuccess } = useStore();
+  const isOwner = portal === 'owner';
+  const accent = isOwner ? '#6366f1' : '#00c875';
+
+  const [mode, setMode]             = useState('login'); // 'login' | 'register'
+  const [email, setEmail]           = useState('');
+  const [password, setPassword]     = useState('');
+  const [company, setCompany]       = useState('');
+  const [companyCode, setCompanyCode] = useState('');
+  const [busy, setBusy]             = useState(false);
+  const [error, setError]           = useState('');
+
+  const finish = useCallback((data) => {
+    // Persist the JWT to all storage keys + Zustand so getAuthHeaders()
+    // attaches it to every subsequent API call (tenant/role-scoped queries).
+    applyAuth(data.token, data.tenant_id, data.role, loginSuccess);
+    onAuthed();
+  }, [loginSuccess, onAuthed]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    const em = email.trim().toLowerCase();
+    if (!em) { setError('Please enter your email.'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    setBusy(true);
+    try {
+      if (mode === 'login') {
+        const data = await loginAuth(em, password);
+        finish(data);
+      } else {
+        const extra = isOwner
+          ? { company: company.trim(), role: 'client' }
+          : { role: 'worker', company_code: companyCode.trim() || undefined };
+        try {
+          const data = await registerAuth(em, password, extra);
+          finish(data);
+        } catch (err) {
+          // Already registered → silently fall back to login with same credentials.
+          if ((err?.message || '').toLowerCase().includes('already')) {
+            const data = await loginAuth(em, password);
+            finish(data);
+          } else {
+            throw err;
+          }
+        }
+      }
+    } catch (err) {
+      const msg = err?.message || '';
+      if (msg.includes('Invalid') || msg.includes('401')) {
+        setError('Incorrect email or password.');
+      } else if (msg.includes('Company code not found')) {
+        setError('Company code not found — ask your manager for the correct code.');
+      } else {
+        setError(msg || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDemo = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await getDemoAuthToken('default');
+      applyAuth(data.token, data.tenant_id || 'default', data.role || 'admin', loginSuccess);
+      onAuthed();
+    } catch {
+      setError('Demo unavailable — the server may be starting up. Try again shortly.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="wc-auth-overlay" onClick={onClose}>
+      <div
+        className="wc-auth-panel"
+        style={{ '--accent': accent }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button type="button" className="wc-auth-close" onClick={onClose} aria-label="Close">×</button>
+
+        <div className="wc-auth-icon">{isOwner ? '👑' : '⚡'}</div>
+        <h3 className="wc-auth-title">
+          {isOwner ? 'Owner Portal' : 'Field Team'}
+        </h3>
+        <p className="wc-auth-sub">
+          {mode === 'login' ? 'Sign in to continue' : (
+            isOwner
+              ? 'Create your company workspace'
+              : 'Join your team with the company code'
+          )}
+        </p>
+
+        <div className="wc-auth-tabs">
+          <button
+            type="button"
+            className={`wc-auth-tab ${mode === 'login' ? 'wc-auth-tab--active' : ''}`}
+            onClick={() => { setMode('login'); setError(''); }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className={`wc-auth-tab ${mode === 'register' ? 'wc-auth-tab--active' : ''}`}
+            onClick={() => { setMode('register'); setError(''); }}
+          >
+            Create Account
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="wc-auth-form">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            className="wc-auth-input"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            className="wc-auth-input"
+          />
+          {mode === 'register' && isOwner && (
+            <input
+              type="text"
+              placeholder="Company / hotel name"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="wc-auth-input"
+            />
+          )}
+          {mode === 'register' && !isOwner && (
+            <input
+              type="text"
+              placeholder="Company code (from your manager — optional)"
+              value={companyCode}
+              onChange={(e) => setCompanyCode(e.target.value)}
+              className="wc-auth-input"
+            />
+          )}
+
+          {error && <p className="wc-auth-error">{error}</p>}
+
+          <button type="submit" className="wc-auth-submit" disabled={busy}>
+            {busy ? '...' : (mode === 'login' ? 'Sign In →' : 'Create & Enter →')}
+          </button>
+        </form>
+
+        <button type="button" className="wc-auth-demo" onClick={handleDemo} disabled={busy}>
+          Try the live demo instead
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════
    Welcome — main export
    ══════════════════════════════════════════════════════════════ */
 export default function Welcome({ onSelectOwner, onSelectField }) {
   const [ready, setReady] = useState(false);
+  const [authPortal, setAuthPortal] = useState(null); // null | 'owner' | 'field'
   useEffect(() => { const t = setTimeout(() => setReady(true), 80); return () => clearTimeout(t); }, []);
+
+  const proceed = useCallback((portal) => {
+    if (portal === 'field') onSelectField();
+    else onSelectOwner();
+  }, [onSelectOwner, onSelectField]);
+
+  /** Card click: pass through with a valid JWT, otherwise open the real auth flow.
+      Works the same locally and on Railway — the only difference is that with
+      AUTH_DISABLED=true the backend also accepts unauthenticated calls. */
+  const handlePortalClick = useCallback((portal) => {
+    if (hasValidAuthToken()) {
+      proceed(portal);
+      return;
+    }
+    setAuthPortal(portal);
+  }, [proceed]);
 
   return (
     <div className={`wc-root ${ready ? 'wc-root--ready' : ''}`}>
@@ -139,7 +326,7 @@ export default function Welcome({ onSelectOwner, onSelectField }) {
             'Task & Property Management',
           ]}
           cta="Enter Owner Portal"
-          onClick={onSelectOwner}
+          onClick={() => handlePortalClick('owner')}
           delay="0.1s"
         />
 
@@ -158,10 +345,23 @@ export default function Welcome({ onSelectOwner, onSelectField }) {
             "Maya's Smart Briefing on return",
           ]}
           cta="Start My Mission"
-          onClick={onSelectField}
+          onClick={() => handlePortalClick('field')}
           delay="0.22s"
         />
       </main>
+
+      {/* ── Auth modal (login / register before entering a portal) ── */}
+      {authPortal && (
+        <AuthModal
+          portal={authPortal}
+          onClose={() => setAuthPortal(null)}
+          onAuthed={() => {
+            const portal = authPortal;
+            setAuthPortal(null);
+            proceed(portal);
+          }}
+        />
+      )}
 
       {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="wc-footer">

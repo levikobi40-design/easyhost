@@ -1,16 +1,16 @@
 {
   "files": {
     "main.css": "/static/css/main.938296ff.css",
-    "main.js": "/static/js/main.84b4423f.js",
+    "main.js": "/static/js/main.056ca56e.js",
     "static/js/238.f82ea467.chunk.js": "/static/js/238.f82ea467.chunk.js",
     "index.html": "/index.html",
     "static/media/easyhost-logo-dark.svg": "/static/media/easyhost-logo-dark.2e691d8e1b2d1ccb2d8df811d35a9341.svg",
     "main.938296ff.css.map": "/static/css/main.938296ff.css.map",
-    "main.84b4423f.js.map": "/static/js/main.84b4423f.js.map",
+    "main.056ca56e.js.map": "/static/js/main.056ca56e.js.map",
     "238.f82ea467.chunk.js.map": "/static/js/238.f82ea467.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.938296ff.css",
-    "static/js/main.84b4423f.js"
+    "static/js/main.056ca56e.js"
   ]
 }

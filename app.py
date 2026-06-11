@@ -127,7 +127,8 @@ def _is_raw_api_tasks_get():
 
 
 def _attach_task_table_count_headers(resp, property_tasks_len):
-    """Expose real row counts: property_tasks payload length + legacy ``tasks`` table (TaskModel)."""
+    """Expose real row counts: property_tasks payload length + legacy ``tasks`` table (TaskModel).
+    RBAC: count is scoped to the requesting tenant — never a cross-tenant table scan."""
     try:
         resp.headers["X-Property-Tasks-Count"] = str(int(property_tasks_len))
     except Exception:
@@ -135,8 +136,18 @@ def _attach_task_table_count_headers(resp, property_tasks_len):
     if SessionLocal and TaskModel:
         _ls = SessionLocal()
         try:
-            legacy_all = _ls.query(TaskModel).all()
-            resp.headers["X-Legacy-Tasks-Table-Count"] = str(len(legacy_all))
+            _tid = getattr(request, "tenant_id", None)
+            if not _tid:
+                try:
+                    _tid, _ = get_auth_context_from_request()
+                except Exception:
+                    _tid = DEFAULT_TENANT_ID
+            _lq = _ls.query(TaskModel)
+            if _tid == DEFAULT_TENANT_ID:
+                _lq = _lq.filter(or_(TaskModel.tenant_id == _tid, TaskModel.tenant_id.is_(None)))
+            else:
+                _lq = _lq.filter(TaskModel.tenant_id == _tid)
+            resp.headers["X-Legacy-Tasks-Table-Count"] = str(_lq.count())
         except Exception:
             resp.headers["X-Legacy-Tasks-Table-Count"] = "0"
         finally:
@@ -3385,15 +3396,21 @@ def require_auth(fn):
 
 
 def _normalize_app_role(role_raw):
-    """Canonical roles: admin | manager | staff | operation (ops lead — PII masking, no god-mode in UI)."""
+    """Canonical roles: admin | manager | operation | client | staff.
+    admin/manager  → unrestricted within their tenant.
+    operation      → ops lead: tenant-wide reads, PII masking.
+    client         → property owner: only data linked to their user_id / tenant_id.
+    staff          → worker: only tasks personally assigned to them."""
     r = (role_raw or "").strip().lower()
     if r in ("admin", "owner", "superadmin", "god"):
         return "admin"
     if r in ("operation", "operations"):
         return "operation"
+    if r in ("client", "property_owner", "propertyowner", "landlord", "tenant_owner"):
+        return "client"
     if r in ("manager", "host"):
         return "manager"
-    if r in ("staff", "field", "operator", "worker"):
+    if r in ("staff", "field", "operator", "worker", "maintenance", "cleaner"):
         return "staff"
     return "manager"
 
@@ -3591,6 +3608,83 @@ def _property_tasks_query_for_tenant(session, tenant_id):
     else:
         q = q.filter(PropertyTaskModel.tenant_id == tenant_id)
     return q
+
+
+# ── RBAC query scoping ─────────────────────────────────────────────────────────
+# Central helpers that translate the JWT identity (tenant_id, user_id, app_role,
+# worker_handle) into SQL-level row filters. Every list query for tasks,
+# properties and employees must go through one of these so no role ever
+# receives rows outside its visibility scope:
+#   admin / manager / operation → all rows in their tenant
+#   client (property owner)     → only rows linked to properties they own
+#   staff (worker)              → only tasks personally assigned to them
+
+def _staff_handle_for_identity(identity):
+    """Worker matching key: worker_handle from JWT, else email prefix. '' when unknown."""
+    wh = ((identity or {}).get("worker_handle") or "").strip().lower()
+    if not wh and (identity or {}).get("email"):
+        wh = identity["email"].split("@")[0].strip().lower()
+    return wh
+
+
+def _owned_property_ids(session, identity):
+    """Property IDs owned by this user within their tenant (for client/owner scoping).
+    Rows with owner_id NULL are treated as tenant-shared and stay visible."""
+    if not ManualRoomModel:
+        return []
+    try:
+        rows = (
+            session.query(ManualRoomModel.id)
+            .filter(ManualRoomModel.tenant_id == identity["tenant_id"])
+            .filter(or_(
+                ManualRoomModel.owner_id.is_(None),
+                ManualRoomModel.owner_id == identity.get("user_id"),
+            ))
+            .all()
+        )
+        return [r[0] for r in rows if r and r[0]]
+    except Exception as _ope:
+        print(f"[rbac] _owned_property_ids failed: {_ope}", flush=True)
+        return []
+
+
+def _rbac_scope_tasks_query(session, identity, q):
+    """Apply role-based row filtering to a PropertyTaskModel query that is
+    already tenant-scoped. Returns the narrowed query (never None when q given)."""
+    if q is None or not PropertyTaskModel:
+        return q
+    role = (identity or {}).get("app_role") or "manager"
+    if role in ("admin", "manager", "operation"):
+        return q  # full tenant visibility
+    if role == "client":
+        owned = _owned_property_ids(session, identity)
+        if not owned:
+            # Owner with no properties sees no tasks — never the whole tenant.
+            return q.filter(PropertyTaskModel.id.is_(None))
+        return q.filter(PropertyTaskModel.property_id.in_(owned))
+    # staff / unknown → only tasks personally assigned to this worker
+    handle = _staff_handle_for_identity(identity)
+    if not handle:
+        return q.filter(PropertyTaskModel.id.is_(None))
+    if func is not None:
+        return q.filter(or_(
+            func.lower(func.coalesce(PropertyTaskModel.staff_name, "")) == handle,
+            func.lower(func.coalesce(PropertyTaskModel.assigned_to, "")) == handle,
+            func.lower(func.coalesce(PropertyTaskModel.staff_id, "")) == handle,
+        ))
+    return q.filter(or_(
+        PropertyTaskModel.staff_name == handle,
+        PropertyTaskModel.assigned_to == handle,
+        PropertyTaskModel.staff_id == handle,
+    ))
+
+
+def _identity_or_none():
+    """Resolve the request identity bundle; None when the token is missing/invalid."""
+    try:
+        return get_property_tasks_auth_bundle()
+    except Exception:
+        return None
 
 
 def _norm_task_status_category(status_val):
@@ -8072,12 +8166,21 @@ _PORTFOLIO_SEED_DONE: set = set()
 _PORTFOLIO_SEED_RUNNING: set = set()
 
 
+def _is_demo_seed_tenant(tenant_id) -> bool:
+    """Demo portfolio auto-seeding applies only to the demo/pilot tenants.
+    Freshly registered real tenants must stay clean and isolated."""
+    return tenant_id in (DEFAULT_TENANT_ID, "pilot-1", "pilot-2")
+
+
 def _kick_background_seed(tenant_id: str) -> None:
     """Start ensure_emergency_portfolio_and_tasks in a daemon thread.
 
     Safe to call on every request — will no-op if a seed is already running or
     has completed for this tenant within the current process lifetime.
+    Demo seeding never touches real registered tenants (see _is_demo_seed_tenant).
     """
+    if not _is_demo_seed_tenant(tenant_id):
+        return
     if tenant_id in _PORTFOLIO_SEED_DONE or tenant_id in _PORTFOLIO_SEED_RUNNING:
         return
     _PORTFOLIO_SEED_RUNNING.add(tenant_id)
@@ -10633,10 +10736,43 @@ def completed_today():
         session.close()
 
 
+def _slugify_tenant_name(name):
+    """Company name → URL/DB-safe tenant id base ('' when nothing usable, e.g. Hebrew-only)."""
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return s[:40]
+
+
+def _provision_tenant(session, company_name):
+    """Create a new isolated tenant row. Returns its id (always unique)."""
+    base = _slugify_tenant_name(company_name) or "company"
+    tenant_id = base
+    if session.query(TenantModel).filter_by(id=tenant_id).first():
+        tenant_id = f"{base}-{uuid.uuid4().hex[:6]}"
+    session.add(TenantModel(
+        id=tenant_id,
+        name=(company_name or "").strip() or tenant_id,
+        created_at=now_iso(),
+    ))
+    return tenant_id
+
+
 @app.route("/api/auth/register", methods=["POST"])
 def auth_register():
-    """Register a new user. Creates user in users table with hashed password."""
-    if not SessionLocal or not UserModel:
+    """
+    Register a new user with a clean, isolated tenant environment.
+
+    Body:
+      email, password                       — required
+      company / company_name / tenant_name  — display name for the new tenant
+      role                                  — 'client' (property owner, default) or 'worker'
+      worker_handle                         — optional; matches staff task assignment
+      company_code                          — workers only: existing tenant id to join
+                                              (from their manager) instead of a new tenant
+
+    Public registration can only yield 'client' or 'staff' roles — admin/manager
+    accounts are provisioned internally, never via this endpoint.
+    """
+    if not SessionLocal or not UserModel or not TenantModel:
         return jsonify({"error": "Auth unavailable"}), 500
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
@@ -10645,23 +10781,48 @@ def auth_register():
         return jsonify({"error": "Email required"}), 400
     if len(password) < 6:
         return jsonify({"error": "Password must be at least 6 characters"}), 400
-    reg_role = (data.get("role") or "staff").strip().lower()
-    if reg_role not in ("admin", "manager", "staff"):
+
+    # ── Role: public signup is Client/Owner or Worker only (no escalation) ────
+    raw_role = (data.get("role") or "client").strip().lower()
+    if raw_role in ("worker", "staff", "maintenance", "cleaner", "field"):
         reg_role = "staff"
-    if reg_role == "admin":
-        reg_role = "staff"
-    if reg_role == "operation":
-        reg_role = "staff"
+    else:
+        # 'client', 'owner', 'property_owner' and anything else → client
+        reg_role = "client"
+
+    company_name = (
+        data.get("company") or data.get("company_name")
+        or data.get("tenant_name") or data.get("hotel_name") or ""
+    ).strip()
+    company_code = (data.get("company_code") or data.get("join_tenant_id") or "").strip()
     worker_handle_reg = (data.get("worker_handle") or data.get("workerHandle") or "").strip()
+    # Workers need a handle for task assignment matching — default to email prefix.
+    if reg_role == "staff" and not worker_handle_reg:
+        worker_handle_reg = email.split("@")[0]
+
     session = SessionLocal()
     try:
         existing = session.query(UserModel).filter_by(email=email).first()
         if existing:
             return jsonify({"error": "Email already registered"}), 409
+
+        # ── Tenant resolution ─────────────────────────────────────────────────
+        if company_code:
+            # Worker joining an existing company by its tenant id.
+            join_tenant = session.query(TenantModel).filter_by(id=company_code).first()
+            if not join_tenant:
+                return jsonify({"error": "Company code not found — ask your manager for the correct code"}), 404
+            tenant_id = join_tenant.id
+            tenant_name = join_tenant.name or tenant_id
+        else:
+            # Fresh, isolated environment: brand-new tenant for this registrant.
+            tenant_id = _provision_tenant(session, company_name or email.split("@")[0])
+            tenant_name = company_name or tenant_id
+
         user_id = str(uuid.uuid4())
         user = UserModel(
             id=user_id,
-            tenant_id=DEFAULT_TENANT_ID,
+            tenant_id=tenant_id,
             email=email,
             password_hash=hash_password(password),
             role=reg_role,
@@ -10670,11 +10831,12 @@ def auth_register():
         )
         session.add(user)
         session.commit()
+
         now = datetime.now(timezone.utc)
         norm_role = _normalize_app_role(reg_role)
         payload = {
             "sub": user_id,
-            "tenant_id": DEFAULT_TENANT_ID,
+            "tenant_id": tenant_id,
             "role": norm_role,
             "email": email,
             "worker_handle": (worker_handle_reg.lower() if worker_handle_reg else None),
@@ -10683,14 +10845,19 @@ def auth_register():
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=JWT_EXP_HOURS)).timestamp()),
         }
+        print(f"[auth_register] ✅ user={email} role={norm_role} tenant={tenant_id!r} (new={not bool(company_code)})", flush=True)
         return jsonify({
             "token": encode_jwt(payload),
-            "tenant_id": DEFAULT_TENANT_ID,
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_name,
             "role": norm_role,
+            "email": email,
             "worker_handle": worker_handle_reg.lower() if worker_handle_reg else None,
         }), 201
     except Exception as e:
         session.rollback()
+        print(f"[auth_register] error: {e}", flush=True)
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
@@ -11660,6 +11827,12 @@ def create_property():
             _kick_background_seed(tenant_id)
         try:
             user_id = getattr(request, "user_id", None)
+            # RBAC: admin / manager / operation see every property in the tenant;
+            # client (property owner) and staff are restricted to rows whose
+            # owner_id matches their user_id (or is NULL = tenant-shared).
+            _ident = _identity_or_none()
+            if _ident and _ident.get("app_role") in ("admin", "manager", "operation"):
+                user_id = None
             try:
                 rooms = list_manual_rooms(tenant_id, owner_id=user_id)
             except Exception as _list_err:
@@ -11670,13 +11843,15 @@ def create_property():
             if rooms is None or not isinstance(rooms, list):
                 rooms = []
             portfolio_fallback = False
-            if not rooms:
-                # initial_properties: Bazaar + City Tower + ROOMS + 12× WeWork (15) — never empty body
+            if not rooms and _is_demo_seed_tenant(tenant_id):
+                # Demo tenant only: Bazaar + City Tower + ROOMS + 12× WeWork (15) — never empty body.
+                # Real registered tenants get a clean empty list (frontend shows onboarding).
                 initial_properties = _default_portfolio_seed_rooms()
                 rooms = [{**r, "tenant_id": tenant_id} for r in initial_properties if isinstance(r, dict)]
                 portfolio_fallback = True
             rooms = [_ensure_room_image_urls(r) for r in rooms if isinstance(r, dict)]
-            rooms = _ensure_demo_portfolio_properties(rooms)
+            if _is_demo_seed_tenant(tenant_id):
+                rooms = _ensure_demo_portfolio_properties(rooms)
             try:
                 plimit = request.args.get("limit")
                 poffset_raw = request.args.get("offset", "0") or "0"
@@ -11703,10 +11878,14 @@ def create_property():
             print(f"[create_property] GET list failed: {_prop_err!r}", flush=True)
             import traceback as _tb_prop
             _tb_prop.print_exc()
-            initial_properties = _default_portfolio_seed_rooms()
-            rooms = _ensure_demo_portfolio_properties(
-                [_ensure_room_image_urls({**r, "tenant_id": tenant_id}) for r in initial_properties if isinstance(r, dict)]
-            )
+            # Error recovery: demo tenants get the seed portfolio; real tenants get [].
+            if _is_demo_seed_tenant(tenant_id):
+                initial_properties = _default_portfolio_seed_rooms()
+                rooms = _ensure_demo_portfolio_properties(
+                    [_ensure_room_image_urls({**r, "tenant_id": tenant_id}) for r in initial_properties if isinstance(r, dict)]
+                )
+            else:
+                rooms = []
             try:
                 plimit = request.args.get("limit")
                 poffset_raw = request.args.get("offset", "0") or "0"
@@ -15145,6 +15324,11 @@ def property_tasks_api():
                 # tasks use plain room numbers ("302") that are never in the UUID room_ids
                 # list, which caused them to be silently dropped.
                 _pq = _property_tasks_query_for_tenant(session, tenant_id)
+                # RBAC: client / property-owner only sees tasks for properties they own.
+                # (Staff scoping is enforced separately via the forced worker filter above;
+                # admin / manager / operation keep full tenant visibility.)
+                if _pq is not None and identity.get("app_role") == "client":
+                    _pq = _rbac_scope_tasks_query(session, identity, _pq)
                 if _pq is not None:
                     if use_sql_pagination:
                         _pq = _pq.filter(
@@ -15848,7 +16032,13 @@ def _run_performance_agent(worker_name: str, completed_task_id: str = None):
         return
     session = SessionLocal()
     try:
-        rows = session.query(PropertyTaskModel).all()
+        # Filter by worker at the SQL level — never load the full cross-tenant table.
+        _paq = session.query(PropertyTaskModel)
+        if func is not None:
+            _paq = _paq.filter(func.lower(func.coalesce(PropertyTaskModel.staff_name, "")) == name_lc)
+        else:
+            _paq = _paq.filter(PropertyTaskModel.staff_name == worker_name)
+        rows = _paq.all()
         today = [r for r in rows
                  if (getattr(r, "staff_name", "") or "").lower().strip() == name_lc
                  and str(getattr(r, "created_at", "") or "")[:10] == today_str]
@@ -15936,6 +16126,9 @@ def worker_stats(worker_name):
     """
     if request.method == "OPTIONS":
         return Response(status=204)
+    identity = _identity_or_none()
+    if identity is None:
+        return jsonify({"error": "Unauthorized"}), 401
     if not SessionLocal or not PropertyTaskModel:
         return jsonify({"worker": worker_name, "tasks_today": 0, "tasks_done": 0,
                         "tasks_pending": 0, "avg_duration_minutes": None,
@@ -15943,9 +16136,18 @@ def worker_stats(worker_name):
 
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     name_lc = (worker_name or "").lower().strip()
+    # RBAC: a worker may only query their own stats; admin/manager/operation may query anyone.
+    if identity.get("app_role") == "staff":
+        own = _staff_handle_for_identity(identity)
+        if not own or name_lc != own:
+            return jsonify({"error": "Forbidden — workers can only view their own stats"}), 403
     session = SessionLocal()
     try:
-        rows = session.query(PropertyTaskModel).all()
+        # Tenant-scoped + worker-filtered in SQL — never a full cross-tenant table scan.
+        _wq = _property_tasks_query_for_tenant(session, identity["tenant_id"])
+        if func is not None:
+            _wq = _wq.filter(func.lower(func.coalesce(PropertyTaskModel.staff_name, "")) == name_lc)
+        rows = _wq.all() if _wq is not None else []
         today_tasks = [
             r for r in rows
             if (getattr(r, "staff_name", "") or "").lower().strip() == name_lc
@@ -16014,6 +16216,9 @@ def worker_productivity():
     """
     if request.method == "OPTIONS":
         return Response(status=204)
+    identity = _identity_or_none()
+    if identity is None:
+        return jsonify({"error": "Unauthorized"}), 401
     if not SessionLocal or not PropertyTaskModel:
         return jsonify([]), 200
 
@@ -16022,9 +16227,15 @@ def worker_productivity():
     try:
         _wlim = _property_tasks_query_limit()
         _wlim = _wlim if _wlim > 0 else 100000
-        rows = session.query(PropertyTaskModel).filter(
-            PropertyTaskModel.status.isnot(None)
-        ).order_by(PropertyTaskModel.created_at.desc()).limit(_wlim).all()
+        # RBAC: tenant-scoped; staff/client further narrowed to their own rows.
+        _wq = _property_tasks_query_for_tenant(session, identity["tenant_id"])
+        _wq = _rbac_scope_tasks_query(session, identity, _wq)
+        rows = (
+            _wq.filter(PropertyTaskModel.status.isnot(None))
+            .order_by(PropertyTaskModel.created_at.desc())
+            .limit(_wlim)
+            .all()
+        ) if _wq is not None else []
 
         # Group by staff_name, only today's tasks
         from collections import defaultdict
@@ -16100,13 +16311,20 @@ def admin_workers():
     """
     if request.method == "OPTIONS":
         return Response(status=204)
+    identity = _identity_or_none()
+    if identity is None:
+        return jsonify({"error": "Unauthorized"}), 401
+    # RBAC: workforce overview is for admin / manager / operation only.
+    if identity.get("app_role") not in ("admin", "manager", "operation"):
+        return jsonify({"error": "Forbidden — admin/manager access required"}), 403
     if not SessionLocal or not PropertyTaskModel:
         return jsonify([]), 200
 
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     session = SessionLocal()
     try:
-        all_tasks = session.query(PropertyTaskModel).all()
+        _aq = _property_tasks_query_for_tenant(session, identity["tenant_id"])
+        all_tasks = _aq.all() if _aq is not None else []
 
         # Group tasks by worker (staff_name, case-insensitive key)
         by_worker = {}
@@ -16531,6 +16749,12 @@ def dev_reset_worker_tasks(worker):
     """
     if request.method == "OPTIONS":
         return Response(status=204)
+    identity = _identity_or_none()
+    if identity is None:
+        return jsonify({"error": "Unauthorized"}), 401
+    # RBAC: destructive dev helper — admin / manager only, scoped to own tenant.
+    if identity.get("app_role") not in ("admin", "manager"):
+        return jsonify({"error": "Forbidden — admin access required"}), 403
     if not SessionLocal or not PropertyTaskModel:
         return jsonify({"error": "DB unavailable"}), 500
 
@@ -16540,7 +16764,8 @@ def dev_reset_worker_tasks(worker):
 
     session = SessionLocal()
     try:
-        rows = session.query(PropertyTaskModel).all()
+        _rq = _property_tasks_query_for_tenant(session, identity["tenant_id"])
+        rows = _rq.all() if _rq is not None else []
         updated = []
         for t in rows:
             sn = (getattr(t, "staff_name", "") or "").strip().lower()
@@ -18522,6 +18747,10 @@ def staff_list():
                     active_tasks[task.staff_id] = task
     finally:
         session.close()
+    # RBAC: list is tenant-scoped above; staff-role viewers get colleagues'
+    # phone numbers masked (admin / manager / operation see full PII).
+    _viewer = _auth_identity_for_pii()
+    _mask_for_viewer = (_viewer or {}).get("app_role") == "staff"
     out = []
     for record in records:
         task = active_tasks.get(record.id)
@@ -18531,7 +18760,7 @@ def staff_list():
             "id": record.id,
             "name": record.name,
             "role": getattr(record, "role", None) or "Staff",
-            "phone": record.phone,
+            "phone": _mask_phone_pii(record.phone) if _mask_for_viewer else record.phone,
             "active": bool(record.active),
             "on_shift": bool(record.on_shift),
             "status": status,

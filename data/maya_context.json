@@ -2,68 +2,56 @@
 "v": 1,
 "by_tenant": {
 "default": {
-"updated_at": 1780250600.125209,
-"total_open": 60,
+"updated_at": 1781162717.3771465,
+"total_open": 8,
 "active_tasks": [
 {
-"id": "669accdb-d954-4b65-9da3-736fc8614ce7",
-"description": "[SIM-ENGINE] מיני בר — מילוי מלאי חדר 122",
-"property_name": "Hotel Bazaar Jaffa",
+"id": "16dc9f3b-5967-42a3-95ce-172a2e927a9a",
+"description": "בקשת צ'ק-אאוט",
+"property_name": "room-room-march",
 "status": "Pending"
 },
 {
-"id": "831e2c9a-f538-4d32-8094-fbc1059d3696",
-"description": "[SIM-ENGINE] תחזוקה — בדיקת מזגן/מים חדר 121",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "6e396f99-0561-443e-b05a-ac065aab0ba6",
+"description": "Room 309: Bedroom light bulb burnt out",
+"property_name": "Sarah's Garden Suite",
+"status": "Assigned"
 },
 {
-"id": "8fdcb2c5-9fdc-49a5-bd04-f87a9ba14ac0",
-"description": "[SIM-ENGINE] ניקיון חדר 120 — לפי עומס תפוסה",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "ab485ed2-d3c7-48e9-acef-a81b0dcb2bf5",
+"description": "Room 301: Guest requests extra blankets",
+"property_name": "John's Beach House",
+"status": "Assigned"
 },
 {
-"id": "516a24b1-2537-40a0-b0c5-494e867791a5",
-"description": "[SIM-ENGINE] מיני בר — מילוי מלאי חדר 119",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "03bd5562-e876-46a9-b3fc-5df84bb454d0",
+"description": "Room 438: Dishwasher not completing cycle",
+"property_name": "Sarah's Cozy Cottage",
+"status": "Assigned"
 },
 {
-"id": "f0e9ff07-8876-45e2-bf53-7517ebb7eb31",
-"description": "[SIM-ENGINE] ניקיון חדר 118 — לפי עומס תפוסה",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "a9f1586f-a0be-4447-ba6f-76a3655c2f83",
+"description": "Room 239: Front door lock feels stiff",
+"property_name": "Sarah's Cozy Cottage",
+"status": "Assigned"
 },
 {
-"id": "ba340b75-5f7a-45a8-ba88-dbd057c62bba",
-"description": "[SIM-ENGINE] מיני בר — מילוי מלאי חדר 117",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "524de64c-b427-47e6-a3b0-2442bdc1a0d1",
+"description": "Room 354: Bathroom deep clean required",
+"property_name": "Sarah's Harbor View",
+"status": "Assigned"
 },
 {
-"id": "e3088146-03c9-4266-a592-926c925b04d4",
-"description": "[SIM-ENGINE] ניקיון חדר 116 — לפי עומס תפוסה",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "11309905-a016-45ba-9d37-c3e6971cbef2",
+"description": "Fix Sink",
+"property_name": "John's Beach House",
+"status": "Assigned"
 },
 {
-"id": "7e375d84-48b2-4e8a-8c6d-49a838aa8109",
-"description": "[SIM-ENGINE] תחזוקה — בדיקת מזגן/מים חדר 114",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
-},
-{
-"id": "1f48c0be-432b-49a9-8ab9-fbaf0634e36f",
-"description": "[SIM-ENGINE] ניקיון חדר 113 — לפי עומס תפוסה",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
-},
-{
-"id": "ac093934-3dd2-469d-87e8-fc8edeb0b84c",
-"description": "[SIM-ENGINE] ניקיון חדר 112 — לפי עומס תפוסה",
-"property_name": "Hotel Bazaar Jaffa",
-"status": "Pending"
+"id": "8bb3c694-10b3-402a-b66e-b1e197b4aa84",
+"description": "Clean Ocean Suite",
+"property_name": "John's Beach House",
+"status": "Assigned"
 }
 ]
 }
