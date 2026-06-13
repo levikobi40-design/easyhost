@@ -1556,27 +1556,96 @@ def _compress_image(file_stream, max_px=1200, quality=78):
         return file_stream.read(), None   # None ext = keep original ext
 
 
+# Opt-in only: Railway's default filesystem is EPHEMERAL (wiped on every redeploy),
+# so writing uploads to local disk loses them. Enable this ONLY when a persistent
+# volume is mounted at ./uploads. Default off → durable data-URI/Cloudinary storage.
+_PERSISTENT_UPLOADS = os.getenv("PERSISTENT_UPLOADS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _public_base_url():
+    """
+    Resolve the correct public base URL for building upload links.
+
+    Priority:
+      1. Explicit env (PUBLIC_BASE_URL / API_BASE_URL) when it is NOT localhost.
+      2. The current request host — works on Railway, custom domains, and proxies
+         without any env configuration.
+      3. Module-level API_BASE_URL as a last resort.
+
+    This prevents emitting broken http://127.0.0.1 links in production when the
+    API_BASE_URL env var was never set on the deployment.
+    """
+    env_base = (os.getenv("PUBLIC_BASE_URL") or os.getenv("API_BASE_URL") or "").rstrip("/")
+    if env_base and "127.0.0.1" not in env_base and "localhost" not in env_base:
+        return env_base
+    try:
+        host_base = (request.host_url or "").rstrip("/")
+        if host_base and "127.0.0.1" not in host_base and "localhost" not in host_base:
+            return host_base
+    except Exception:
+        pass
+    return env_base or API_BASE_URL
+
+
+def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
+    """
+    Persist already-compressed image bytes using the most DURABLE backend available
+    and return a string that is safe to store in the DB and render in <img src>:
+
+      1. Cloudinary           — CDN-backed HTTPS URL, survives redeploys (when configured).
+      2. Local disk /uploads  — only when PERSISTENT_UPLOADS=true (needs a mounted volume);
+                                URL host is derived from the live request, never localhost.
+      3. Inline base64 data URI (default) — survives Railway's ephemeral filesystem AND
+                                redeploys, and renders cross-origin (Netlify → Railway)
+                                with zero extra infrastructure. Ideal robust pilot fallback.
+    """
+    ext = (ext or "jpg").lower()
+    if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+        ext = "jpg"
+
+    # 1. Cloudinary — best option when configured.
+    if _CLOUDINARY_CONFIGURED:
+        try:
+            return _cloudinary_upload(data_bytes, folder=f"easyhost/{subfolder}")
+        except Exception as cdn_err:
+            print(f"[_persist_image_bytes] Cloudinary failed, falling back: {cdn_err}", flush=True)
+
+    # 2. Persistent local disk — opt-in (Railway's default FS is ephemeral).
+    if _PERSISTENT_UPLOADS:
+        try:
+            target_dir = os.path.join(UPLOAD_ROOT, str(tenant_id or "shared"), subfolder)
+            os.makedirs(target_dir, exist_ok=True)
+            unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
+            with open(os.path.join(target_dir, unique_name), "wb") as _fh:
+                _fh.write(data_bytes)
+            return f"{_public_base_url()}/uploads/{tenant_id or 'shared'}/{subfolder}/{unique_name}"
+        except Exception as disk_err:
+            print(f"[_persist_image_bytes] disk write failed, using data URI: {disk_err}", flush=True)
+
+    # 3. Inline data URI — always works, always persists.
+    import base64 as _b64
+    mime = "jpeg" if ext in ("jpg", "jpeg") else ext
+    b64 = _b64.b64encode(data_bytes).decode("ascii")
+    return f"data:image/{mime};base64,{b64}"
+
+
 def _save_base64_image(data_uri, tenant_id, subfolder="properties"):
     """
-    Convert a base64 data URI (data:image/...;base64,...) to a real file on disk.
-    Returns the public URL if successful, or the original data_uri string on failure.
-    Used so mobile clients can POST base64 images inside JSON without bloating the DB.
+    Normalise an inbound base64 data URI (data:image/...;base64,...) into a durable,
+    render-safe reference: a Cloudinary URL, a persistent-disk URL, or a re-compressed
+    data URI (see _persist_image_bytes). Non-data-URI inputs (existing http/https URLs)
+    pass straight through. Keeps the original string on any failure so the save still
+    succeeds.
     """
     if not data_uri or not str(data_uri).startswith("data:image/"):
         return data_uri
     try:
-        import base64 as _b64
         from io import BytesIO as _BytesIO
+        import base64 as _b64
         header, b64data = data_uri.split(",", 1)
         img_bytes = _b64.b64decode(b64data)
         compressed, new_ext = _compress_image(_BytesIO(img_bytes))
-        ext = new_ext or "jpg"
-        unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-        target_dir = os.path.join(UPLOAD_ROOT, str(tenant_id or "shared"), subfolder)
-        os.makedirs(target_dir, exist_ok=True)
-        with open(os.path.join(target_dir, unique_name), "wb") as _fh:
-            _fh.write(compressed)
-        return f"{API_BASE_URL}/uploads/{tenant_id or 'shared'}/{subfolder}/{unique_name}"
+        return _persist_image_bytes(compressed, new_ext or "jpg", tenant_id, subfolder)
     except Exception as _b64err:
         print(f"[_save_base64_image] conversion failed: {_b64err}", flush=True)
         return data_uri  # keep as-is so the property still saves
@@ -7063,6 +7132,8 @@ def _normalize_external_photo_url(url, name=None, pid=None):
     u = (url or "").strip()
     if not u:
         return _default_photo_url_for_property(name, pid)
+    if u.startswith("data:"):
+        return u  # inline base64 image — already render-safe
     if u.startswith("/assets/"):
         return BOUTIQUE_HOTEL_PLACEHOLDER
     if u.startswith("/uploads/") or (u.startswith("/") and not u.startswith("//")):
@@ -7119,6 +7190,10 @@ def _merge_description_gallery(main_text: str, urls: list) -> str:
 
 def _absolutize_property_image_url(purl: str, tenant_id: str) -> str:
     purl = (purl or "").strip()
+    # Inline data URIs and absolute URLs are already render-safe — pass through
+    # untouched (prepending /uploads/ would corrupt a base64 data URI).
+    if purl.startswith("data:") or purl.startswith("http"):
+        return purl
     if purl.startswith("/assets/"):
         purl = ""
     if purl and not purl.startswith("http"):
@@ -7151,15 +7226,19 @@ def list_manual_rooms(tenant_id, owner_id=None):
             except Exception:
                 am = []
             purl = (r.photo_url or "").strip()
-            if purl.startswith("/assets/"):
-                purl = ""
-            if purl and not purl.startswith("http"):
-                path = purl.lstrip("/")
-                if path.startswith("uploads/"):
-                    purl = f"{API_BASE_URL}/{path}"
-                else:
-                    purl = f"{API_BASE_URL}/uploads/{path}"
-            purl = _normalize_external_photo_url(purl, r.name, r.id)
+            if purl.startswith("data:"):
+                # Inline data URI — render-safe as-is, skip URL rewriting/normalisation.
+                pass
+            else:
+                if purl.startswith("/assets/"):
+                    purl = ""
+                if purl and not purl.startswith("http"):
+                    path = purl.lstrip("/")
+                    if path.startswith("uploads/"):
+                        purl = f"{API_BASE_URL}/{path}"
+                    else:
+                        purl = f"{API_BASE_URL}/uploads/{path}"
+                purl = _normalize_external_photo_url(purl, r.name, r.id)
             desc_main, gallery_urls = _split_description_gallery(r.description or "")
             pictures = []
             for gu in gallery_urls:
@@ -11518,25 +11597,10 @@ def upload_images():
             return jsonify({"error": f"Invalid file type: {f.filename}", "urls": []}), 400
 
         data, new_ext = _compress_image(f.stream)
-
-        url = None
-        if _CLOUDINARY_CONFIGURED:
-            try:
-                url = _cloudinary_upload(data, folder="easyhost/uploads")
-            except Exception as cdn_err:
-                print(f"[Cloudinary] Upload failed, falling back to local: {cdn_err}")
-
-        if not url:
-            # ── Local fallback ────────────────────────────────────────────────
-            ext = new_ext or (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg")
-            if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
-                ext = "jpg"
-            unique_name = f"{uuid.uuid4().hex}.{ext}"
-            file_path = os.path.join(UPLOAD_STATIC, unique_name)
-            with open(file_path, "wb") as _fh:
-                _fh.write(data)
-            url = f"{API_BASE_URL}/uploads/shared/{unique_name}"
-
+        fallback_ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
+        # Durable storage: Cloudinary → persistent disk (opt-in) → inline data URI.
+        # Never emits a localhost URL and survives Railway's ephemeral filesystem.
+        url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
         uploaded_urls.append(url)
 
     # ── Persist URLs to property if property_id provided ─────────────────────
@@ -11952,28 +12016,19 @@ def create_property():
 
         uploaded_urls = []
         if request.files:
-            os.makedirs(UPLOAD_ROOT, exist_ok=True)
-            prop_dir = os.path.join(UPLOAD_ROOT, tenant_id, "properties")
-            os.makedirs(prop_dir, exist_ok=True)
+            def _store_upload(f):
+                """Compress + persist a multipart file via the durable backend
+                (Cloudinary → persistent disk → data URI). Returns a render-safe URL."""
+                fallback_ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
+                data, new_ext = _compress_image(f.stream)
+                return _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="properties")
             for key in ("photo", "image"):
                 f = request.files.get(key)
                 if f and f.filename:
-                    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
-                    if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
-                        ext = "jpg"
-                    unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-                    f.save(os.path.join(prop_dir, unique_name))
-                    url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
-                    uploaded_urls.append(url)
+                    uploaded_urls.append(_store_upload(f))
             for f in (request.files.getlist("images") or request.files.getlist("files") or []):
                 if f and f.filename:
-                    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
-                    if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
-                        ext = "jpg"
-                    unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-                    f.save(os.path.join(prop_dir, unique_name))
-                    url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
-                    uploaded_urls.append(url)
+                    uploaded_urls.append(_store_upload(f))
             if uploaded_urls and not photo_url:
                 photo_url = uploaded_urls[0]
             if uploaded_urls:
