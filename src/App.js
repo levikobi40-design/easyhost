@@ -30,7 +30,7 @@ import BiktaDashboard from './components/bikta/BiktaDashboard';
 import MayaChat from './components/maya/MayaChat';
 import WorkerLogin from './components/auth/WorkerLogin';
 import { isBiktaNessZionaUser } from './utils/biktaUser';
-import { dashboardNavTier, isDashboardAdmin, isOperationRole } from './utils/dashboardRoles';
+import { resolveNavTier, isDashboardAdmin, isOperationRole } from './utils/dashboardRoles';
 import { startBackendHeartbeat } from './services/backendHeartbeat';
 import { checkPythonApiHealth, flushTaskUpdateQueue } from './services/api';
 import { API_URL } from './config';
@@ -161,7 +161,7 @@ function MainApp() {
 
   useEffect(() => {
     const isBazaarJaffa = activeTenantIdFromStore === 'BAZAAR_JAFFA';
-    const tier = dashboardNavTier(role);
+    const tier = resolveNavTier(role, authToken);
     const roleViews = isBazaarJaffa
       ? {
           admin: ['tasks', 'properties', 'bazaar-week', 'manualops', 'scheduler', 'godmode'],
@@ -181,7 +181,7 @@ function MainApp() {
     if (!allowed.includes(activeView)) {
       setActiveView(allowed[0]);
     }
-  }, [role, activeView, activeTenantIdFromStore]);
+  }, [role, authToken, activeView, activeTenantIdFromStore]);
 
   useEffect(() => {
     if (!authToken) return;
@@ -331,7 +331,7 @@ function MainApp() {
   }, [role]);
 
   const renderRoleView = () => {
-    const tier = dashboardNavTier(role);
+    const tier = resolveNavTier(role, authToken);
     if (tier === 'staff') {
       return <TaskCalendar key="staff-tasks" />;
     }
@@ -378,22 +378,6 @@ function MainApp() {
       sessionStorage.setItem('wc_passed', '1');
       setShowWelcome(false);
     }
-  }, [authToken]);
-
-  // Keep the dashboard role in sync with the JWT's role claim. The persisted
-  // Zustand `role` can drift from the real identity — most visibly on mobile,
-  // where a still-valid token lets the Welcome screen skip a fresh login and
-  // leaves a stale worker/`staff` role that locks Owners into the simplified
-  // task layout. Re-deriving from the token (the source of truth) unlocks the
-  // correct menu + dashboard on every device. Keyed on the token only, so an
-  // admin's in-session TopBar "mode preview" is preserved until the next reload.
-  useEffect(() => {
-    if (!authToken) return;
-    const claim = (parseJwtPayload(authToken)?.role || '').trim().toLowerCase();
-    if (claim && claim !== (role || '').trim().toLowerCase()) {
-      setRole(claim);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authToken]);
 
   /** Warm Flask — only runs when the user has a valid auth token. */
