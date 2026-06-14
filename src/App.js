@@ -95,24 +95,29 @@ function MainApp() {
     !authToken && !sessionStorage.getItem('wc_passed')
   );
 
+  // One-shot URL ?token= bootstrap. Guarded by a ref so it can NEVER run more
+  // than once per mount — this removes any possibility of a setState→re-render
+  // loop (React #185). All nav-tier decisions are derived purely via
+  // resolveNavTier(role, authToken); this effect only seeds the initial session.
+  const urlTokenHandledRef = useRef(false);
   useEffect(() => {
-    if (authToken) return;
+    if (urlTokenHandledRef.current || authToken) return;
     const params = new URLSearchParams(window.location.search);
     const tokenParam = params.get('token');
-    if (tokenParam) {
-      const payload = parseJwtPayload(tokenParam);
-      if (payload?.tenant_id) {
-        setActiveTenantId(payload.tenant_id);
-      }
-      const jwtRole = (payload?.role || '').trim();
-      if (jwtRole) {
-        setRole(jwtRole);
-      }
-      setAuthToken(tokenParam);
-      params.delete('token');
-      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
-      window.history.replaceState({}, '', next);
+    if (!tokenParam) return;
+    urlTokenHandledRef.current = true;
+    const payload = parseJwtPayload(tokenParam);
+    if (payload?.tenant_id) {
+      setActiveTenantId(payload.tenant_id);
     }
+    const jwtRole = (payload?.role || '').trim();
+    if (jwtRole) {
+      setRole(jwtRole);
+    }
+    setAuthToken(tokenParam);
+    params.delete('token');
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+    window.history.replaceState({}, '', next);
   }, [authToken, setAuthToken, setActiveTenantId, setRole]);
 
   useEffect(() => {
