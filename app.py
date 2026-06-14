@@ -1937,6 +1937,14 @@ ALLOW_DEMO_AUTH = os.getenv("ALLOW_DEMO_AUTH", "true").lower() == "true"   # pil
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"      # false = enforce Bearer JWT on protected routes
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default")
 
+# Demo/portfolio property seeding. DISABLED by default so deleted properties
+# never reappear after a Railway restart/redeploy. The old behaviour re-created
+# the 10 John/Sarah demo properties (seed_pilot_demo) + 15 Bazaar/ROOMS
+# properties (ensure_emergency_portfolio_and_tasks) on every boot, which is what
+# made manual deletions "come back". Set SEED_DEMO_DATA=true to re-enable, and
+# even then we only seed when the properties table is completely empty.
+SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "false").strip().lower() in ("1", "true", "yes", "on")
+
 
 def _warn_jwt_security_config():
     """Log the effective auth mode on every startup so the operator always knows
@@ -8415,7 +8423,14 @@ _PORTFOLIO_SEED_RUNNING: set = set()
 
 def _is_demo_seed_tenant(tenant_id) -> bool:
     """Demo portfolio auto-seeding applies only to the demo/pilot tenants.
-    Freshly registered real tenants must stay clean and isolated."""
+    Freshly registered real tenants must stay clean and isolated.
+
+    Entirely disabled unless SEED_DEMO_DATA=true. When off, NO tenant is treated
+    as a demo-seed tenant, so the dashboard's GET /api/properties never pads the
+    response back up to the 15-property seed portfolio — meaning a property the
+    operator deletes stays deleted on refresh (no more "reappear on refresh")."""
+    if not SEED_DEMO_DATA:
+        return False
     return tenant_id in (DEFAULT_TENANT_ID, "pilot-1", "pilot-2")
 
 
@@ -8446,11 +8461,39 @@ def _kick_background_seed(tenant_id: str) -> None:
     _bg_thr.Thread(target=_run, daemon=True).start()
 
 
+def _demo_seed_allowed(tenant_id=DEFAULT_TENANT_ID):
+    """
+    Gate for demo/portfolio property seeding. Returns True ONLY when:
+      • SEED_DEMO_DATA=true (explicit opt-in), AND
+      • the properties table for this tenant is completely empty.
+    This guarantees deleted properties never reappear after a restart/redeploy,
+    and that we never override manual deletions on a tenant that already has data.
+    """
+    if not SEED_DEMO_DATA:
+        return False
+    if not SessionLocal or not ManualRoomModel:
+        return False
+    session = SessionLocal()
+    try:
+        count = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).count()
+        return count == 0
+    except Exception:
+        return False
+    finally:
+        session.close()
+
+
 def ensure_emergency_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID):
     """
     Scale-ready seed: persist 15 properties (Bazaar + 14 ROOMS) with fixed Unsplash URLs + 80% occupancy,
     then ≥20 property_tasks (Cleaning / Maintenance / VIP Guest). Idempotent.
+
+    Disabled unless SEED_DEMO_DATA=true AND the tenant has zero properties — so it
+    never re-creates properties the user has manually deleted.
     """
+    if not _demo_seed_allowed(tenant_id):
+        print(f"[ensure_emergency_portfolio_and_tasks] Skipped — demo seeding disabled or tenant '{tenant_id}' not empty", flush=True)
+        return
     if not SessionLocal or not ManualRoomModel:
         return
     seed_props = _default_portfolio_seed_rooms()
@@ -9520,7 +9563,14 @@ def seed_pilot_demo():
 
     Robust: each insert is wrapped in its own try/except so a single failure
     (e.g. missing column) does not abort the entire seed run.
+
+    Disabled unless SEED_DEMO_DATA=true AND the properties table is empty — this
+    stops the 10 demo properties from reappearing after a Railway restart/redeploy
+    once the operator has deleted them.
     """
+    if not _demo_seed_allowed(DEFAULT_TENANT_ID):
+        print("[seed_pilot_demo] Skipped — demo seeding disabled or DB not empty", flush=True)
+        return
     if not SessionLocal or not ManualRoomModel:
         print("[seed_pilot_demo] Skipped — DB models not available")
         return
