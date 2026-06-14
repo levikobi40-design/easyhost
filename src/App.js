@@ -380,6 +380,22 @@ function MainApp() {
     }
   }, [authToken]);
 
+  // Keep the dashboard role in sync with the JWT's role claim. The persisted
+  // Zustand `role` can drift from the real identity — most visibly on mobile,
+  // where a still-valid token lets the Welcome screen skip a fresh login and
+  // leaves a stale worker/`staff` role that locks Owners into the simplified
+  // task layout. Re-deriving from the token (the source of truth) unlocks the
+  // correct menu + dashboard on every device. Keyed on the token only, so an
+  // admin's in-session TopBar "mode preview" is preserved until the next reload.
+  useEffect(() => {
+    if (!authToken) return;
+    const claim = (parseJwtPayload(authToken)?.role || '').trim().toLowerCase();
+    if (claim && claim !== (role || '').trim().toLowerCase()) {
+      setRole(claim);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken]);
+
   /** Warm Flask — only runs when the user has a valid auth token. */
   useEffect(() => {
     if (!authToken) return;

@@ -9,7 +9,7 @@ import useTranslations from '../../hooks/useTranslations';
 import easyhostLogoDark from '../../assets/easyhost-logo-dark.svg';
 import useStore from '../../store/useStore';
 import { AI_ASSISTANT_URL } from '../../utils/constants';
-import { dashboardNavTier } from '../../utils/dashboardRoles';
+import { resolveNavTier } from '../../utils/dashboardRoles';
 import StaffDirectory from './StaffDirectory';
 import StaffDirectoryErrorBoundary from './StaffDirectoryErrorBoundary';
 import './Sidebar.css';
@@ -59,7 +59,10 @@ const Sidebar = ({ activeView, setActiveView }) => {
     const tokenEmail = _emailFromJwt(authToken);
     const storeEmail = (user?.email || '').toLowerCase().trim();
     if (_ADMIN_EMAILS.has(tokenEmail) || _ADMIN_EMAILS.has(storeEmail)) return 'admin';
-    return dashboardNavTier(role);
+    // Resolve from the store role AND the JWT claim so a valid Owner token
+    // unlocks the full menu on mobile even before the App-level role re-sync
+    // runs (and even if the persisted role drifted to a stale worker value).
+    return resolveNavTier(role, authToken);
   }, [role, authToken, user]);
 
   const isBazaarJaffaTenant = activeTenantId === 'BAZAAR_JAFFA';
