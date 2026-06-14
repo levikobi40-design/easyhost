@@ -1732,6 +1732,87 @@ def _migrate_row_images_to_cloud(session, r):
     return changed
 
 
+def _strip_row_base64(session, r):
+    """
+    Last-resort de-bloat: remove inline base64 data URIs from a row (keeps the
+    property, drops the heavy inline image) so the DB stays lean even when a
+    Cloudinary migration is impossible (not configured, or a corrupt blob that
+    fails to upload). Returns True when the row was modified.
+    """
+    changed = False
+    if _is_data_uri(getattr(r, "photo_url", None)):
+        r.photo_url = ""
+        changed = True
+    main, gallery = _split_description_gallery(r.description or "")
+    if gallery and any(_is_data_uri(g) for g in gallery):
+        kept = [g for g in gallery if not _is_data_uri(g)]
+        r.description = _merge_description_gallery(main, kept)
+        changed = True
+    if changed:
+        try:
+            session.commit()
+        except Exception as _se:
+            session.rollback()
+            print(f"[strip_row_base64] commit failed for {getattr(r,'id',None)}: {_se}", flush=True)
+            return False
+    return changed
+
+
+def _debloat_base64_images(reason="boot"):
+    """
+    Scan manual_rooms for legacy base64 data URIs and de-bloat every offending row:
+    migrate the image to Cloudinary when configured, otherwise strip the inline blob.
+    This is what lets the DB "breathe" — oversized base64 text is what makes queries
+    (and therefore property writes/deletes) time out on Railway. Idempotent and safe
+    to run repeatedly: a clean DB matches zero rows and returns immediately.
+    Returns a small summary dict.
+    """
+    summary = {"scanned": 0, "migrated": 0, "stripped": 0, "failed": 0}
+    if not SessionLocal or not ManualRoomModel:
+        return summary
+    try:
+        session = SessionLocal()
+        try:
+            like = "%data:image/%"
+            rows = session.query(ManualRoomModel).filter(
+                or_(
+                    ManualRoomModel.photo_url.like(like),
+                    ManualRoomModel.description.like(like),
+                )
+            ).all()
+            summary["scanned"] = len(rows)
+            if not rows:
+                print(f"[debloat:{reason}] no base64 images found — DB is clean", flush=True)
+                return summary
+            print(f"[debloat:{reason}] found {len(rows)} bloated row(s) — cleaning…", flush=True)
+            for r in rows:
+                try:
+                    if _migrate_row_images_to_cloud(session, r):
+                        summary["migrated"] += 1
+                        continue
+                    # Cloudinary off or this blob failed to upload → strip the bloat.
+                    if _strip_row_base64(session, r):
+                        summary["stripped"] += 1
+                except Exception as _re:
+                    summary["failed"] += 1
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
+                    print(f"[debloat:{reason}] row {getattr(r,'id',None)} failed: {_re}", flush=True)
+            print(
+                f"[debloat:{reason}] done — migrated={summary['migrated']}, "
+                f"stripped={summary['stripped']}, failed={summary['failed']}",
+                flush=True,
+            )
+            return summary
+        finally:
+            session.close()
+    except Exception as e:
+        print(f"[debloat:{reason}] fatal: {e}", flush=True)
+        return summary
+
+
 # Serve uploaded files - must be early to avoid being shadowed
 UPLOAD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__) or ".", "uploads"))
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
@@ -12397,6 +12478,25 @@ def delete_property(property_id):
         session.close()
 
 
+@app.route("/api/admin/debloat-images", methods=["POST", "OPTIONS"])
+def admin_debloat_images():
+    """
+    Manually trigger the base64 → Cloudinary de-bloat sweep across manual_rooms.
+    Handy right after adding the Cloudinary env vars: cleans the DB on demand
+    without waiting for a redeploy. Admin/manager/operation only.
+    """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    if not AUTH_DISABLED:
+        ident = _identity_or_none()
+        if not ident:
+            return jsonify({"error": "Unauthorized"}), 401
+        if ident.get("app_role") not in ("admin", "manager", "operation"):
+            return jsonify({"error": "Forbidden"}), 403
+    summary = _debloat_base64_images("manual")
+    return jsonify({"ok": True, "cloudinary_configured": _CLOUDINARY_CONFIGURED, **summary}), 200
+
+
 def _normalize_rooms_branch_slug(raw):
     """Map Excel/UI branch labels to canonical rooms_branches.slug (ROOMS by Fattal)."""
     if raw is None:
@@ -20198,6 +20298,18 @@ def _do_startup_init():
         except Exception as _vip_e:
             print(f"[startup] ⚠️ VIP escalation watcher: {_vip_e}", flush=True)
         # run_hotel_ops_simulation_refresh is already invoked from _run_bootstrap_operational_data — avoid double DB churn.
+        # De-bloat: migrate/strip any legacy base64 images so queries stop timing out
+        # (the root cause of "fake deletes" + images not saving). Runs in its own
+        # daemon thread so a slow Cloudinary migration never blocks startup.
+        try:
+            threading.Thread(
+                target=lambda: _debloat_base64_images("boot"),
+                daemon=True,
+                name="ImageDebloat",
+            ).start()
+            print("[startup] ✅ image de-bloat task kicked", flush=True)
+        except Exception as _dbl_e:
+            print(f"[startup] ⚠️ image de-bloat kick failed: {_dbl_e}", flush=True)
         _sim_log(f"✅ Startup complete — DB: {db_label}", "success")
         print(f"[startup] 🚀 Server ready on port {os.environ.get('PORT', 1000)}")
         INIT_DONE = True
