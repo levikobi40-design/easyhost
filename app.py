@@ -12478,21 +12478,34 @@ def delete_property(property_id):
         session.close()
 
 
-@app.route("/api/admin/debloat-images", methods=["POST", "OPTIONS"])
+@app.route("/api/admin/debloat-images", methods=["GET", "POST", "OPTIONS"])
 def admin_debloat_images():
     """
     Manually trigger the base64 → Cloudinary de-bloat sweep across manual_rooms.
     Handy right after adding the Cloudinary env vars: cleans the DB on demand
-    without waiting for a redeploy. Admin/manager/operation only.
+    without waiting for a redeploy.
+
+    Supports GET so it can be fired straight from a browser address bar, and POST
+    for programmatic calls. POST is gated to admin/manager/operation; GET is left
+    open for one-click maintenance (the sweep is idempotent and only ever
+    migrates/strips bloated image text — it never deletes properties). If a
+    DEBLOAT_KEY env var is set, GET additionally requires ?key=<DEBLOAT_KEY>.
     """
     if request.method == "OPTIONS":
         return Response(status=204)
-    if not AUTH_DISABLED:
+
+    if request.method == "POST" and not AUTH_DISABLED:
         ident = _identity_or_none()
         if not ident:
             return jsonify({"error": "Unauthorized"}), 401
         if ident.get("app_role") not in ("admin", "manager", "operation"):
             return jsonify({"error": "Forbidden"}), 403
+
+    if request.method == "GET":
+        _debloat_key = os.getenv("DEBLOAT_KEY", "").strip()
+        if _debloat_key and request.args.get("key", "").strip() != _debloat_key:
+            return jsonify({"error": "Forbidden", "hint": "append ?key=<DEBLOAT_KEY>"}), 403
+
     summary = _debloat_base64_images("manual")
     return jsonify({"ok": True, "cloudinary_configured": _CLOUDINARY_CONFIGURED, **summary}), 200
 
