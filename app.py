@@ -12528,6 +12528,115 @@ def delete_property(property_id):
         session.close()
 
 
+@app.route("/api/admin/wipe-demo-properties", methods=["GET", "POST", "OPTIONS"])
+def admin_wipe_demo_properties():
+    """
+    One-shot cleanup so the operator can start from a clean slate.
+
+    GET so it can be fired straight from the browser address bar.
+
+    Scope:
+      • default     → removes ONLY the known demo/seed properties
+                      (DEMO_PILOT_PROPERTY_NAMES + the default portfolio seed names).
+      • ?all=true   → removes EVERY property for the tenant (full 100% clean slate).
+
+    Always cascades the child property_tasks + property_staff rows first to avoid
+    FK errors (same pattern as delete_property). POST is auth-gated
+    (admin/manager/operation); GET honors an optional DEBLOAT_KEY env guard.
+    """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    if request.method == "POST" and not AUTH_DISABLED:
+        ident = _identity_or_none()
+        if not ident:
+            return jsonify({"error": "Unauthorized"}), 401
+        if ident.get("app_role") not in ("admin", "manager", "operation"):
+            return jsonify({"error": "Forbidden"}), 403
+    if request.method == "GET":
+        _key = os.getenv("DEBLOAT_KEY", "").strip()
+        if _key and request.args.get("key", "").strip() != _key:
+            return jsonify({"error": "Forbidden", "hint": "append ?key=<DEBLOAT_KEY>"}), 403
+
+    if not SessionLocal or not ManualRoomModel:
+        return jsonify({"error": "Database unavailable"}), 500
+
+    # Resolve tenant the same way delete_property does.
+    tenant_id = DEFAULT_TENANT_ID
+    try:
+        if AUTH_DISABLED:
+            tenant_id, _ = get_auth_context_from_request()
+        else:
+            tenant_id = get_tenant_id_from_request() or DEFAULT_TENANT_ID
+    except Exception:
+        tenant_id = DEFAULT_TENANT_ID
+
+    wipe_all = request.args.get("all", "").strip().lower() in ("1", "true", "yes", "on")
+
+    # Build the set of known demo/seed property names.
+    demo_names = set(DEMO_PILOT_PROPERTY_NAMES or [])
+    try:
+        for r in _default_portfolio_seed_rooms():
+            if isinstance(r, dict) and r.get("name"):
+                demo_names.add(r["name"])
+    except Exception:
+        pass
+
+    session = SessionLocal()
+    deleted_props = deleted_tasks = deleted_staff = 0
+    try:
+        q = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id)
+        if not wipe_all:
+            q = q.filter(ManualRoomModel.name.in_(list(demo_names)))
+        rows = q.all()
+        for r in rows:
+            pid = r.id
+            if PropertyTaskModel:
+                try:
+                    deleted_tasks += session.query(PropertyTaskModel).filter(
+                        PropertyTaskModel.property_id == pid
+                    ).delete(synchronize_session=False)
+                except Exception as _te:
+                    print(f"[wipe-demo] task cascade warning {pid}: {_te}", flush=True)
+            if PropertyStaffModel:
+                try:
+                    deleted_staff += session.query(PropertyStaffModel).filter(
+                        PropertyStaffModel.property_id == pid
+                    ).delete(synchronize_session=False)
+                except Exception as _se:
+                    print(f"[wipe-demo] staff cascade warning {pid}: {_se}", flush=True)
+            session.delete(r)
+            deleted_props += 1
+        session.commit()
+        remaining = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).count()
+        try:
+            _STATUS_GRID_CACHE["ts"] = 0.0
+            _STATUS_GRID_CACHE["payload"] = None
+            _STATUS_GRID_CACHE["key"] = None
+        except Exception:
+            pass
+        print(
+            f"[wipe-demo] tenant={tenant_id} scope={'all' if wipe_all else 'demo-only'} "
+            f"deleted_props={deleted_props} tasks={deleted_tasks} staff={deleted_staff} remaining={remaining}",
+            flush=True,
+        )
+        return jsonify({
+            "ok": True,
+            "tenant_id": tenant_id,
+            "scope": "all" if wipe_all else "demo-only",
+            "deleted_properties": deleted_props,
+            "cascaded_tasks": deleted_tasks,
+            "cascaded_staff": deleted_staff,
+            "remaining_properties": remaining,
+            "hint": None if wipe_all else "Append ?all=true to wipe ALL properties for a 100% clean slate.",
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"[wipe-demo] error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
 @app.route("/api/admin/debloat-images", methods=["GET", "POST", "OPTIONS"])
 def admin_debloat_images():
     """
