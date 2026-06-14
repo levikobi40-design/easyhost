@@ -1651,6 +1651,87 @@ def _save_base64_image(data_uri, tenant_id, subfolder="properties"):
         return data_uri  # keep as-is so the property still saves
 
 
+def _is_data_uri(s):
+    return bool(s) and str(s).startswith("data:image/")
+
+
+def _maybe_migrate_image_to_cloud(url, tenant_id, subfolder="properties"):
+    """
+    Migrate a single inline base64 data URI to Cloudinary and return the clean
+    HTTPS URL. No-op (returns the input unchanged) when Cloudinary is not
+    configured or the input is already a normal URL. On any failure the original
+    string is returned so nothing is lost.
+    """
+    if not _CLOUDINARY_CONFIGURED or not _is_data_uri(url):
+        return url
+    try:
+        from io import BytesIO as _BytesIO
+        import base64 as _b64
+        _, b64data = str(url).split(",", 1)
+        img_bytes = _b64.b64decode(b64data)
+        compressed, _ext = _compress_image(_BytesIO(img_bytes))
+        return _cloudinary_upload(compressed, folder=f"easyhost/{subfolder}")
+    except Exception as _mig_err:
+        print(f"[migrate_image] data-URI → Cloudinary failed: {_mig_err}", flush=True)
+        return url
+
+
+# Process-local guard so concurrent GETs don't each re-attempt the same row's
+# migration before the write-back commits (avoids duplicate Cloudinary uploads).
+_IMG_MIGRATION_DONE = set()
+
+
+def _migrate_row_images_to_cloud(session, r):
+    """
+    Best-effort one-time migration: replace any inline base64 data URIs stored on a
+    manual_rooms row (photo_url + description gallery) with Cloudinary URLs and persist.
+    No-op unless Cloudinary is configured. Keeps the DB lean so list responses stay
+    small — base64 bloat is what exceeds Railway's memory and crashes the container.
+    Returns True when the row was modified.
+    """
+    if not _CLOUDINARY_CONFIGURED:
+        return False
+    rid = getattr(r, "id", None)
+    if rid in _IMG_MIGRATION_DONE:
+        return False
+    has_data_uri = _is_data_uri(getattr(r, "photo_url", None)) or (
+        "data:image/" in (getattr(r, "description", None) or "")
+    )
+    if not has_data_uri:
+        _IMG_MIGRATION_DONE.add(rid)
+        return False
+
+    tid = getattr(r, "tenant_id", None)
+    changed = False
+    if _is_data_uri(r.photo_url):
+        new_url = _maybe_migrate_image_to_cloud(r.photo_url, tid)
+        if new_url != r.photo_url:
+            r.photo_url = new_url
+            changed = True
+
+    main, gallery = _split_description_gallery(r.description or "")
+    if gallery and any(_is_data_uri(g) for g in gallery):
+        new_gallery, gal_changed = [], False
+        for g in gallery:
+            ng = _maybe_migrate_image_to_cloud(g, tid) if _is_data_uri(g) else g
+            new_gallery.append(ng)
+            gal_changed = gal_changed or (ng != g)
+        if gal_changed:
+            r.description = _merge_description_gallery(main, new_gallery)
+            changed = True
+
+    if changed:
+        try:
+            session.commit()
+            print(f"[migrate_row_images] ✅ migrated row {rid} → Cloudinary", flush=True)
+        except Exception as _ce:
+            session.rollback()
+            print(f"[migrate_row_images] commit failed for {rid}: {_ce}", flush=True)
+            return False
+    _IMG_MIGRATION_DONE.add(rid)
+    return changed
+
+
 # Serve uploaded files - must be early to avoid being shadowed
 UPLOAD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__) or ".", "uploads"))
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
@@ -7221,6 +7302,12 @@ def list_manual_rooms(tenant_id, owner_id=None):
         rows = q.all()
         out = []
         for r in rows:
+            # Self-heal: migrate any legacy base64 data URIs on this row to Cloudinary
+            # (no-op unless Cloudinary is configured) so the DB + responses stay lean.
+            try:
+                _migrate_row_images_to_cloud(session, r)
+            except Exception as _mig_e:
+                print(f"[list_manual_rooms] image migration skipped: {_mig_e}", flush=True)
             try:
                 am = json.loads(r.amenities) if r.amenities else []
             except Exception:
