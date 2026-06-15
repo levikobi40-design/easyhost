@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '../i18n';
+import { normalizeLang, isRtlLang } from '../utils/languages';
 
 // Main application store with Zustand
 export const useStore = create(
@@ -54,20 +55,28 @@ export const useStore = create(
       currency: process.env.REACT_APP_CURRENCY || 'USD',
       setCurrency: (currency) => set({ currency }),
 
-      // Language
+      // Language — supported set is market-INDEPENDENT (en/he/el/ar/hi/th/sq).
+      // The old market-based allow-list silently reset e.g. English→Hebrew in the
+      // IL market, which caused the language flicker. We now persist the exact
+      // chosen language to a dedicated localStorage key and mark it user-set so
+      // auto-detection (IP geo) never overrides an explicit choice.
       lang: 'en',
-      setLang: (lang) => {
-        const market = get().market === 'IL' ? 'IL' : 'US';
-        const allowed = market === 'IL' ? ['he', 'th', 'hi'] : ['en', 'he', 'es'];
-        const nextLang = allowed.includes(lang) ? lang : allowed[0];
+      langUserSet: false,
+      setLang: (lang, opts = {}) => {
+        const nextLang = normalizeLang(lang);
         i18n.changeLanguage(nextLang);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('easyhost_lang', nextLang); } catch (_) {}
+        }
         if (typeof document !== 'undefined') {
-          const dir = nextLang === 'he' ? 'rtl' : 'ltr';
+          const dir = isRtlLang(nextLang) ? 'rtl' : 'ltr';
           document.documentElement.dir = dir;
           document.body.dir = dir;
           document.documentElement.lang = nextLang;
         }
-        set({ lang: nextLang });
+        // opts.auto = true for automatic detection (IP geo) — does NOT flip the
+        // user-set flag, so a later explicit choice still wins and persists.
+        set(opts.auto ? { lang: nextLang } : { lang: nextLang, langUserSet: true });
       },
       
       // UI State — sidebar starts closed on mobile so it doesn't block the content
@@ -326,6 +335,7 @@ export const useStore = create(
       name: 'hotel-enterprise-storage',
       partialize: (state) => ({
         lang: state.lang,
+        langUserSet: state.langUserSet,
         currency: state.currency,
         role: state.role,
         sidebarOpen: state.sidebarOpen,

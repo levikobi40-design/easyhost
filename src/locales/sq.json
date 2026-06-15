@@ -20,13 +20,9 @@
     "godMode": "Operational Excellence"
   },
   "languages": {
-    "en": "English",
     "he": "Hebrew",
-    "el": "Greek",
-    "ar": "Arabic",
-    "hi": "Hindi",
-    "th": "Thai",
-    "sq": "Albanian"
+    "en": "English",
+    "el": "Greek"
   },
   "roles": {
     "host": "Host",

@@ -4,6 +4,7 @@ import { AlertTriangle, QrCode, MapPin, Zap, User } from 'lucide-react';
 import useStore from '../../store/useStore';
 import { isBiktaForcePhone, BIKTA_TENANT_ID, parseJwtPayload } from '../../utils/biktaUser';
 import { isDashboardAdmin } from '../../utils/dashboardRoles';
+import { LANGUAGE_OPTIONS, normalizeLang } from '../../utils/languages';
 import useTranslations from '../../hooks/useTranslations';
 import {
   setWorkerLanguage, registerStaff, getStaffTasks,
@@ -14,10 +15,10 @@ import { notifyFieldStaffStatusTap } from '../../utils/mayaBrain';
 import './FieldView.css';
 
 /* --- Constants --- */
-const MARKET_LANGUAGES = {
-  US: [{ code: 'en', label: 'EN' }, { code: 'es', label: 'ES' }],
-  IL: [{ code: 'he', label: 'HE' }, { code: 'th', label: 'TH' }, { code: 'hi', label: 'HI' }],
-};
+// Worker app supports the full enterprise language set so field cleaners can pick
+// their own language (e.g. Arabic / Albanian in Greece, Hindi in Dubai, Thai in
+// Thailand) regardless of the property's market.
+const WORKER_LANGUAGES = LANGUAGE_OPTIONS.map((o) => ({ code: o.code, label: o.label }));
 
 /* Issue categories: ASCII icons only */
 const ISSUE_CATEGORIES = [
@@ -151,15 +152,15 @@ const FieldView = ({ clockInOnly = false, autoClockInOnScan = false, clockInRedi
   const navigate = useNavigate();
   const { t } = useTranslations();
   const {
-    fieldLanguage, setFieldLanguage, market,
+    fieldLanguage, setFieldLanguage,
     staffProfile, setStaffProfile, addNotification,
     setActiveTenantIdKeepAuth,
     loginSuccess,
+    setLang,
     role: storeRole,
   } = useStore();
 
-  const marketKey = market === 'IL' ? 'IL' : 'US';
-  const languages  = MARKET_LANGUAGES[marketKey] || MARKET_LANGUAGES.US;
+  const languages = WORKER_LANGUAGES;
 
   const [staffIdInput,    setStaffIdInput]    = useState(staffProfile.staffId || '');
   const [staffNameInput,  setStaffNameInput]  = useState(staffProfile.name   || '');
@@ -240,9 +241,14 @@ const FieldView = ({ clockInOnly = false, autoClockInOnScan = false, clockInRedi
     if (!allowed.includes(fieldLanguage)) setFieldLanguage(allowed[0]);
   }, [fieldLanguage, languages, setFieldLanguage]);
 
+  // The worker's chosen language (or the language stored on their profile after
+  // login) drives BOTH the UI translation and the backend preference, so the
+  // Worker App renders in the cleaner's own language.
   useEffect(() => {
+    if (!fieldLanguage) return;
+    setLang(normalizeLang(fieldLanguage));
     setWorkerLanguage(fieldLanguage).catch(() => {});
-  }, [fieldLanguage]);
+  }, [fieldLanguage, setLang]);
 
   useEffect(() => {
     const stop = () => {

@@ -31,6 +31,7 @@ import MayaChat from './components/maya/MayaChat';
 import WorkerLogin from './components/auth/WorkerLogin';
 import { isBiktaNessZionaUser } from './utils/biktaUser';
 import { resolveNavTier, isDashboardAdmin, isOperationRole } from './utils/dashboardRoles';
+import { SUPPORTED_LANGS, isRtlLang } from './utils/languages';
 import { startBackendHeartbeat } from './services/backendHeartbeat';
 import { checkPythonApiHealth, flushTaskUpdateQueue } from './services/api';
 import { API_URL } from './config';
@@ -79,7 +80,7 @@ function MainApp() {
     role,
     hasHydrated,
     setLang,
-    market,
+    langUserSet,
     activeTenantId: activeTenantIdFromStore,
   } = useStore();
   const resetMayaChatForBazaar = useStore((s) => s.resetMayaChatForBazaar);
@@ -89,7 +90,7 @@ function MainApp() {
     process.env.REACT_APP_BIKTA_TENANT_ID ??
     'demo';
   const { i18n } = useTranslations();
-  const isRTL = lang === 'he';
+  const isRTL = isRtlLang(lang);
   const [activeView, setActiveView] = useState('dashboard');
   const [showWelcome, setShowWelcome] = useState(
     !authToken && !sessionStorage.getItem('wc_passed')
@@ -147,22 +148,25 @@ function MainApp() {
   useEffect(() => {
     if (sessionStorage.getItem('ip_geo_done')) return;
     sessionStorage.setItem('ip_geo_done', '1');
+    // Never auto-detect over an explicit, persisted user choice (the old code
+    // forced Hebrew for IL visitors, overriding a user who had picked English).
+    if (langUserSet) return;
     fetch('https://ipapi.co/json/', { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
+        if (langUserSet) return;
         if (data?.country_code === 'IL') {
-          setLang('he');
+          setLang('he', { auto: true });
         }
       })
       .catch(() => {});
-  }, [setLang]);
+  }, [setLang, langUserSet]);
 
   useEffect(() => {
-    const allowed = ['en', 'he', 'es', 'th', 'hi'];
-    if (!allowed.includes(lang)) {
+    if (!SUPPORTED_LANGS.includes(lang)) {
       setLang('en');
     }
-  }, [market, lang, setLang]);
+  }, [lang, setLang]);
 
   useEffect(() => {
     const isBazaarJaffa = activeTenantIdFromStore === 'BAZAAR_JAFFA';
