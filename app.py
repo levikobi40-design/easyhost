@@ -907,8 +907,10 @@ def _purge_legacy_demo_properties(tenant_id=DEFAULT_TENANT_ID):
         session.close()
 
 
-def seed_active_properties(tenant_id=DEFAULT_TENANT_ID):
+def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
     """Insert 3 Greece pilot properties + 3 pending worker tasks (idempotent)."""
+    if not force and not SEED_DEMO_DATA:
+        return {"properties": 0, "tasks": 0, "ok": True, "skipped": True}
     if not SessionLocal or not ManualRoomModel:
         return {"properties": 0, "tasks": 0, "ok": False}
     _purge_legacy_demo_properties(tenant_id)
@@ -1014,9 +1016,9 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID):
         session.close()
 
 
-def ensure_christos_corfu_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID):
+def ensure_christos_corfu_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID, force=False):
     """Alias — Christos seed used on boot and worker API."""
-    return seed_active_properties(tenant_id)
+    return seed_active_properties(tenant_id, force=force)
 
 
 def _is_junk_mock_property(room_or_dict):
@@ -2557,7 +2559,7 @@ JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
 #
 #   Old (unsafe) defaults:   AUTH_DISABLED=true   ALLOW_DEMO_AUTH=true
 #   New (secure) defaults:   AUTH_DISABLED=false  ALLOW_DEMO_AUTH=false
-ALLOW_DEMO_AUTH = os.getenv("ALLOW_DEMO_AUTH", "true").lower() == "true"   # pilot default: open demo token endpoint
+ALLOW_DEMO_AUTH = os.getenv("ALLOW_DEMO_AUTH", "false").lower() == "true"
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"      # false = enforce Bearer JWT on protected routes
 
 # Demo/portfolio property seeding. DISABLED by default so deleted properties
@@ -3383,8 +3385,11 @@ if create_engine and sessionmaker and declarative_base:
             Base.metadata.create_all(ENGINE)
             ensure_property_tasks_table()
             try:
-                seed_active_properties(DEFAULT_TENANT_ID)
-                print("[init_db] ✅ seed_active_properties: Christos + worker tasks", flush=True)
+                _seed_out = seed_active_properties(DEFAULT_TENANT_ID)
+                if isinstance(_seed_out, dict) and _seed_out.get("skipped"):
+                    print("[init_db] seed_active_properties skipped (SEED_DEMO_DATA=false)", flush=True)
+                else:
+                    print("[init_db] ✅ seed_active_properties: Christos + worker tasks", flush=True)
             except Exception as _cs_err:
                 print(f"[init_db] seed_active_properties note: {_cs_err}", flush=True)
             ensure_users_table()
@@ -3394,12 +3399,13 @@ if create_engine and sessionmaker and declarative_base:
             ensure_property_tasks_reporting_indexes()
             ensure_bookings_table()
             ensure_property_knowledge_table()
-            try:
-                ensure_builtin_property_knowledge_bsr_city()
-            except NameError:
-                pass
-            except Exception as _bsr_pk:
-                print(f"[init_db] BSR CITY property knowledge seed note: {_bsr_pk}")
+            if SEED_DEMO_DATA:
+                try:
+                    ensure_builtin_property_knowledge_bsr_city()
+                except NameError:
+                    pass
+                except Exception as _bsr_pk:
+                    print(f"[init_db] BSR CITY property knowledge seed note: {_bsr_pk}")
             # _seed_rooms_branches disabled — Christos pilot only
             print(f"[init_db] ✅ Schema ready on {db_label}")
         except Exception as _ie:
@@ -3686,6 +3692,8 @@ if create_engine and sessionmaker and declarative_base:
         Core knowledge: ROOMS BSR CITY Petah Tikva (BSR City Tower Y).
         Upserts into property_knowledge so Maya LIVE DATA includes specs + behavioral rules.
         """
+        if not SEED_DEMO_DATA:
+            return
         if not SessionLocal or not PropertyKnowledgeModel:
             return
         rid = "builtin-rooms-bsr-city-petah-tikva"
@@ -3800,7 +3808,8 @@ if ENGINE and Base:
             print(f"[app.py] manual_rooms.occupancy_rate ensure (non-fatal): {_occ_e}", flush=True)
         try:
             ensure_property_knowledge_table()
-            ensure_builtin_property_knowledge_bsr_city()
+            if SEED_DEMO_DATA:
+                ensure_builtin_property_knowledge_bsr_city()
         except NameError:
             pass
         except Exception as _pk_e:
@@ -6976,6 +6985,8 @@ def generate_hebrew_lead(index, source="airbnb"):
 
 
 def seed_hebrew_leads(count=5, tenant_id=None):
+    if not SEED_DEMO_DATA:
+        return
     tenant_id = tenant_id or DEFAULT_TENANT_ID
     with DATA_LOCK:
         if any(lead.get("tenant_id") == tenant_id for lead in LEADS):
@@ -7970,11 +7981,13 @@ def upsert_property_db(tenant_id, payload):
             session.close()
     if not name:
         name = "Property"
+    raw_pu = (payload.get("photo_url") or payload.get("photoUrl") or "").strip()
+    normalized_pu = _save_base64_image(raw_pu, tenant_id) if raw_pu else ""
     return create_manual_room(
         tenant_id,
         name,
         description=payload.get("description"),
-        photo_url=payload.get("photo_url") or payload.get("photoUrl"),
+        photo_url=normalized_pu,
         room_id=pid or None,
         status=(payload.get("status") or "active") or "active",
         amenities=payload.get("amenities"),
@@ -9093,7 +9106,7 @@ def purge_all_property_tasks(tenant_id=DEFAULT_TENANT_ID, reseed_christos=True):
     _DEMO_PROPERTY_TASKS_MEMORY.clear()
     reseeded = {"properties": 0, "tasks": 0}
     if reseed_christos:
-        reseeded = seed_active_properties(tenant_id)
+        reseeded = seed_active_properties(tenant_id, force=True)
     print(
         f"[purge_all_property_tasks] tasks_deleted={tasks_deleted} "
         f"props_deleted={props_deleted} reseed={reseeded}",
@@ -9159,9 +9172,9 @@ def _demo_seed_allowed(tenant_id=DEFAULT_TENANT_ID):
         session.close()
 
 
-def ensure_emergency_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID):
+def ensure_emergency_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID, force=False):
     """Christos Corfu pilot only — insert missing seeds; never delete user-created rows."""
-    return seed_active_properties(tenant_id)
+    return seed_active_properties(tenant_id, force=force)
 
 
 def ensure_bazaar_emergency_live_tasks(tenant_id=DEFAULT_TENANT_ID):
@@ -9726,6 +9739,8 @@ def load_leads_from_db():
 
 
 def ensure_default_tenants():
+    if not SEED_DEMO_DATA:
+        return
     if not SessionLocal or not TenantModel:
         return
     session = SessionLocal()
@@ -9749,6 +9764,8 @@ def ensure_default_tenants():
 
 
 def ensure_demo_user():
+    if not ALLOW_DEMO_AUTH:
+        return
     if not SessionLocal or not UserModel:
         return
     session = SessionLocal()
@@ -9770,6 +9787,8 @@ def ensure_demo_user():
 
 def ensure_levikobi_user():
     """HARD RESET: Delete levikobi40@gmail.com and re-create with password 123456, role admin."""
+    if _detect_production():
+        return
     if not SessionLocal or not UserModel:
         return
     session = SessionLocal()
@@ -9797,14 +9816,13 @@ def ensure_levikobi_user():
 def ensure_admin_from_env():
     """
     Create / update admin user from ADMIN_EMAIL + ADMIN_PASSWORD env vars.
-    Set these in Render → Environment Variables to configure the demo password
-    without touching code.
-    Falls back to levikobi40@gmail.com / 123456 if env vars are absent.
+    Set these in Render → Environment Variables to bootstrap the first admin
+    without touching code. No-op when either variable is missing.
     """
     admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
     admin_pass  = os.getenv("ADMIN_PASSWORD", "").strip()
     if not admin_email or not admin_pass:
-        return  # nothing to do — levikobi user already seeded separately
+        return
     if not SessionLocal or not UserModel:
         return
     session = SessionLocal()
@@ -9873,7 +9891,7 @@ def initialize_demo_data():
     """Christos Corfu pilot only — no 15-property demo simulation."""
     try:
         _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
-        out = seed_active_properties(DEFAULT_TENANT_ID)
+        out = seed_active_properties(DEFAULT_TENANT_ID, force=True)
         return {"ok": True, **(out if isinstance(out, dict) else {})}
     except Exception as e:
         print(f"[initialize_demo_data] {e}", flush=True)
@@ -10209,7 +10227,7 @@ def runPilotSimulation() -> dict:
     # 2 — Christos pilot seed only
     try:
         _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
-        seed_active_properties(DEFAULT_TENANT_ID)
+        seed_active_properties(DEFAULT_TENANT_ID, force=True)
         if SessionLocal and ManualRoomModel:
             s = SessionLocal()
             try:
@@ -10617,19 +10635,18 @@ def init_db_browser():
     else:
         log("[init-db] ⚠️  Database engine not available — check SQLAlchemy install")
 
-    # ── 1b. Seed admin user (levikobi40@gmail.com / 123456) ──────────────────
+    # ── 1b. Bootstrap admin from ADMIN_EMAIL + ADMIN_PASSWORD ───────────────
     try:
-        ensure_levikobi_user()
         ensure_admin_from_env()
-        log("[init-db] ✅ Admin user levikobi40@gmail.com ready (pw: 123456)")
+        log("[init-db] ✅ Admin bootstrap via ADMIN_EMAIL + ADMIN_PASSWORD (when configured)")
     except Exception as e:
-        log(f"[init-db] ⚠️  Admin seed warning: {e}")
+        log(f"[init-db] ⚠️  Admin bootstrap warning: {e}")
 
     # ── 2. Christos Corfu pilot (3 properties) ───────────────────────────────
     prop_count = 0
     try:
         _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
-        seed_active_properties(DEFAULT_TENANT_ID)
+        seed_active_properties(DEFAULT_TENANT_ID, force=True)
         if SessionLocal and ManualRoomModel:
             s = SessionLocal()
             try:
@@ -10736,6 +10753,14 @@ def run_pilot_endpoint():
     Also accepts an optional query param:
       ?reset=1  → stop + wipe mock-staff tasks before restarting
     """
+    if not AUTH_DISABLED:
+        try:
+            identity = get_property_tasks_auth_bundle()
+        except Exception as exc:
+            msg = str(exc).strip() or "Unauthorized"
+            return jsonify({"error": msg}), 401
+        if identity.get("app_role") != "admin":
+            return jsonify({"error": "Forbidden — admin required"}), 403
     if request.args.get("reset") == "1":
         stop_pilot_simulation()
         if SessionLocal and PropertyTaskModel:
@@ -16166,8 +16191,6 @@ def property_tasks_api():
     try:
         if request.method == "GET":
             try:
-                seed_active_properties(tenant_id)
-                _repair_christos_seed_tasks(session, tenant_id)
                 # Optional ?worker=levikobi filter — used by WorkerView for server-side filtering
                 worker_filter = (
                     (request.args.get("worker") or request.args.get("worker_id") or "").strip().lower()
@@ -17809,7 +17832,6 @@ def api_worker_tasks_compat():
 
     session = SessionLocal()
     try:
-        seed_active_properties(tenant_id)
         tasks = _query_worker_portal_tasks(
             session, tenant_id, worker_filter=worker_filter, active_only=active_only
         )
@@ -18377,7 +18399,7 @@ def _run_bootstrap_operational_data(tenant_id=None, user_id=None):
     except Exception as e:
         steps.append({"christos_integrity_wipe": str(e)})
     try:
-        out = seed_active_properties(tid)
+        out = seed_active_properties(tid, force=True)
         steps.append({"seed_active_properties": out})
     except Exception as e:
         steps.append({"seed_active_properties": str(e)})
@@ -21509,23 +21531,14 @@ def _do_startup_init():
             try:
                 init_db()
                 print(f"[startup] ✅ Connected to {db_label} successfully — tables ready")
-                ensure_default_tenants()
+                if SEED_DEMO_DATA:
+                    ensure_default_tenants()
                 ensure_demo_user()
-                ensure_levikobi_user()
                 ensure_admin_from_env()
             except Exception as _db_err:
                 print(f"[startup] ⚠️  DB init failed ({db_label}): {_db_err}")
                 print("[startup]    Server will start anyway — visit /db-status for details.")
                 print("[startup]    If using Supabase: fill in real credentials in .env")
-            # Pilot portfolio seed — insert missing Christos rows only; never wipe user properties.
-            try:
-                seed_active_properties(DEFAULT_TENANT_ID)
-                _sc = _db_manual_room_count(DEFAULT_TENANT_ID)
-                _si = _db_manual_room_ids(DEFAULT_TENANT_ID)
-                print(f"[startup] ✅ christos seed (no property purge) pid={os.getpid()} db_count={_sc}", flush=True)
-                print(f"[Properties API] startup count={_sc} ids={_si}", flush=True)
-            except Exception as _spd:
-                print(f"[startup] ⚠️ christos seed: {_spd}", flush=True)
             for _name, _fn in (
                 ("load_leads_from_db", lambda: load_leads_from_db()),
             ):
@@ -21542,10 +21555,11 @@ def _do_startup_init():
             pass  # mock tasks disabled — Christos pilot only
         except Exception as _mt:
             print(f"[startup] ⚠️  mock tasks: {_mt}", flush=True)
-        try:
-            seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
-        except Exception:
-            pass
+        if SEED_DEMO_DATA:
+            try:
+                seed_hebrew_leads(tenant_id=DEFAULT_TENANT_ID)
+            except Exception:
+                pass
         try:
             start_message_workers()
         except Exception as _mw_err:
