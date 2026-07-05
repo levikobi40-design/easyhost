@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
     },
     envPrefix: ['REACT_APP_', 'VITE_'],
     define: processEnvDefine,
+    build: {
+      outDir: 'build',
+      emptyOutDir: true,
+    },
     server: {
       host: '127.0.0.1',
       port: VITE_PORT,
