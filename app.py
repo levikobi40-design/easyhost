@@ -4668,6 +4668,36 @@ def _identity_or_none():
         return None
 
 
+def _guard_property_mutation_auth():
+    """
+    Auth gate for property create/update/delete.
+    Sets request.tenant_id and request.user_id from JWT/context only — never from body.
+    When AUTH_DISABLED=True, preserves legacy dev/demo workflow (no role gate).
+    Returns None on success, or (response, status_code) on failure.
+    """
+    if AUTH_DISABLED:
+        try:
+            tenant_id, user_id = get_auth_context_from_request()
+        except Exception:
+            tenant_id, user_id = DEFAULT_TENANT_ID, f"demo-{DEFAULT_TENANT_ID}"
+        tenant_id = _coerce_demo_tenant_id(tenant_id)
+        request.tenant_id = tenant_id
+        request.user_id = user_id
+        return None
+    try:
+        identity = get_property_tasks_auth_bundle()
+    except Exception as exc:
+        msg = str(exc).strip() or "Unauthorized"
+        return jsonify({"error": msg}), 401
+    if identity.get("app_role") not in ("admin", "manager"):
+        return jsonify({"error": "Forbidden — admin or manager required"}), 403
+    tenant_id = _coerce_demo_tenant_id(identity.get("tenant_id") or DEFAULT_TENANT_ID)
+    user_id = (identity.get("user_id") or "").strip() or f"demo-{tenant_id}"
+    request.tenant_id = tenant_id
+    request.user_id = user_id
+    return None
+
+
 def _norm_task_status_category(status_val):
     """Map DB status to pending | in_progress | done (aligned with frontend taskStatusRank)."""
     raw = (status_val or "").strip().lower().replace(" ", "_")
@@ -11981,30 +12011,30 @@ def create_property():
     """GET /api/properties — list manual_rooms + auto-seed. POST: create. Active connectivity endpoint."""
     if request.method == "OPTIONS":
         return Response(status=204)
-    tenant_id = DEFAULT_TENANT_ID
-    if not AUTH_DISABLED:
-        try:
-            tenant_id = get_tenant_id_from_request()
-            if not tenant_id and ALLOW_DEMO_AUTH:
-                tenant_id = DEFAULT_TENANT_ID
-            if not tenant_id:
-                return jsonify({"error": "Unauthorized"}), 401
-            request.tenant_id = tenant_id
-        except Exception as e:
-            return jsonify({"error": str(e)}), 401
-    else:
-        try:
-            tenant_id, _ = get_auth_context_from_request()
-        except Exception:
-            tenant_id = DEFAULT_TENANT_ID
-        request.tenant_id = tenant_id
-    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
-    try:
-        _, request.user_id = get_auth_context_from_request()
-    except Exception:
-        request.user_id = f"demo-{tenant_id}"
 
     if request.method == "GET":
+        tenant_id = DEFAULT_TENANT_ID
+        if not AUTH_DISABLED:
+            try:
+                tenant_id = get_tenant_id_from_request()
+                if not tenant_id and ALLOW_DEMO_AUTH:
+                    tenant_id = DEFAULT_TENANT_ID
+                if not tenant_id:
+                    return jsonify({"error": "Unauthorized"}), 401
+                request.tenant_id = tenant_id
+            except Exception as e:
+                return jsonify({"error": str(e)}), 401
+        else:
+            try:
+                tenant_id, _ = get_auth_context_from_request()
+            except Exception:
+                tenant_id = DEFAULT_TENANT_ID
+            request.tenant_id = tenant_id
+        tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+        try:
+            _, request.user_id = get_auth_context_from_request()
+        except Exception:
+            request.user_id = f"demo-{tenant_id}"
         # Never return 204 on GET — always JSON 200 (OPTIONS alone uses 204 for CORS).
         if ENGINE and ManualRoomModel:
             # Non-blocking: seed runs at most once per tenant per process lifetime.
@@ -12095,6 +12125,10 @@ def create_property():
             resp.headers["X-Portfolio-Fallback"] = "1"
             resp.headers["X-Portfolio-Error-Recovery"] = "1"
             return resp, 200
+
+    guard = _guard_property_mutation_auth()
+    if guard:
+        return guard
 
     print("[create_property] Received keys:", list((request.get_json(silent=True) or {}).keys()), "files:", list(request.files.keys()) if request.files else [])
     try:
@@ -12271,27 +12305,27 @@ def update_property(property_id):
     pid = str(property_id).strip() if property_id is not None else ""
     if not pid:
         return jsonify({"error": "Missing property id"}), 400
-    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
-    if not AUTH_DISABLED:
-        try:
-            tenant_id = get_tenant_id_from_request()
-            if not tenant_id and ALLOW_DEMO_AUTH:
-                tenant_id = DEFAULT_TENANT_ID
-            if not tenant_id:
-                return jsonify({"error": "Unauthorized"}), 401
-            request.tenant_id = tenant_id
-        except Exception:
-            return jsonify({"error": "Unauthorized"}), 401
-    else:
-        try:
-            tenant_id, _ = get_auth_context_from_request()
-        except Exception:
-            tenant_id = DEFAULT_TENANT_ID
-        request.tenant_id = tenant_id
-    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
-    if not SessionLocal or not ManualRoomModel:
-        return jsonify({"error": "Database unavailable"}), 500
     if request.method == "GET":
+        tenant_id = DEFAULT_TENANT_ID
+        if not AUTH_DISABLED:
+            try:
+                tenant_id = get_tenant_id_from_request()
+                if not tenant_id and ALLOW_DEMO_AUTH:
+                    tenant_id = DEFAULT_TENANT_ID
+                if not tenant_id:
+                    return jsonify({"error": "Unauthorized"}), 401
+                request.tenant_id = tenant_id
+            except Exception:
+                return jsonify({"error": "Unauthorized"}), 401
+        else:
+            try:
+                tenant_id, _ = get_auth_context_from_request()
+            except Exception:
+                tenant_id = DEFAULT_TENANT_ID
+            request.tenant_id = tenant_id
+        tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+        if not SessionLocal or not ManualRoomModel:
+            return jsonify({"error": "Database unavailable"}), 500
         try:
             rooms = list_manual_rooms(tenant_id, owner_id=None)
             for rr in rooms:
@@ -12301,18 +12335,21 @@ def update_property(property_id):
         except Exception as e:
             print("[get_property] Error:", e, flush=True)
             return jsonify({"error": str(e)}), 500
+    guard = _guard_property_mutation_auth()
+    if guard:
+        return guard
+    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+    if not SessionLocal or not ManualRoomModel:
+        return jsonify({"error": "Database unavailable"}), 500
     try:
         data = request.get_json(silent=True) or {}
         session = SessionLocal()
         try:
             room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
-            if not room:
-                # Tenant-drift fallback: look up by id alone.
-                # Handles legacy rows whose tenant_id was coerced differently
-                # (e.g. 'BAZAAR_JAFFA' → 'default') across app restarts.
+            if not room and AUTH_DISABLED:
+                # Dev-only: legacy rows may use a different tenant_id slug.
                 room = session.query(ManualRoomModel).filter_by(id=pid).first()
                 if room:
-                    # Adopt the stored tenant so subsequent writes stay consistent.
                     tenant_id = room.tenant_id
                     print(
                         f"[update_property] tenant-drift resolved for id={pid!r}: "
@@ -12431,31 +12468,17 @@ def delete_property(property_id):
         pid = str(property_id).strip() if property_id else ""
     if not pid:
         return jsonify({"error": "Missing property id"}), 400
-    tenant_id = DEFAULT_TENANT_ID
-    if not AUTH_DISABLED:
-        try:
-            tenant_id = get_tenant_id_from_request()
-            if not tenant_id and ALLOW_DEMO_AUTH:
-                tenant_id = DEFAULT_TENANT_ID
-            if not tenant_id:
-                return jsonify({"error": "Unauthorized"}), 401
-            request.tenant_id = tenant_id
-        except Exception:
-            return jsonify({"error": "Unauthorized"}), 401
-    else:
-        try:
-            tenant_id, _ = get_auth_context_from_request()
-        except Exception:
-            tenant_id = DEFAULT_TENANT_ID
-        request.tenant_id = tenant_id
+    guard = _guard_property_mutation_auth()
+    if guard:
+        return guard
     tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
     if not SessionLocal or not ManualRoomModel:
         return jsonify({"error": "Database unavailable"}), 500
     session = SessionLocal()
     try:
         room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
-        if not room:
-            # Tenant-drift fallback: look up by id alone (handles seeded rows with a different tenant_id)
+        if not room and AUTH_DISABLED:
+            # Dev-only tenant-drift fallback for legacy seeded rows.
             room = session.query(ManualRoomModel).filter_by(id=pid).first()
         if not room:
             return jsonify({"error": "Property not found", "id": pid}), 404
