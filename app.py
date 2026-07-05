@@ -2139,6 +2139,25 @@ def _compress_image(file_stream, max_px=1200, quality=78):
 # volume is mounted at ./uploads. Default off → durable data-URI/Cloudinary storage.
 _PERSISTENT_UPLOADS = os.getenv("PERSISTENT_UPLOADS", "false").strip().lower() in ("1", "true", "yes", "on")
 
+IMAGE_STORAGE_NOT_CONFIGURED_MSG = "Image storage is not configured"
+
+
+class ImageStorageNotConfiguredError(Exception):
+    """Raised when production cannot persist uploads without Cloudinary or persistent disk."""
+
+
+def _image_storage_configured():
+    return _CLOUDINARY_CONFIGURED or _PERSISTENT_UPLOADS
+
+
+def _image_storage_error_response(status_code=500):
+    return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), status_code
+
+
+def _production_image_storage_required():
+    """Production hosts must not persist inline base64 (uses full platform detection)."""
+    return _detect_production()
+
 
 def _public_base_url():
     """
@@ -2187,6 +2206,8 @@ def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
             return _cloudinary_upload(data_bytes, folder=f"easyhost/{subfolder}")
         except Exception as cdn_err:
             print(f"[_persist_image_bytes] Cloudinary failed, falling back: {cdn_err}", flush=True)
+            if _production_image_storage_required() and not _PERSISTENT_UPLOADS:
+                raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG) from cdn_err
 
     # 2. Persistent local disk — opt-in (Railway's default FS is ephemeral).
     if _PERSISTENT_UPLOADS:
@@ -2198,9 +2219,13 @@ def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
                 _fh.write(data_bytes)
             return f"{_public_base_url()}/uploads/{tenant_id or 'shared'}/{subfolder}/{unique_name}"
         except Exception as disk_err:
-            print(f"[_persist_image_bytes] disk write failed, using data URI: {disk_err}", flush=True)
+            print(f"[_persist_image_bytes] disk write failed: {disk_err}", flush=True)
+            if _production_image_storage_required():
+                raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG) from disk_err
 
-    # 3. Inline data URI — always works, always persists.
+    # 3. Inline data URI — dev-only fallback; never store base64 in production DB.
+    if _production_image_storage_required():
+        raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG)
     import base64 as _b64
     mime = "jpeg" if ext in ("jpg", "jpeg") else ext
     b64 = _b64.b64encode(data_bytes).decode("ascii")
@@ -2210,23 +2235,31 @@ def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
 def _save_base64_image(data_uri, tenant_id, subfolder="properties"):
     """
     Normalise an inbound base64 data URI (data:image/...;base64,...) into a durable,
-    render-safe reference: a Cloudinary URL, a persistent-disk URL, or a re-compressed
-    data URI (see _persist_image_bytes). Non-data-URI inputs (existing http/https URLs)
-    pass straight through. Keeps the original string on any failure so the save still
-    succeeds.
+    render-safe reference: a Cloudinary URL, a persistent-disk URL, or (dev only) a
+    re-compressed data URI. Non-data-URI inputs (existing http/https /uploads URLs)
+    pass straight through.
     """
     if not data_uri or not str(data_uri).startswith("data:image/"):
         return data_uri
+    if _production_image_storage_required() and not _image_storage_configured():
+        raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG)
     try:
         from io import BytesIO as _BytesIO
         import base64 as _b64
         header, b64data = data_uri.split(",", 1)
         img_bytes = _b64.b64decode(b64data)
         compressed, new_ext = _compress_image(_BytesIO(img_bytes))
-        return _persist_image_bytes(compressed, new_ext or "jpg", tenant_id, subfolder)
+        result = _persist_image_bytes(compressed, new_ext or "jpg", tenant_id, subfolder)
+        if _production_image_storage_required() and _is_data_uri(result):
+            raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG)
+        return result
+    except ImageStorageNotConfiguredError:
+        raise
     except Exception as _b64err:
+        if _production_image_storage_required():
+            raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG) from _b64err
         print(f"[_save_base64_image] conversion failed: {_b64err}", flush=True)
-        return data_uri  # keep as-is so the property still saves
+        return data_uri  # dev-only: keep as-is so the property still saves
 
 
 def _is_data_uri(s):
@@ -7899,7 +7932,8 @@ def upsert_property_db(tenant_id, payload):
                 if "description" in payload:
                     row.description = (payload.get("description") or "") or ""
                 if "photo_url" in payload or "photoUrl" in payload:
-                    row.photo_url = (payload.get("photo_url") or payload.get("photoUrl") or "") or ""
+                    raw_pu = (payload.get("photo_url") or payload.get("photoUrl") or "") or ""
+                    row.photo_url = _save_base64_image(raw_pu, tenant_id) if raw_pu else ""
                 if "amenities" in payload:
                     row.amenities = json.dumps(payload.get("amenities") or [])
                 if "status" in payload:
@@ -11813,6 +11847,9 @@ def upload_images():
     if not files:
         return jsonify({"error": "Missing files", "urls": []}), 400
 
+    if _production_image_storage_required() and not _image_storage_configured():
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
+
     property_id = (request.form.get("property_id") or "").strip() or None
     tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
 
@@ -11826,9 +11863,12 @@ def upload_images():
 
         data, new_ext = _compress_image(f.stream)
         fallback_ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
-        # Durable storage: Cloudinary → persistent disk (opt-in) → inline data URI.
-        # Never emits a localhost URL and survives Railway's ephemeral filesystem.
-        url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
+        try:
+            url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
+        except ImageStorageNotConfiguredError:
+            return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
+        if _production_image_storage_required() and _is_data_uri(url):
+            return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
         uploaded_urls.append(url)
 
     # ── Persist URLs to property if property_id provided ─────────────────────
@@ -11883,26 +11923,17 @@ def room_photo_upload():
     if not file or not file.filename:
         return jsonify({"error": "Invalid file"}), 400
 
+    if _production_image_storage_required() and not _image_storage_configured():
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+
     data, new_ext = _compress_image(file.stream)
-
-    photo_url = None
-    if _CLOUDINARY_CONFIGURED:
-        try:
-            photo_url = _cloudinary_upload(data, folder=f"easyhost/properties/{tenant_id}")
-        except Exception as cdn_err:
-            print(f"[Cloudinary] Property photo upload failed, falling back to local: {cdn_err}")
-
-    if not photo_url:
-        # ── Local fallback ────────────────────────────────────────────────────
-        os.makedirs(UPLOAD_ROOT, exist_ok=True)
-        tenant_dir = os.path.join(UPLOAD_ROOT, tenant_id, "properties")
-        os.makedirs(tenant_dir, exist_ok=True)
-        orig_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-        ext = new_ext or orig_ext
-        unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-        with open(os.path.join(tenant_dir, unique_name), "wb") as _fh:
-            _fh.write(data)
-        photo_url = f"{API_BASE_URL}/uploads/{tenant_id}/properties/{unique_name}"
+    fallback_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    try:
+        photo_url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="properties")
+    except ImageStorageNotConfiguredError:
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+    if _production_image_storage_required() and _is_data_uri(photo_url):
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
 
     # ── Persist to DB immediately if property_id provided ────────────────────
     if property_id and SessionLocal and ManualRoomModel:
@@ -11935,7 +11966,12 @@ def create_manual_room_route():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Missing room name"}), 400
-    room = create_manual_room(tenant_id, name, data.get("description"), data.get("photo_url"))
+    raw_photo = data.get("photo_url")
+    try:
+        photo_url = _save_base64_image(raw_photo, tenant_id) if raw_photo else raw_photo
+    except ImageStorageNotConfiguredError:
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+    room = create_manual_room(tenant_id, name, data.get("description"), photo_url)
     if not room:
         return jsonify({"error": "Failed to create room"}), 500
     return jsonify({
@@ -12367,6 +12403,8 @@ def create_property():
         print(f"[Properties API] POST saved id={room.get('id')} images_count={pics_n}", flush=True)
         print(f"[Properties API] POST count_after={count_after} ids={ids_after}", flush=True)
         return jsonify({"ok": True, "property": room}), 201
+    except ImageStorageNotConfiguredError:
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         print("[create_property] Error:", err_msg, flush=True)
@@ -12529,6 +12567,8 @@ def update_property(property_id):
             return jsonify({"ok": True, "property": _finalize_property_images(_manual_room_api_dict(room, tenant_id, dm, pictures, purl))}), 200
         finally:
             session.close()
+    except ImageStorageNotConfiguredError:
+        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
     except Exception as e:
         print("[update_property] Error:", e, flush=True)
         return jsonify({"error": str(e)}), 500
