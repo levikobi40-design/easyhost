@@ -1,12 +1,11 @@
-import { ROOMS_BRANCH_PINS, ROOMS_PIN_ID_SET } from '../config/roomsBranches';
-import { WEWORK_PIN_ID_SET } from '../config/weworkBranches';
-import { BAZAAR_JAFFA_PROPERTY_ID } from '../data/propertyData';
+import { PORTFOLIO_IMAGE_URL_BY_ID } from '../data/initialProperties';
 
-/** Hotel Bazaar Jaffa + 14× ROOMS — same order as backend `_default_portfolio_seed_rooms` (15 unique card images). */
-export const DEMO_FIFTEEN_PROPERTY_ORDER = [
-  BAZAAR_JAFFA_PROPERTY_ID,
-  ...ROOMS_BRANCH_PINS.map((b) => b.id),
-];
+const BAZAAR_JAFFA_PROPERTY_ID = '';
+const WEWORK_PIN_ID_SET = new Set();
+const ROOMS_PIN_ID_SET = new Set();
+
+/** Corfu pilot card images — keyed by property id. */
+export const DEMO_FIFTEEN_PROPERTY_ORDER = Object.keys(PORTFOLIO_IMAGE_URL_BY_ID);
 
 /**
  * Exactly 15 distinct Unsplash heroes — modern office, boutique hotel, coworking (PropertiesView / grid).
@@ -29,7 +28,7 @@ export const PROPERTIES_VIEW_15_UNIQUE_IMAGES = [
   'https://images.unsplash.com/photo-1502005229762-cf1b2da7c5d6?auto=format&fit=crop&w=1200&q=80',
 ];
 
-/** Historic / boutique hotel — Hotel Bazaar Jaffa */
+/** Corfu luxury villa hero */
 export const BAZAAR_BOUTIQUE_HOTEL_IMG =
   'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
 
@@ -231,6 +230,13 @@ function applyVarietyToPropertyListFast(list) {
   const wsPool = WORKSPACE_BUSINESS_INTERIOR_POOL.filter((u) => !pinUrls.has(u));
   const genPool = CARD_PLACEHOLDER_UNIVERSE.filter((u) => !pinUrls.has(u));
   return list.map((p, listIdx) => {
+    const pics = dedupePropertyGalleryUrls(Array.isArray(p.pictures) ? p.pictures : []);
+    if (pics.length >= 1) {
+      return finalizePersistedGalleryProperty({ ...p, pictures: pics });
+    }
+    if (propertyHasSavedGallery(p)) {
+      return finalizePersistedGalleryProperty(p);
+    }
     const id = String(p.id || '');
     const fromPic =
       Array.isArray(p.pictures) && p.pictures.length ? String(p.pictures[0] || '').trim() : '';
@@ -238,7 +244,6 @@ function applyVarietyToPropertyListFast(list) {
 
     if (shouldPreserveHeroUrl(main)) {
       const url = main;
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return {
         ...p,
@@ -251,19 +256,16 @@ function applyVarietyToPropertyListFast(list) {
 
     if (id === BAZAAR_JAFFA_PROPERTY_ID) {
       const url = BAZAAR_BOUTIQUE_HOTEL_IMG;
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return { ...p, mainImage: url, photo_url: url, image_url: url, pictures: [url, ...tail] };
     }
     if (id === 'rooms-branch-neve-tzedek') {
       const url = ROOMS_NEVE_TZEDEK_IMG;
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return { ...p, mainImage: url, photo_url: url, image_url: url, pictures: [url, ...tail] };
     }
     if (id === 'wework-tlv-sarona') {
       const url = WEWORK_SARONA_INDUSTRIAL_IMG;
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return { ...p, mainImage: url, photo_url: url, image_url: url, pictures: [url, ...tail] };
     }
@@ -276,7 +278,6 @@ function applyVarietyToPropertyListFast(list) {
       ? (wsPool.length ? wsPool : [ROOMS_WORKSPACE_OFFICE_INTERIOR_CDN])
       : (genPool.length ? genPool : [GENERIC]);
     const url = pool[Math.abs(h) % pool.length] || ROOMS_WORKSPACE_OFFICE_INTERIOR_CDN;
-    const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
     const tail = pics.length > 1 ? pics.slice(1) : [];
     return {
       ...p,
@@ -292,32 +293,7 @@ function applyVarietyToPropertyListFast(list) {
  * True for WeWork & ROOMS portfolio pins, workspace slugs, and names that imply office / coworking / station.
  * Does not match generic hotel "guest room" unless combined with meeting/conference/office cues.
  */
-export function isWorkspaceOrOfficeProperty(property) {
-  if (!property || typeof property !== 'object') return false;
-  const id = String(property.id ?? '');
-  const n = `${property.name ?? ''}`.toLowerCase();
-  const slug = `${property.branchSlug || property.slug || property.branch_slug || ''}`.toLowerCase();
-  const desc = `${property.description ?? ''}`.toLowerCase();
-  const hay = `${id} ${n} ${slug} ${desc}`;
-
-  if (id === BAZAAR_JAFFA_PROPERTY_ID) return false;
-
-  if (WEWORK_PIN_ID_SET.has(id) || ROOMS_PIN_ID_SET.has(id)) return true;
-  if (/^wework-/i.test(id) || /^rooms-/i.test(id)) return true;
-
-  if (
-    /wework|we-work|ווי\s*וורק|רומס|cowork|co-work|workspace|open plan|hot desk|dedicated desk|private office|full floor|suite|לונג|lounge|משרד משותף|חלל עבודה|עמדת עבודה|חדר ישיבות|קומת משרדים/i.test(
-      hay,
-    )
-  ) {
-    return true;
-  }
-  if (/\boffice\b|\boffices\b|\bworkplace\b/i.test(hay)) return true;
-  if (/\bwork\b|\bworks\b/i.test(hay) && !/network|homework|firework|artwork|woodwork/i.test(hay)) return true;
-  if (/\bstation\b|\bstations\b/i.test(hay)) return true;
-  if (/\brooms\b/i.test(hay)) return true;
-  if (/meeting room|conference room|boardroom|war room|training room/i.test(hay)) return true;
-
+export function isWorkspaceOrOfficeProperty() {
   return false;
 }
 
@@ -335,7 +311,39 @@ export function shouldPreserveHeroUrl(url) {
   if (!url || typeof url !== 'string') return false;
   const u = url.trim().toLowerCase();
   if (u.startsWith('/assets/')) return true;
+  if (u.startsWith('data:')) return true;
   return u.includes('/uploads/') || u.includes('cloudinary') || u.includes('amazonaws.com');
+}
+
+function finalizePersistedGalleryProperty(p) {
+  const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
+  const cover = (pics[0] || p.mainImage || p.photo_url || p.image_url || '').trim();
+  if (!cover && !pics.length) return p;
+  const deduped = [];
+  const seen = new Set();
+  for (const raw of (pics.length ? pics : [cover])) {
+    const s = String(raw || '').trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    deduped.push(s);
+  }
+  const hero = deduped[0] || cover;
+  return {
+    ...p,
+    mainImage: hero,
+    photo_url: (p.photo_url || '').trim() || hero,
+    image_url: (p.image_url || '').trim() || hero,
+    cover_image: hero,
+    pictures: deduped,
+  };
+}
+
+function propertyHasSavedGallery(p) {
+  const pics = Array.isArray(p?.pictures) ? p.pictures.filter(Boolean) : [];
+  if (pics.length > 1) return true;
+  if (pics.some((u) => shouldPreserveHeroUrl(String(u)))) return true;
+  const main = String(p?.mainImage || p?.photo_url || p?.image_url || '').trim();
+  return Boolean(main && shouldPreserveHeroUrl(main));
 }
 
 /**
@@ -388,28 +396,12 @@ export function resolvePropertyCardImage(property, listIndex = 0) {
   if (primary) return primary;
 
   const id = String(property?.id ?? '');
-  const n = `${property?.name ?? ''}`.toLowerCase();
+  const fromMap = PORTFOLIO_IMAGE_URL_BY_ID[id];
+  if (fromMap) return fromMap;
 
-  if (id === BAZAAR_JAFFA_PROPERTY_ID || /bazaar|בזאר|jaffa|יפו/.test(id) || /bazaar|בזאר|hotel bazaar|jaffa/.test(n)) {
-    return BAZAAR_BOUTIQUE_HOTEL_IMG;
-  }
-  if (id === 'rooms-branch-neve-tzedek') return ROOMS_NEVE_TZEDEK_IMG;
-  if (id === 'wework-tlv-sarona') return WEWORK_SARONA_INDUSTRIAL_IMG;
-
-  if (isWorkspaceOrOfficeProperty(property)) {
-    const pool = WORKSPACE_BUSINESS_INTERIOR_POOL.length
-      ? WORKSPACE_BUSINESS_INTERIOR_POOL
-      : CARD_PLACEHOLDER_UNIVERSE;
-    const li = Math.max(0, Number(listIndex) || 0);
-    return pool[li % pool.length] || ROOMS_WORKSPACE_OFFICE_INTERIOR_CDN;
-  }
-
-  const demoIx2 = DEMO_FIFTEEN_PROPERTY_ORDER.indexOf(id);
-  if (demoIx2 >= 0 && PROPERTIES_VIEW_15_UNIQUE_IMAGES[demoIx2]) {
-    return PROPERTIES_VIEW_15_UNIQUE_IMAGES[demoIx2];
-  }
-
-  return pickHeroUrlForCard(property, listIndex);
+  const pool = CARD_PLACEHOLDER_UNIVERSE.length ? CARD_PLACEHOLDER_UNIVERSE : UNIQUE_PROPERTY_IMAGE_POOL;
+  const li = Math.max(0, Number(listIndex) || 0);
+  return pool[li % pool.length] || GENERIC;
 }
 
 /**
@@ -477,6 +469,13 @@ export function applyVarietyToPropertyList(list) {
   };
 
   return list.map((p) => {
+    const pics = dedupePropertyGalleryUrls(Array.isArray(p.pictures) ? p.pictures : []);
+    if (pics.length >= 1) {
+      return finalizePersistedGalleryProperty({ ...p, pictures: pics });
+    }
+    if (propertyHasSavedGallery(p)) {
+      return finalizePersistedGalleryProperty(p);
+    }
     const id = String(p.id || '');
     const fromPic =
       Array.isArray(p.pictures) && p.pictures.length ? String(p.pictures[0] || '').trim() : '';
@@ -484,7 +483,6 @@ export function applyVarietyToPropertyList(list) {
 
     if (shouldPreserveHeroUrl(main)) {
       const url = main;
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return {
         ...p,
@@ -498,27 +496,23 @@ export function applyVarietyToPropertyList(list) {
     if (id === BAZAAR_JAFFA_PROPERTY_ID) {
       const url = BAZAAR_BOUTIQUE_HOTEL_IMG;
       used.add(url);
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return { ...p, mainImage: url, photo_url: url, image_url: url, pictures: [url, ...tail] };
     }
     if (id === 'rooms-branch-neve-tzedek') {
       const url = ROOMS_NEVE_TZEDEK_IMG;
       used.add(url);
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return { ...p, mainImage: url, photo_url: url, image_url: url, pictures: [url, ...tail] };
     }
     if (id === 'wework-tlv-sarona') {
       const url = WEWORK_SARONA_INDUSTRIAL_IMG;
       used.add(url);
-      const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
       const tail = pics.length > 1 ? pics.slice(1) : [];
       return { ...p, mainImage: url, photo_url: url, image_url: url, pictures: [url, ...tail] };
     }
 
     const url = takeUniquePlaceholder(p);
-    const pics = Array.isArray(p.pictures) ? p.pictures.filter(Boolean) : [];
     const tail = pics.length > 1 ? pics.slice(1) : [];
     return {
       ...p,

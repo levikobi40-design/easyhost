@@ -5,7 +5,8 @@ import {
   ShieldAlert, Heart, Baby, ChefHat,
 } from 'lucide-react';
 import { createProperty, updateProperty, getPropertyById } from '../../services/api';
-import { persistPropertyImageOverrideFromItem } from '../../utils/propertyImagePersistence';
+import { persistPropertyImageOverrideFromItem, clearPropertyImageOverride } from '../../utils/propertyImagePersistence';
+import { dedupePropertyGalleryUrls, buildPropertyGalleryImages, buildPropertyImageUpdatePayload } from '../../utils/propertyGallery';
 import ImageUploader from '../ui/ImageUploader';
 import './PropertyCreatorModal.css';
 
@@ -45,8 +46,21 @@ const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1613977257363-707ba
 
 function parsePriceFromDescription(desc) {
   if (!desc) return '';
-  const m = desc.match(/מחיר\s*ללילה[:\s]*₪?(\d+)/i) || desc.match(/₪(\d+)/);
+  const m = desc.match(/Price per night:\s*\$?(\d+(?:\.\d+)?)/i)
+    || desc.match(/מחיר\s*ללילה[:\s]*₪?(\d+(?:\.\d+)?)/i)
+    || desc.match(/₪(\d+(?:\.\d+)?)/);
   return m ? m[1] : '';
+}
+
+function parsePriceFromProperty(prop) {
+  if (!prop) return '';
+  for (const key of ['price_per_night', 'nightly_price', 'price']) {
+    const v = prop[key];
+    if (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))) {
+      return String(v);
+    }
+  }
+  return parsePriceFromDescription(prop.description);
 }
 
 /** Reusable input with left-side icon */
@@ -110,14 +124,12 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
 
     if (initialProperty) {
       setName(initialProperty.name || '');
-      setPrice(parsePriceFromDescription(initialProperty.description) || '');
+      setPrice(parsePriceFromProperty(initialProperty) || '');
       setMaxGuests(initialProperty.max_guests ?? initialProperty.guests ?? 2);
       setBedrooms(initialProperty.bedrooms ?? 1);
       setBeds(initialProperty.beds ?? 1);
       setBathrooms(initialProperty.bathrooms ?? 1);
-      const pics = Array.isArray(initialProperty.pictures) && initialProperty.pictures.length > 0
-        ? initialProperty.pictures.filter(Boolean)
-        : (initialProperty?.mainImage || initialProperty?.photo_url) ? [initialProperty.mainImage || initialProperty.photo_url] : [];
+      const pics = buildPropertyGalleryImages(initialProperty);
       setPhotoUrls(pics);
       const am = Array.isArray(initialProperty.amenities) ? initialProperty.amenities : [];
       const norm = (x) => AMENITY_LEGACY_MAP[x] || x;
@@ -141,63 +153,55 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
     setAmenities((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  /** After upload: persist public URLs to backend before updating UI (edit mode only). */
+  /** After upload/remove: persist gallery to backend (edit mode only). */
   const handlePhotoUrlsComplete = async (urls) => {
-    const list = Array.isArray(urls) ? urls.filter(Boolean) : [];
-    // Show uploaded images immediately in the UI (optimistic update).
+    const list = dedupePropertyGalleryUrls(Array.isArray(urls) ? urls.filter(Boolean) : []);
     setPhotoUrls(list);
-    // Use the ID captured when the modal opened — never re-read from live prop to
-    // avoid targeting the wrong record if the parent re-renders mid-session.
     const pid = editPropertyIdRef.current;
-    if (!pid || list.length === 0) {
-      // New property or no ID yet — images will be saved on form submit.
+    if (!pid) {
       return;
     }
+    const before = buildPropertyGalleryImages(initialProperty || { id: pid });
+    const deleting = before.find((u) => !list.includes(u)) || before[0] || '';
+    console.log('[ImageDelete] property id', pid);
+    console.log('[ImageDelete] deleting url', deleting);
+    console.log('[ImageDelete] before images', before);
+    console.log('[ImageDelete] after images', list);
     setIsGallerySaving(true);
     setError(null);
     try {
-      const result = await updateProperty(pid, {
-        pictures: list,
-        images: list,
-        photo_url: list[0],
-      });
+      const payload = buildPropertyImageUpdatePayload(initialProperty || { id: pid }, list);
+      const result = await updateProperty(pid, payload);
+      console.log('[ImageDelete] backend response', result?.property || result);
 
-      // Use the updateProperty response directly — it already runs list_manual_rooms
-      // after the commit, so it reflects the freshly-saved gallery without a second
-      // round-trip that might race against the DB write.
       const saved = result?.property || result;
-      const fromServer =
-        Array.isArray(saved?.pictures) && saved.pictures.length > 0
-          ? saved.pictures.filter(Boolean)
-          : saved?.mainImage || saved?.photo_url
-            ? [saved.mainImage || saved.photo_url].filter(Boolean)
-            : [];
-
-      // Persist to localStorage override immediately so background property-list
-      // refreshes (mergePropertyImageOverrides) re-apply the hero image on every card
-      // render — even before the user submits the form.
-      persistPropertyImageOverrideFromItem({
-        id: pid,
-        mainImage: list[0],
-        photo_url: list[0],
-        image_url: list[0],
-        pictures: list,
-      });
-
-      if (fromServer.length > 0 && fromServer.length >= list.length) {
-        // Server confirmed at least as many images as we uploaded — use server data.
-        setPhotoUrls(fromServer);
-      } else if (fromServer.length > 0) {
-        // Server returned fewer images than expected (partial write / race) — merge
-        // local list with server result to keep everything visible.
-        const merged = [...new Set([...list, ...fromServer])];
-        setPhotoUrls(merged);
+      let fromServer = dedupePropertyGalleryUrls(
+        Array.isArray(saved?.pictures) ? saved.pictures.filter(Boolean) : [],
+      );
+      if (!fromServer.length && list.length) {
+        try {
+          const fresh = await getPropertyById(pid);
+          fromServer = dedupePropertyGalleryUrls(
+            Array.isArray(fresh?.pictures) ? fresh.pictures.filter(Boolean) : [],
+          );
+        } catch (_) {
+          fromServer = list;
+        }
       }
-      // If fromServer is empty the upload succeeded (no error thrown) but the
-      // backend didn't echo pictures — keep the optimistic local state (list).
+      setPhotoUrls(fromServer);
+      if (fromServer.length) {
+        persistPropertyImageOverrideFromItem({
+          id: pid,
+          mainImage: fromServer[0],
+          photo_url: fromServer[0],
+          image_url: fromServer[0],
+          pictures: fromServer,
+        });
+      } else {
+        clearPropertyImageOverride(pid);
+      }
+      window.dispatchEvent(new CustomEvent('properties-refresh', { detail: { force: true, silent: true } }));
     } catch (e) {
-      // Keep the optimistic local state so the image stays visible.
-      // The error message tells the user that the save may not have persisted.
       setError(e?.message || 'שמירת תמונות נכשלה — התמונה מוצגת אך ייתכן שלא נשמרה');
     } finally {
       setIsGallerySaving(false);
@@ -211,9 +215,9 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
     setError(null);
 
     try {
-      const images = Array.isArray(photoUrls) ? photoUrls : [];
+      const images = dedupePropertyGalleryUrls(Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : []);
       const selectedAmenities = AMENITIES.filter((a) => amenities[a]);
-      const photoUrl = ((images || []).length > 0) ? (images || [])[0] : PLACEHOLDER_IMAGE;
+      const imageFields = buildPropertyImageUpdatePayload({}, images);
 
       const amenityList = (selectedAmenities || []).join(', ');
       const descParts = [];
@@ -224,11 +228,16 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
       const priceNum = price !== '' && price != null ? Number(price) : null;
       const payload = {
         name: trimmedName || '',
+        type: 'hotel',
+        city: '',
+        country: '',
+        status: 'active',
         description: description || '',
-        price: priceNum ?? 0,
-        photo_url: photoUrl || '',
-        images: images || [],
-        pictures: images || [],
+        price_per_night: Number.isFinite(priceNum) ? priceNum : undefined,
+        nightly_price: Number.isFinite(priceNum) ? priceNum : undefined,
+        price: Number.isFinite(priceNum) ? priceNum : undefined,
+        currency: 'USD',
+        ...imageFields,
         amenities: selectedAmenities || [],
         max_guests: Math.max(1, parseInt(maxGuests, 10) || 2),
         bedrooms: Math.max(1, parseInt(bedrooms, 10) || 1),
@@ -243,6 +252,9 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
         : await createProperty(payload);
       let property = result?.property || result;
       const savedId = property?.id || editId;
+      if (!editId && !savedId) {
+        throw new Error('השרת לא החזיר מזהה נכס — הנכס לא נשמר');
+      }
 
       // Extract confirmed pictures from the save response first; fall back to
       // a fresh GET only if the response is missing picture data.

@@ -24,7 +24,6 @@ import {
 } from './guestFastReplies';
 import { speakMayaReply } from '../../utils/mayaVoice';
 import { inferGuestViewMode, inferGuestPropertyTemplate, buildMayaPersonaWelcomeHe } from '../../utils/guestViewMode';
-import { BAZAAR_JAFFA_PROPERTY_ID } from '../../data/propertyData';
 import {
   GUEST_ROOM_SERVICE_MENU,
   GUEST_SPA_SERVICES,
@@ -32,6 +31,10 @@ import {
   getGuestManagerWhatsAppDigits,
 } from '../../data/guestIndustryMenus';
 import './GuestDashboard.css';
+import useTranslations from '../../hooks/useTranslations';
+import useStore from '../../store/useStore';
+import { isRtlLang } from '../../utils/languages';
+import { PILOT_LANGUAGE_OPTIONS } from '../../utils/pilotLanguages';
 
 const BG_IMAGE = 'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=1920&auto=format&fit=crop';
 
@@ -55,129 +58,132 @@ const TILE_IMAGES = {
 };
 
 /** Hotel: 2×4 grid — checkout, housekeeping, F&B, ops */
-const HOTEL_TILES = [
-  { id: 'checkout', imageKey: 'checkout', label: "צ'ק-אאוט", modal: 'checkout' },
-  {
-    id: 'room_cleaning',
-    imageKey: 'schedule',
-    label: 'ניקיון',
-    taskType: 'Cleaning',
-    description: 'בקשת ניקיון חדר',
-    staff_name: 'צוות ניקיון',
-  },
-  {
-    id: 'towels',
-    imageKey: 'towels',
-    label: 'מגבות',
-    taskType: 'Cleaning',
-    description: 'בקשת מגבות',
-    staff_name: 'צוות ניקיון',
-  },
-  {
-    id: 'maintenance_tile',
-    imageKey: 'maintenance',
-    label: 'תחזוקה',
-    taskType: 'Maintenance',
-    description: 'בקשת תחזוקה',
-    staff_name: 'קובי',
-  },
-  {
-    id: 'spa_guest',
-    imageKey: 'spa',
-    label: 'ספא',
-    taskType: 'Service',
-    description: 'בקשת שירות ספא',
-  },
-  {
-    id: 'room_service',
-    imageKey: 'room_service',
-    label: 'שירות חדר',
-    taskType: 'Service',
-    description: 'בקשת שירות חדר',
-  },
-  {
-    id: 'wifi_help',
-    imageKey: 'wifi',
-    label: 'Wi‑Fi',
-    taskType: 'Service',
-    description: 'בקשת עזרה ב-WiFi / אינטרנט',
-  },
-  {
-    id: 'reception',
-    imageKey: 'reception',
-    label: 'קבלה',
-    taskType: 'Service',
-    description: 'בקשה לדסק קבלה',
-  },
-];
+function buildHotelTiles(t) {
+  return [
+    { id: 'checkout', imageKey: 'checkout', label: t('guestPortal.tiles.checkout.label'), modal: 'checkout' },
+    {
+      id: 'room_cleaning',
+      imageKey: 'schedule',
+      label: t('guestPortal.tiles.room_cleaning.label'),
+      taskType: 'Cleaning',
+      description: t('guestPortal.tiles.room_cleaning.description'),
+      staff_name: t('guestPortal.tiles.room_cleaning.staff'),
+    },
+    {
+      id: 'towels',
+      imageKey: 'towels',
+      label: t('guestPortal.tiles.towels.label'),
+      taskType: 'Cleaning',
+      description: t('guestPortal.tiles.towels.description'),
+      staff_name: t('guestPortal.tiles.towels.staff'),
+    },
+    {
+      id: 'maintenance_tile',
+      imageKey: 'maintenance',
+      label: t('guestPortal.tiles.maintenance.label'),
+      taskType: 'Maintenance',
+      description: t('guestPortal.tiles.maintenance.description'),
+      staff_name: t('guestPortal.tiles.maintenance.staff'),
+    },
+    {
+      id: 'spa_guest',
+      imageKey: 'spa',
+      label: t('guestPortal.tiles.spa.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.spa.description'),
+    },
+    {
+      id: 'room_service',
+      imageKey: 'room_service',
+      label: t('guestPortal.tiles.room_service.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.room_service.description'),
+    },
+    {
+      id: 'wifi_help',
+      imageKey: 'wifi',
+      label: t('guestPortal.tiles.wifi.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.wifi.description'),
+    },
+    {
+      id: 'reception',
+      imageKey: 'reception',
+      label: t('guestPortal.tiles.reception.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.reception.description'),
+    },
+  ];
+}
 
 /** WeWork / ROOMS workspace — Coffee, Meeting Room Tech, Printer */
-const WORKSPACE_TILES = [
-  {
-    id: 'coffee_workspace',
-    imageKey: 'coffee',
-    label: 'קפה',
-    taskType: 'Service',
-    description: 'בקשת קפה',
-  },
-  {
-    id: 'meeting_room_tech',
-    imageKey: 'maintenance',
-    label: 'חדר ישיבות — טכנולוגיה',
-    taskType: 'Service',
-    description: '[דחוף] תמיכה טכנית בחדר ישיבות — התראה למנהל הקהילה',
-    staff_name: 'מנהל קהילה',
-  },
-  {
-    id: 'printer',
-    imageKey: 'schedule',
-    label: 'מדפסת',
-    taskType: 'Service',
-    description: 'בקשת הדפסה / מדפסת',
-  },
-];
+function buildWorkspaceTiles(t) {
+  return [
+    {
+      id: 'coffee_workspace',
+      imageKey: 'coffee',
+      label: t('guestPortal.tiles.coffee.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.coffee.description'),
+    },
+    {
+      id: 'meeting_room_tech',
+      imageKey: 'maintenance',
+      label: t('guestPortal.tiles.meeting_tech.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.meeting_tech.description'),
+      staff_name: t('guestPortal.tiles.meeting_tech.staff'),
+    },
+    {
+      id: 'printer',
+      imageKey: 'schedule',
+      label: t('guestPortal.tiles.printer.label'),
+      taskType: 'Service',
+      description: t('guestPortal.tiles.printer.description'),
+    },
+  ];
+}
 
-const TAB_ITEMS = [
-  { id: 'home', icon: Home, label: 'בית' },
-  { id: 'requests', icon: ClipboardList, label: 'היסטוריה' },
-  { id: 'profile', icon: User, label: 'פרופיל' },
-];
+function buildTabItems(t) {
+  return [
+    { id: 'home', icon: Home, label: t('guestPortal.tabs.home') },
+    { id: 'requests', icon: ClipboardList, label: t('guestPortal.tabs.history') },
+    { id: 'profile', icon: User, label: t('guestPortal.tabs.profile') },
+  ];
+}
 
 const GUEST_WELCOME_KEY = 'guest_welcome_room';
 
-function buildDisplayTiles(propertyTemplate) {
+function buildDisplayTiles(propertyTemplate, t) {
+  const HOTEL_TILES = buildHotelTiles(t);
+  const WORKSPACE_TILES = buildWorkspaceTiles(t);
   const maintenanceLike = {
     id: 'maintenance_tile',
     imageKey: 'maintenance',
-    label: 'תחזוקה',
+    label: t('guestPortal.tiles.maintenance.label'),
     action: 'maintenance_modal',
   };
   if (propertyTemplate === 'hotel') {
-    return HOTEL_TILES.map((t) => {
-      if (t.id === 'maintenance_tile') return { ...t, action: 'maintenance_modal' };
-      if (t.id === 'room_service') return { ...t, action: 'room_service_menu' };
-      if (t.id === 'spa_guest') return { ...t, action: 'spa_menu' };
-      return { ...t };
+    return HOTEL_TILES.map((tile) => {
+      if (tile.id === 'maintenance_tile') return { ...tile, action: 'maintenance_modal' };
+      if (tile.id === 'room_service') return { ...tile, action: 'room_service_menu' };
+      if (tile.id === 'spa_guest') return { ...tile, action: 'spa_menu' };
+      return { ...tile };
     });
   }
   const checkoutTile = {
     id: 'checkout',
     imageKey: 'checkout',
-    label: 'סיום מפגש',
+    label: t('guestPortal.tiles.session_end.label'),
     modal: 'checkout',
   };
   const extras = [
     maintenanceLike,
-    { id: 'room_service', imageKey: 'room_service', label: 'שירות חדר', action: 'room_service_menu' },
-    { id: 'spa_guest', imageKey: 'spa', label: 'ספא', action: 'spa_menu' },
+    { id: 'room_service', imageKey: 'room_service', label: t('guestPortal.tiles.room_service.label'), action: 'room_service_menu' },
+    { id: 'spa_guest', imageKey: 'spa', label: t('guestPortal.tiles.spa.label'), action: 'spa_menu' },
   ];
   return [checkoutTile, ...WORKSPACE_TILES, ...extras];
 }
-
-/** Maya line when a grid tile is active (in progress) — chat + voice */
-const GUEST_PROGRESS_ACK_HE = 'רשמתי לעצמי, העזרה בדרך.';
-
-const MAYA_STAFF_DONE_LINE = 'מצוין! סימנו את הבקשה כבוצעה. משהו נוסף?';
 
 function guestRoomNumberLabel(room) {
   const n = String(room?.name || '').trim();
@@ -199,6 +205,10 @@ function GuestToast({ message, onClose }) {
 }
 
 function GuestDashboard({ roomId }) {
+  const { t } = useTranslations();
+  const lang = useStore((s) => s.lang) || 'he';
+  const setLang = useStore((s) => s.setLang);
+  const guestDir = isRtlLang(lang) ? 'rtl' : 'ltr';
   const [room, setRoom] = useState({ id: '', name: '', description: '', property_type: '', branchSlug: '' });
   const [bookingCtx, setBookingCtx] = useState(null);
   const [guestContextLoading, setGuestContextLoading] = useState(true);
@@ -245,8 +255,7 @@ function GuestDashboard({ roomId }) {
   }, []);
 
   const slugFromUrl = String(roomId || '').trim();
-  /** When route has no :roomId, default to Hotel Bazaar Jaffa so the UI always works */
-  const slugForFetch = slugFromUrl || BAZAAR_JAFFA_PROPERTY_ID;
+  const slugForFetch = slugFromUrl || 'christos-thaleri-villa-corfu';
   const fromBookingPid = (bookingCtx?.property_id || '').trim();
   const roomIdFromApi = String(room?.id || '').trim();
   const resolvedRoomPropertyId =
@@ -280,9 +289,11 @@ function GuestDashboard({ roomId }) {
   }, [guestSessionKey, bookingCtx]);
 
   const displayTiles = useMemo(
-    () => buildDisplayTiles(propertyTemplate),
-    [propertyTemplate],
+    () => buildDisplayTiles(propertyTemplate, t),
+    [propertyTemplate, lang, t],
   );
+
+  const tabItems = useMemo(() => buildTabItems(t), [lang, t]);
 
   useEffect(() => {
     mayaWelcomedRef.current = false;
@@ -426,7 +437,7 @@ function GuestDashboard({ roomId }) {
       const taskKey = payload.description || 'task';
       const bKey = busyKey || taskKey;
       const kobiId = kobiTileIdOpt || (typeof busyKey === 'string' ? busyKey : null);
-      const kobiLine = kobiId ? GUEST_PROGRESS_ACK_HE : null;
+      const kobiLine = kobiId ? t('guestPortal.maya.progressAck') : null;
       const instantText = kobiLine || getInstantMayaForGuestTask(payload);
       const mayaExtra =
         kobiId && kobiLine
@@ -527,10 +538,10 @@ function GuestDashboard({ roomId }) {
           ? { ...m, pendingTileId: undefined, staffCompleteBtn: false }
           : m,
       );
-      return [...mapped, { role: 'maya', text: MAYA_STAFF_DONE_LINE }];
+      return [...mapped, { role: 'maya', text: t('guestPortal.maya.staffDone') }];
     });
-    speakMayaReply(MAYA_STAFF_DONE_LINE, 'guest', {});
-  }, []);
+    speakMayaReply(t('guestPortal.maya.staffDone'), 'guest', {});
+  }, [t]);
 
   const sendMayaChat = useCallback(async () => {
     const text = (mayaInput || '').trim();
@@ -759,7 +770,7 @@ function GuestDashboard({ roomId }) {
   }, [guestChatOpen]);
 
   return (
-    <div className="guest-dashboard" dir="rtl">
+    <div className="guest-dashboard" dir={guestDir}>
       <div className="guest-bg" style={{ backgroundImage: `url(${BG_IMAGE})` }} />
       <div className="guest-overlay" />
       <div className="guest-content">
@@ -767,6 +778,19 @@ function GuestDashboard({ roomId }) {
           <div className="guest-header-row">
             <img src={easyhostLogoDark} alt="" className="guest-logo guest-logo-dark" />
             <h1 className="guest-title">EasyHost AI</h1>
+            <div className="guest-lang-pill" role="group" aria-label={t('guestPortal.language')}>
+              {PILOT_LANGUAGE_OPTIONS.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  className={`guest-lang-btn${lang === l.code ? ' guest-lang-btn-active' : ''}`}
+                  onClick={() => setLang(l.code)}
+                  aria-pressed={lang === l.code}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="guest-welcome">
             <p className="guest-welcome-line1">{headerWelcome}</p>
@@ -1015,7 +1039,7 @@ function GuestDashboard({ roomId }) {
         )}
 
         <nav className="guest-tabbar">
-          {TAB_ITEMS.map((tab) => {
+          {tabItems.map((tab) => {
             const TabIcon = tab.icon;
             return (
               <button

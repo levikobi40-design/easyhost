@@ -25,14 +25,29 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { BedDouble, Sparkles, Wrench, MapPin, Building2 } from 'lucide-react';
 import { API_URL } from '../utils/apiClient';
 import useStore from '../store/useStore';
+import useTranslations from '../hooks/useTranslations';
+import {
+  localizeWorkerTask,
+  formatTaskDate,
+  localeDirection,
+  translateTaskStatus,
+  translatePropertyContext,
+  translatePropertyName,
+  translateTaskDescription,
+  translateStaffLabel,
+  formatWorkerDisplayText,
+  formatWorkerRoomLine,
+} from '../utils/taskDisplayI18n';
 import './WorkerView.css';
 import './dashboard/TaskCalendar.css';
 import { subscribeCrossTabTaskSync } from '../utils/taskSyncBridge';
+import { filterCorfuPilotTasks } from '../utils/corfuPilotFilters';
+import { mergeWorkerTasksFromServer } from '../utils/taskStatusPriority';
+import { PILOT_LANGUAGE_OPTIONS } from '../utils/pilotLanguages';
+import hotelRealtime from '../services/hotelRealtime';
 import CelebrationOverlay from './worker/CelebrationOverlay';
 import XpProgressBar from './worker/XpProgressBar';
 import { getWeWorkBranchById } from '../config/weworkBranches';
-import { BAZAAR_JAFFA_PROPERTY_ID } from '../data/propertyData';
-import { getInitialTasksForWorker } from '../data/initialTasks';
 
 /* Premium dark palette — native-app feel */
 const W = {
@@ -57,13 +72,18 @@ const D = {
   muted: 'rgba(255,255,255,0.45)',
 };
 
-/** Polling only (Socket.IO off by default) — 15–20s keeps load light */
-const POLL_MS = 15_000;
-
 /* ── helpers ─────────────────────────────────────────────── */
 function workerNameFromPath() {
   const parts = window.location.pathname.split('/').filter(Boolean);
-  return parts[1] ? decodeURIComponent(parts[1]) : null;
+  if (parts[0] !== 'worker' || !parts[1]) return null;
+  const slug = decodeURIComponent(parts[1]).trim();
+  return slug.toLowerCase() === 'tasks' ? null : slug;
+}
+
+function normalizeWorkerSlug(raw) {
+  const s = String(raw || '').trim();
+  if (!s || s.toLowerCase() === 'tasks') return '';
+  return s;
 }
 function isPending(s = '') {
   return ['pending','Pending','assigned','Assigned','queued','Queued'].includes(s);
@@ -77,14 +97,16 @@ function isInProgress(s = '') {
 function isDone(s = '') {
   return ['done','Done','completed','Completed','closed','Closed'].includes(s);
 }
-function fmtTime(iso) {
+function fmtTime(iso, lang) {
   if (!iso) return '--:--';
-  try { return new Date(iso).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
+  const locale = lang === 'he' ? 'he-IL' : lang === 'el' ? 'el-GR' : lang === 'ar' ? 'ar' : 'en-US';
+  try { return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }); }
   catch { return ''; }
 }
-function fmtShortDate(iso) {
+function fmtShortDate(iso, lang) {
   if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'}); }
+  const locale = lang === 'he' ? 'he-IL' : lang === 'el' ? 'el-GR' : lang === 'ar' ? 'ar' : 'en-US';
+  try { return new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' }); }
   catch { return ''; }
 }
 
@@ -102,19 +124,39 @@ function normalizeWorkerTasksPayload(raw) {
 function enrichWorkerTaskPropertyMeta(task) {
   if (!task) return task;
   const pid = String(task.property_id || '').trim();
-  if (!pid) return task;
+  const base = localizeWorkerTask(task);
+  const enriched = {
+    ...base,
+    property_name: workerPropertyLabel(base),
+    hotel_name: workerPropertyLabel(base),
+    room: cleanDisplay(base.room) || '',
+    room_number: cleanDisplay(base.room_number) || '',
+    description: formatWorkerDisplayText(translateTaskDescription(base), formatWorkerDisplayText(base.description, '')),
+    staff_name: workerAssigneeLabel(base),
+    worker_name: workerAssigneeLabel(base),
+    assigned_to: workerAssigneeLabel(base),
+    property_context: formatWorkerDisplayText(translatePropertyContext(base.property_context)),
+  };
+  if (pid.startsWith('christos-')) return enriched;
+  if (!pid) return enriched;
   const ww = getWeWorkBranchById(pid);
   if (ww) {
-    return { ...task, property_name: ww.name, hotel_name: task.hotel_name || ww.name };
-  }
-  if (pid === BAZAAR_JAFFA_PROPERTY_ID) {
     return {
-      ...task,
-      property_name: 'Hotel Bazaar Jaffa',
-      hotel_name: task.hotel_name || 'Hotel Bazaar Jaffa',
+      ...enriched,
+      property_name: cleanDisplay(ww.name) || ww.name,
+      hotel_name: cleanDisplay(ww.name) || ww.name,
     };
   }
-  return task;
+  return enriched;
+}
+
+function sanitizeWorkerDisplayText(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/\[(?:booking_ref|ical_uid)[^\]]*\]/gi, '')
+    .replace(/\[SIM-ENGINE\]\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function safeStr(val, fallback = '') {
@@ -122,6 +164,36 @@ function safeStr(val, fallback = '') {
   if (typeof val === 'string') return val;
   if (typeof val === 'object') return safeStr(val.content ?? val.title ?? val.text, fallback);
   return String(val);
+}
+
+const DIRTY_DISPLAY_RE = /i18n:|worker\.properties|worker\.tasks|worker\.taskTypes|\.properties\.|@/i;
+
+function isDirtyDisplay(value) {
+  const s = String(value ?? '').trim();
+  return !s || DIRTY_DISPLAY_RE.test(s);
+}
+
+/** Suppress i18n keys, property refs, and email-like identifiers from UI. */
+function cleanDisplay(value, fallback = '') {
+  return formatWorkerDisplayText(value, fallback);
+}
+
+function workerRoomLine(task) {
+  return formatWorkerRoomLine(task);
+}
+
+function workerPropertyLabel(task) {
+  const pid = String(task?.property_id || '').trim();
+  const translated = translatePropertyName(
+    pid,
+    task?.property_name || task?.hotel_name || task?.room || '',
+  );
+  return formatWorkerDisplayText(translated, translatePropertyName(pid, '') || '');
+}
+
+function workerAssigneeLabel(task) {
+  const raw = task?.staff_name || task?.worker_name || task?.assigned_to || '';
+  return formatWorkerDisplayText(translateStaffLabel(raw), '');
 }
 
 /** Towels, urgent cleaning, explicit high priority, keywords */
@@ -155,10 +227,7 @@ function urgencyClassForPendingMinutes(_m) {
 }
 
 function roomHebrewLabelForMaya(task) {
-  const m = String(task?.room_number || task?.property_name || task?.room || '').match(/(\d{1,4})/);
-  if (m) return `חדר ${m[1]}`;
-  const p = String(task?.property_name || '').trim();
-  return p || 'החדר';
+  return workerRoomLine(task);
 }
 
 function buildMayaInterventionMessageHe(task) {
@@ -208,14 +277,37 @@ function playPriorityChime() {
 }
 
 /* ── Task Board card (matches admin TaskCalendar) ─────────── */
-function WorkerTaskBoardCard({ task }) {
-  const desc = safeStr(task?.description ?? task?.title ?? task?.content) || '—';
-  const propName = safeStr(task?.property_name ?? task?.room ?? task?.room_number);
+function WorkerTaskBoardCard({ task, t: tProp, lang: langProp, openTaskDetails, selected }) {
+  const { t: tHook } = useTranslations();
+  const langStore = useStore((s) => s.lang) || 'he';
+  const t = tProp || tHook;
+  const lang = langProp || langStore;
+  const propName = workerPropertyLabel(task);
+  const roomLine = workerRoomLine(task);
+  const desc = translateTaskDescription(task) || 'משימה חדשה';
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug('[TaskCard] rendered title/description', { id: task?.id, title: task?.title, description: desc });
+  }
+  const propContext = formatWorkerDisplayText(translatePropertyContext(task?.property_context));
+  const assignee = workerAssigneeLabel(task);
   const thumb = (task?.property_pictures && task.property_pictures[0]) || task?.photo_url;
+  const dir = localeDirection(lang);
+
   return (
     <div
-      className="task-card task-pending wv-modal-board-card"
-      style={{ cursor: 'default', direction: 'rtl' }}
+      role="button"
+      tabIndex={0}
+      className={`task-card task-pending wv-modal-board-card wv-board-card-rtl wv-mission-card${selected ? ' wv-mission-card-selected' : ''}`}
+      style={{ cursor: 'pointer', direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left' }}
+      onClick={() => {
+        if (typeof openTaskDetails === 'function') openTaskDetails(task);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (typeof openTaskDetails === 'function') openTaskDetails(task);
+        }
+      }}
     >
       <div className="task-card-thumb">
         <div className="task-card-thumb-fallback" aria-hidden>
@@ -224,23 +316,47 @@ function WorkerTaskBoardCard({ task }) {
         {thumb ? (
           <img
             src={thumb}
-            alt={propName || 'property'}
+            alt={propName}
             className="task-card-thumb-img"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
         ) : null}
       </div>
       <div className="task-card-header">
-        <span className="task-status-badge pending">ממתין</span>
+        <span className="task-status-badge pending">{translateTaskStatus(task?.status || 'pending')}</span>
         <span className="task-date">
-          {task?.created_at ? fmtShortDate(task.created_at) : '—'}
+          {task?.created_at ? formatTaskDate(task.created_at, lang, { includeTime: false }) : '—'}
         </span>
       </div>
-      <p className="task-description">{desc}</p>
-      {safeStr(task?.property_context) && (
-        <p className="text-xs text-gray-500 mt-0.5">{safeStr(task.property_context)}</p>
+      <p className="wv-mission-card-property">{propName}</p>
+      <p className="wv-mission-card-room">{roomLine}</p>
+      <p className="task-description wv-card-line-clamp">{desc}</p>
+      {propContext && (
+        <p className="wv-mission-card-context wv-card-line-clamp">{propContext}</p>
+      )}
+      {assignee && (
+        <p className="wv-mission-card-staff">👤 {assignee}</p>
       )}
     </div>
+  );
+}
+
+function MissionDetailModal({ onClose, children, t }) {
+  return (
+    <>
+      <div className="wv-mission-detail-backdrop" onClick={onClose} aria-hidden />
+      <div className="wv-mission-detail-panel" role="dialog" aria-modal="true">
+        <button
+          type="button"
+          className="wv-mission-detail-close"
+          onClick={onClose}
+          aria-label={t('worker.portal.closeNotice')}
+        >
+          ✕
+        </button>
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -293,15 +409,16 @@ function MayaWorkerChat({
   );
 }
 
-function PriorityAlertModal({ task, onDismiss }) {
+function PriorityAlertModal({ task, onDismiss, t, lang }) {
   if (!task) return null;
+  const localized = localizeWorkerTask(task);
   return (
     <div className="wv-priority-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="wv-priority-title">
       <div className="wv-priority-modal-panel">
         <div className="wv-priority-modal-badge">Priority Alert</div>
         <h2 id="wv-priority-title" className="wv-priority-modal-title">New urgent task</h2>
         <p className="wv-priority-modal-sub">Please review and respond below.</p>
-        <WorkerTaskBoardCard task={task} />
+        <WorkerTaskBoardCard task={localized} t={t} lang={lang} />
         <button type="button" className="wv-priority-modal-ok" onClick={onDismiss}>
           Got it
         </button>
@@ -309,52 +426,6 @@ function PriorityAlertModal({ task, onDismiss }) {
     </div>
   );
 }
-
-/* ── CSS ─────────────────────────────────────────────────── */
-const STYLES = `
-  @keyframes wvIn {
-    0%  { opacity:0; transform:scale(0.82) translateY(32px); }
-    65% { transform:scale(1.03) translateY(-3px); }
-    100%{ opacity:1; transform:scale(1) translateY(0); }
-  }
-  @keyframes wvOut {
-    to  { opacity:0; transform:translateX(110%) rotate(7deg); }
-  }
-  @keyframes wvPrev {
-    to  { opacity:0; transform:translateX(-110%) rotate(-7deg); }
-  }
-  @keyframes wvFlyUp {
-    0%  { opacity:1; transform:translate(var(--tx),var(--ty)) scale(1); }
-    100%{ opacity:0; transform:translate(var(--tx2),var(--ty2)) scale(0.3); }
-  }
-  @keyframes wvPulse {
-    0%,100%{ box-shadow:0 0 0 0 rgba(37,211,102,0.55); }
-    50%    { box-shadow:0 0 0 16px rgba(37,211,102,0); }
-  }
-  @keyframes wvSpin  { to{ transform:rotate(360deg); } }
-  @keyframes wvBounce {
-    0%,100%{ transform:scale(1); }
-    40%    { transform:scale(1.14); }
-    70%    { transform:scale(0.93); }
-  }
-  @keyframes wvSlideUp {
-    from{ transform:translateY(100%); }
-    to  { transform:translateY(0); }
-  }
-  @keyframes wvSlideDown {
-    from{ transform:translateY(0); }
-    to  { transform:translateY(100%); }
-  }
-  @keyframes wvToast {
-    from{ opacity:0; transform:translateX(-50%) translateY(14px); }
-    to  { opacity:1; transform:translateX(-50%) translateY(0); }
-  }
-  @keyframes wvFadeIn {
-    from{ opacity:0; transform:translateY(8px); }
-    to  { opacity:1; transform:translateY(0); }
-  }
-  body { margin:0; }
-`;
 
 /* ── Toast ───────────────────────────────────────────────── */
 function Toast({ msg, onClose }) {
@@ -403,7 +474,8 @@ function StatCard({ label, value, sub, color = D.accent, icon }) {
 }
 
 /* ── Stats drawer (slide-up sheet) ──────────────────────── */
-function StatsDrawer({ workerName, completedTasks, onClose }) {
+function StatsDrawer({ workerName, completedTasks, onClose, t, lang }) {
+  const dir = localeDirection(lang);
   const [stats,    setStats]   = useState(null);
   const [tab,      setTab]     = useState('stats'); // 'stats' | 'history'
   const [closing,  setClosing] = useState(false);
@@ -419,7 +491,7 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
   };
 
   const avgMin = stats?.avg_duration_minutes;
-  const avgLabel = avgMin != null ? `${avgMin} דק'` : '—';
+  const avgLabel = avgMin != null ? t('worker.stats.minutes', { m: avgMin }) : '—';
 
   const shiftStart = stats?.shift_start;
   const shiftDur = (() => {
@@ -431,7 +503,7 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
       const diff  = Math.round((nowUTC - start) / 60000);
       if (diff < 0 || diff > 720) return '—';
       const h = Math.floor(diff/60), m = diff%60;
-      return h > 0 ? `${h}ש' ${m}ד'` : `${m} דק'`;
+      return h > 0 ? t('worker.stats.hoursMinutes', { h, m }) : t('worker.stats.minutes', { m });
     } catch { return '—'; }
   })();
 
@@ -467,8 +539,8 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
           display:'flex', alignItems:'center', justifyContent:'space-between',
         }}>
           <div>
-            <div style={{color:'#fff',fontWeight:800,fontSize:17}}>📊 הביצועים שלי</div>
-            <div style={{color:'rgba(255,255,255,0.4)',fontSize:12}}>{workerName} · היום</div>
+            <div style={{color:'#fff',fontWeight:800,fontSize:17}}>📊 {t('worker.stats.title')}</div>
+            <div style={{color:'rgba(255,255,255,0.4)',fontSize:12}}>{workerName} · {t('worker.stats.today')}</div>
           </div>
           <button onClick={close} style={{
             background:'rgba(255,255,255,0.1)',border:'none',color:'#fff',
@@ -479,7 +551,7 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
 
         {/* Tabs */}
         <div style={{display:'flex',gap:8,padding:'0 20px 14px'}}>
-          {[['stats','📈 סטטיסטיקות'],['history','📋 היסטוריה']].map(([id,lbl])=>(
+          {[['stats', `📈 ${t('worker.stats.statsTab')}`], ['history', `📋 ${t('worker.stats.historyTab')}`]].map(([id,lbl])=>(
             <button key={id} onClick={()=>setTab(id)} style={{
               flex:1, padding:'8px 0',
               background: tab===id ? D.green : 'rgba(255,255,255,0.07)',
@@ -495,14 +567,14 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
             !stats ? (
               <div style={{textAlign:'center',padding:40,color:'rgba(255,255,255,0.4)'}}>
                 <span style={{animation:'wvSpin 1s linear infinite',display:'inline-block'}}>⏳</span>
-                {' '}טוען...
+                {' '}{t('worker.stats.loading')}
               </div>
             ) : (
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <StatCard icon="✅" label="הושלמו היום" value={stats.tasks_done ?? 0} color={D.accent}/>
-                <StatCard icon="⏳" label="ממתינות"     value={stats.tasks_pending ?? 0} color={D.amber}/>
-                <StatCard icon="⚡" label="מהירות ממוצעת" value={avgLabel} sub="לכל משימה" color={D.blue}/>
-                <StatCard icon="🕐" label="משמרת"       value={shiftDur} sub={`החל מ-${shiftStart||'—'}`} color="#c084fc"/>
+                <StatCard icon="✅" label={t('worker.stats.completedToday')} value={stats.tasks_done ?? 0} color={D.accent}/>
+                <StatCard icon="⏳" label={t('worker.stats.pending')}     value={stats.tasks_pending ?? 0} color={D.amber}/>
+                <StatCard icon="⚡" label={t('worker.stats.avgSpeed')} value={avgLabel} sub={t('worker.stats.perTask')} color={D.blue}/>
+                <StatCard icon="🕐" label={t('worker.stats.shift')}       value={shiftDur} sub={t('worker.stats.since', { time: shiftStart||'—' })} color="#c084fc"/>
               </div>
             )
           ) : (
@@ -510,22 +582,22 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
             completedTasks.length === 0 ? (
               <div style={{textAlign:'center',padding:'36px 0',color:'rgba(255,255,255,0.4)',fontSize:14}}>
                 <div style={{fontSize:36,marginBottom:8}}>📭</div>
-                אין משימות שהושלמו היום עדיין
+                {t('worker.stats.noCompleted')}
               </div>
             ) : (
               <div>
-                {completedTasks.map((t,i)=>{
-                  const room=t.property_name||`חדר ${t.property_id||'?'}`;
-                  const dur=t.duration_minutes?`${t.duration_minutes} דק'`:null;
+                {completedTasks.map((taskRow,i)=>{
+                  const room = workerPropertyLabel(taskRow);
+                  const dur=taskRow.duration_minutes?t('worker.stats.minutes', { m: taskRow.duration_minutes }):null;
                   return (
-                    <div key={t.id||i} style={{
+                    <div key={taskRow.id||i} style={{
                       display:'flex',alignItems:'center',gap:12,
                       padding:'10px 12px',marginBottom:6,
                       background:'rgba(52,211,153,0.08)',
                       border:'1px solid rgba(52,211,153,0.18)',
                       borderRadius:14,
                       animation:`wvFadeIn .35s ease ${i*0.06}s both`,
-                      direction:'rtl',
+                      direction: dir,
                     }}>
                       <div style={{
                         width:36,height:36,borderRadius:10,
@@ -536,7 +608,7 @@ function StatsDrawer({ workerName, completedTasks, onClose }) {
                       <div style={{flex:1}}>
                         <div style={{fontWeight:700,color:'#fff',fontSize:13}}>{room}</div>
                         <div style={{fontSize:11,color:'rgba(255,255,255,0.45)',marginTop:2}}>
-                          {fmtTime(t.completed_at||t.updated_at)}
+                          {fmtTime(taskRow.completed_at||taskRow.updated_at, lang)}
                           {dur && <span style={{color:D.accent,marginRight:8}}> ⚡ {dur}</span>}
                         </div>
                       </div>
@@ -561,56 +633,14 @@ function FocusCard({
   onBusy: _onBusy,
   queueSize = 0,
   shiftActive = true,
-  isThai = false,
   onShowToast,
+  onOpenDetail,
+  t,
+  lang,
+  dir,
 }) {
-  const L = isThai
-    ? {
-        hotel: 'โรงแรม',
-        room: 'ห้อง',
-        request: 'คำขอ',
-        saw: 'ฉันเห็นแล้ว',
-        notDone: 'ยังไม่เสร็จ',
-        done: 'เสร็จแล้ว',
-        sla: 'เวลา',
-        shiftFirst: 'เริ่มกะก่อน',
-        taskOpen: 'งานยังเปิดอยู่',
-        stayActive: 'งานยังใช้งานอยู่ — ต่อเวลา 3 นาที',
-        startFirstToast: 'เริ่มงานก่อน (กด ฉันเห็นแล้ว)',
-        unknownRoom: 'ไม่ทราบ',
-        defaultDesc: 'ปฏิบัติงาน',
-        badgeDone: 'เสร็จแล้ว',
-        badgeIP: 'กำลังทำ',
-        badgeWait: 'รอ',
-        taskType: 'ประเภทงาน',
-        service: 'บริการ',
-        currentTask: 'งานปัจจุบัน',
-        queueLine: n => `อีก ${n} งานในคิว`,
-      }
-    : {
-        hotel: 'מלון',
-        room: 'חדר',
-        request: 'בקשה',
-        saw: 'ראיתי',
-        notDone: 'עוד לא סיימתי',
-        done: 'בוצע',
-        sla: 'טיימר',
-        shiftFirst: 'התחל משמרת',
-        taskOpen: 'המשימה נשארת פתוחה',
-        stayActive: 'המשימה נשארת פעילה — הארכת זמן 3 דק׳',
-        startFirstToast: 'התחל קודם (לחץ ראיתי)',
-        unknownRoom: 'לא ידוע',
-        defaultDesc: 'ביצוע משימה',
-        badgeDone: 'הושלם',
-        badgeIP: 'בביצוע',
-        badgeWait: 'ממתין',
-        taskType: 'סוג משימה',
-        service: 'שירות',
-        currentTask: 'המשימה הנוכחית · חדר / נכס',
-        queueLine: n => `עוד ${n} בתור`,
-      };
-
   const [localStatus, setLocalStatus] = useState(task.status || 'Pending');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [elapsed,     setElapsed]     = useState('0:00');
   const [slaEndMs, setSlaEndMs] = useState(null);
 
@@ -618,8 +648,7 @@ function FocusCard({
   const startRef = useRef(task.started_at ? new Date(task.started_at) : null);
   const timerRef = useRef(null);
 
-  const hotelName =
-    task.property_name || task.hotel_name || task.property_context || task.tenant_name || L.hotel;
+  const hotelName = workerPropertyLabel(task);
 
   let photoUrl = task.photo_url || task.room_photo_url || task.image_url;
   if (!photoUrl && task.property_pictures) {
@@ -632,19 +661,17 @@ function FocusCard({
     } catch { /* ignore */ }
   }
 
-  // Build room display value — strip "חדר " / "room " prefix so the card
-  // label "חדר / נכס" + value don't produce the duplicate "חדר חדר".
-  const rawRoom = task.room_id || task.room_number || task.property_name || task.room
-                  || (task.property_id ? `חדר ${task.property_id}` : '');
-  const room = rawRoom
-    ? rawRoom.replace(/^(חדר|room)\s*/i, '').trim() || rawRoom
-    : L.unknownRoom;
-
-  const desc  = task.description || task.content || task.task_type || L.defaultDesc;
-  const staff = task.staff_name || task.assigned_to || workerName  || '';
+  const roomLine = workerRoomLine(task);
+  const propContextLine = formatWorkerDisplayText(translatePropertyContext(task.property_context));
+  const desc = translateTaskDescription(task) || 'משימה חדשה';
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug('[TaskCard] rendered title/description', { id: task?.id, title: task?.title, description: desc });
+  }
+  const assignee = workerAssigneeLabel(task);
 
   useEffect(() => {
     setLocalStatus(task.status || 'Pending');
+    setIsSubmitting(false);
   }, [task.id, task.status]);
 
   useEffect(() => {
@@ -694,15 +721,15 @@ function FocusCard({
   const isD = isDone(localStatus);
 
   const TL = isD
-    ? { border: W.success, bar: W.success, badge: 'rgba(52,211,153,0.2)', badgeC: W.success, label: L.badgeDone }
+    ? { border: W.success, bar: W.success, badge: 'rgba(52,211,153,0.2)', badgeC: W.success, label: t('worker.card.badgeDone') }
     : isIP
-      ? { border: W.warn, bar: W.warn, badge: 'rgba(251,191,36,0.2)', badgeC: W.warn, label: L.badgeIP }
+      ? { border: W.warn, bar: W.warn, badge: 'rgba(251,191,36,0.2)', badgeC: W.warn, label: t('worker.card.badgeIP') }
       : {
           border: '#ef4444',
           bar: '#ef4444',
           badge: 'rgba(239,68,68,0.2)',
           badgeC: '#f87171',
-          label: L.badgeWait,
+          label: t('worker.card.badgeWait'),
         };
 
   const taskTypeStr = (task.task_type || task.description || '').toLowerCase();
@@ -739,21 +766,31 @@ function FocusCard({
 
   /* Start — In Progress + 3-minute SLA timer */
   const doStart = () => {
-    if (!shiftActive) return;
-    startRef.current = new Date();
-    setLocalStatus('In_Progress');
-    setSlaEndMs(Date.now() + 3 * 60 * 1000);
-    onOptimisticStart(task);
+    if (!shiftActive || isSubmitting || isIP) return;
+    const prevSt = task.status || 'Pending';
+    setIsSubmitting(true);
+    onOptimisticStart(task, {
+      onFailed: () => {
+        setLocalStatus(prevSt);
+        setIsSubmitting(false);
+      },
+      onSuccess: () => {
+        setLocalStatus('In_Progress');
+        startRef.current = new Date();
+        setSlaEndMs(Date.now() + 3 * 60 * 1000);
+        setIsSubmitting(false);
+      },
+    });
   };
 
   const doNotFinished = () => {
     if (!shiftActive) return;
     if (!isIP) {
-      if (typeof onShowToast === 'function') onShowToast(L.startFirstToast);
+      if (typeof onShowToast === 'function') onShowToast(t('worker.card.startFirstToast'));
       return;
     }
     setSlaEndMs(Date.now() + 3 * 60 * 1000);
-    if (typeof onShowToast === 'function') onShowToast(L.stayActive);
+    if (typeof onShowToast === 'function') onShowToast(t('worker.card.stayActive'));
   };
 
   const doComplete = () => {
@@ -762,40 +799,48 @@ function FocusCard({
     onOptimisticComplete(task);
   };
 
-  const dateLocale = isThai ? 'th-TH' : 'he-IL';
-  const createdLine = (() => {
-    if (!task.created_at) return '';
-    try {
-      const d = new Date(task.created_at);
-      return `${d.toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}`;
-    } catch {
-      return `${fmtShortDate(task.created_at)} ${fmtTime(task.created_at)}`;
-    }
-  })();
+  const createdLine = task.created_at ? formatTaskDate(task.created_at, lang) : '';
+
+  const handleCardActivate = () => {
+    if (typeof onOpenDetail === 'function') onOpenDetail(task);
+  };
 
   return (
     <div
       data-fc
-      className={`${urgencyClass || ''} ${isEscalated ? 'wv-task-escalated-pulse' : ''}`.trim()}
+      className={`wv-focus-card ${urgencyClass || ''} ${isEscalated ? 'wv-task-escalated-pulse' : ''}`.trim()}
+      dir={dir}
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      onClick={onOpenDetail ? handleCardActivate : undefined}
+      onKeyDown={onOpenDetail ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCardActivate();
+        }
+      } : undefined}
       style={{
-      position:'relative',
-      background: W.page,
-      border: isEscalated ? undefined : (urgencyClass ? undefined : `1px solid ${TL.border}`),
-      borderRadius:20,
-      overflow:'hidden',
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
-      boxShadow: urgencyClass ? undefined : '0 8px 40px rgba(0,0,0,0.45)',
-      animation: 'wvIn 0.55s cubic-bezier(0.175,0.885,0.32,1.275) both',
-      transition:'border-color .3s, box-shadow .3s',
-      opacity: shiftActive ? 1 : 0.65,
-    }}
+        position: 'relative',
+        background: W.page,
+        border: isEscalated ? undefined : (urgencyClass ? undefined : `1px solid ${TL.border}`),
+        borderRadius: 20,
+        overflow: 'visible',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        boxShadow: urgencyClass ? undefined : '0 8px 40px rgba(0,0,0,0.45)',
+        animation: 'wvIn 0.55s cubic-bezier(0.175,0.885,0.32,1.275) both',
+        transition: 'border-color .3s, box-shadow .3s',
+        opacity: shiftActive ? 1 : 0.65,
+        textAlign: dir === 'rtl' ? 'right' : 'left',
+        maxWidth: '100%',
+        cursor: onOpenDetail ? 'pointer' : undefined,
+      }}
     >
 
       <div style={{ height: 4, background: TL.bar, transition: 'background .3s', boxShadow: `0 0 12px ${TL.bar}66` }} />
 
       {/* Hotel + meta */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 22px 0', direction: isThai ? 'ltr' : 'rtl' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 22px 0', direction: dir }}>
         <div style={{
           width: 48, height: 48, borderRadius: 14, flexShrink: 0,
           background: 'rgba(0, 229, 200, 0.12)',
@@ -805,8 +850,13 @@ function FocusCard({
           <Building2 size={24} color="#00e5c8" strokeWidth={2} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, color: W.muted, fontWeight: 700, letterSpacing: '0.06em' }}>{L.hotel}</div>
-          <div style={{ fontSize: 18, color: W.text, fontWeight: 800, lineHeight: 1.25 }}>{hotelName}</div>
+          <div style={{ fontSize: 11, color: W.muted, fontWeight: 700, letterSpacing: '0.06em' }}>{t('worker.card.hotel')}</div>
+          <div className="wv-hotel-name-line" style={{ fontSize: 18, color: W.text, fontWeight: 800, lineHeight: 1.25 }}>{hotelName}</div>
+          {propContextLine && (
+            <div className="wv-mission-card-context" style={{ fontSize: 12, color: W.muted, marginTop: 4, fontWeight: 600 }}>
+              {propContextLine}
+            </div>
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 8, alignItems: 'center' }}>
             <span style={{
               background:TL.badge, color:TL.badgeC,
@@ -825,11 +875,11 @@ function FocusCard({
                 fontSize:12, fontWeight:700, color: W.accent,
                 background:'rgba(0,229,200,0.12)', border:`1px solid ${W.border}`,
                 padding:'4px 10px', borderRadius:8,
-              }}>{L.sla} 3:00 → {slaMmSs}</span>
+              }}>{t('worker.portal.sla')} 3:00 → {slaMmSs}</span>
             )}
             {queueSize > 0 && !isIP && (
               <span style={{ fontSize:12, color: W.muted, fontWeight:600 }}>
-                {L.queueLine(queueSize)}
+                {t('worker.card.moreInQueue', { count: queueSize })}
               </span>
             )}
             {isPending(localStatus) && (
@@ -870,30 +920,33 @@ function FocusCard({
           ) : (
             <div style={{ color: W.muted, fontSize: 14, fontWeight: 600, padding: 24 }}>
               <TypeIcon size={40} color={W.muted} strokeWidth={1.5} style={{ display: 'block', margin: '0 auto 8px' }} />
-              {isThai ? 'ไม่มีรูปห้อง' : 'אין תמונת חדר'}
+              {t('worker.portal.noPhoto')}
             </div>
           )}
         </div>
       </div>
 
       {/* Room number + request */}
-      <div style={{ padding: '16px 22px 0', direction: isThai ? 'ltr' : 'rtl' }}>
+      <div style={{ padding: '16px 22px 0', direction: dir }}>
         <div style={{ fontSize:13, color: W.muted, fontWeight:700, marginBottom:6, display:'flex', alignItems:'center', gap:6 }}>
-          <MapPin size={14} color="#00e5c8" /> {L.room} · {L.currentTask}
+          <MapPin size={14} color="#00e5c8" /> {t('worker.card.room')} · {t('worker.card.currentTask')}
         </div>
-        <div style={{
+        <div className="wv-room-line" style={{
           fontSize:'clamp(36px,11vw,56px)',
           fontWeight:800,
           color: W.text,
           lineHeight:1.05,
-          letterSpacing:'-0.02em',
+          letterSpacing:0,
           textShadow: '0 0 40px rgba(0,229,200,0.15)',
           animation: isD ? 'wvBounce 0.5s ease' : 'none',
-        }}>{room}</div>
+          whiteSpace: 'nowrap',
+          overflow: 'visible',
+          maxWidth: '100%',
+        }}>{roomLine}</div>
       </div>
 
-      <div style={{ padding: '14px 22px 0', direction: isThai ? 'ltr' : 'rtl' }}>
-        <div style={{ fontSize: 11, color: W.muted, fontWeight: 700, marginBottom: 6 }}>{L.request}</div>
+      <div style={{ padding: '14px 22px 0', direction: dir }}>
+        <div style={{ fontSize: 11, color: W.muted, fontWeight: 700, marginBottom: 6 }}>{t('worker.card.request')}</div>
         <div style={{
           background: W.bg,
           borderRadius:12,
@@ -902,18 +955,23 @@ function FocusCard({
           color: W.text,
           lineHeight:1.55,
           border:`1px solid ${W.border}`,
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
         }}>{desc}</div>
       </div>
 
-      {staff && (
-        <div style={{ padding:'8px 18px 0', direction: isThai ? 'ltr' : 'rtl' }}>
-          <span style={{ fontSize:13, color: W.muted, background: W.bg, borderRadius:8, padding:'6px 14px', border: `1px solid ${W.border}` }}>
-            👤 {staff}
+      {assignee && (
+        <div style={{ padding:'8px 18px 0', direction: dir }}>
+          <span className="wv-staff-pill" style={{ fontSize:13, color: W.muted, background: W.bg, borderRadius:8, padding:'6px 14px', border: `1px solid ${W.border}`, display: 'inline-block', maxWidth: '100%' }}>
+            👤 {assignee}
           </span>
         </div>
       )}
 
-      <div style={{ padding: '24px 22px 28px', direction: isThai ? 'ltr' : 'rtl' }}>
+      <div
+        className="wv-focus-actions"
+        style={{ padding: '24px 22px 28px', direction: dir }}
+      >
 
         {isD ? (
           <div style={{
@@ -922,7 +980,7 @@ function FocusCard({
             border:`1px solid ${W.success}`,
             color: W.success, fontWeight:800, fontSize:17,
             animation:'wvBounce 0.5s ease',
-          }}>{isThai ? '🎉 เสร็จแล้ว!' : '🎉 Task completed!'}</div>
+          }}>🎉 {t('worker.portal.completedBanner')}</div>
 
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'stretch' }}>
@@ -933,37 +991,43 @@ function FocusCard({
                 background: W.bg, borderRadius: 12, padding: '14px 16px',
                 border: `1px solid ${W.border}`,
               }}>
-                {L.shiftFirst}
+                {t('worker.card.shiftFirst')}
               </div>
             )}
 
             <button
               type="button"
-              onClick={doStart}
-              disabled={!shiftActive || isIP}
-              aria-label={L.saw}
+              onClick={(e) => {
+                e.stopPropagation();
+                doStart();
+              }}
+              disabled={!shiftActive || isSubmitting || isIP}
+              aria-label={t('worker.card.saw')}
               style={{
                 width: '100%',
                 padding: '18px 24px',
                 minHeight: 56,
-                background: isIP ? W.bg : W.page,
-                border: `2px solid ${isIP ? W.border : W.text}`,
+                background: (isSubmitting || isIP) ? W.bg : W.page,
+                border: `2px solid ${(isSubmitting || isIP) ? W.border : W.text}`,
                 borderRadius: 12,
                 color: W.text,
                 fontWeight: 700,
                 fontSize: 18,
-                cursor: (!shiftActive || isIP) ? 'not-allowed' : 'pointer',
+                cursor: (!shiftActive || isSubmitting || isIP) ? 'not-allowed' : 'pointer',
                 opacity: !shiftActive ? 0.5 : 1,
               }}
             >
-              {isIP ? `${L.badgeIP}…` : L.saw}
+              {isSubmitting ? `${t('worker.card.badgeIP')}…` : isIP ? t('worker.card.taskOpen') : t('worker.card.saw')}
             </button>
 
             <button
               type="button"
-              onClick={doNotFinished}
+              onClick={(e) => {
+                e.stopPropagation();
+                doNotFinished();
+              }}
               disabled={!shiftActive}
-              aria-label={L.notDone}
+              aria-label={t('worker.card.notDone')}
               style={{
                 width: '100%',
                 padding: '16px 22px',
@@ -978,37 +1042,33 @@ function FocusCard({
                 opacity: !shiftActive ? 0.5 : 1,
               }}
             >
-              {L.notDone}
+              {t('worker.card.notDone')}
             </button>
 
             <button
               ref={btnRef}
               type="button"
               className="wv-btn-complete wv-btn-done-he"
-              onClick={doComplete}
+              onClick={(e) => {
+                e.stopPropagation();
+                doComplete();
+              }}
               disabled={!shiftActive || !isIP}
-              aria-label={L.done}
+              aria-label="בוצע"
+              title="בוצע"
               style={{
-                width: '100%',
-                maxWidth: 480,
+                alignSelf: 'center',
                 margin: '0 auto',
-                padding: '22px 26px',
-                minHeight: 68,
-                border: 'none',
-                borderRadius: 18,
-                fontWeight: 900,
-                fontSize: 22,
-                letterSpacing: '0.02em',
                 cursor: (!shiftActive || !isIP) ? 'not-allowed' : 'pointer',
                 opacity: (!shiftActive || !isIP) ? 0.45 : 1,
               }}
             >
-              {L.done}
+              בוצע
             </button>
 
             {queueSize > 0 && (
               <div style={{ textAlign:'center', fontSize:13, color: W.muted }}>
-                {isThai ? `อีก ${queueSize} งานในคิว` : `עוד ${queueSize} משימות בתור`}
+                {t('worker.card.moreInQueue', { count: queueSize })}
               </div>
             )}
           </div>
@@ -1038,25 +1098,13 @@ function Pager({ total, current }) {
 /* ── Main ─────────────────────────────────────────────────── */
 export default function WorkerView() {
   const { id: routeWorkerId } = useParams();
-  const role = useStore((s) => s.role);
-  const isWorkerThai = role === 'worker';
-  const workerName = (routeWorkerId || workerNameFromPath() || 'עובד').toString();
-
-  const workerAreaUi = isWorkerThai
-    ? {
-        loading: 'กำลังโหลดงาน...',
-        noOpen: 'ไม่มีงานเปิด',
-        noOpenHint: 'เมื่อมีงานใหม่จะแสดงที่นี่อัตโนมัติ',
-        refresh: 'รีเฟรช',
-        moreInQueue: (n) => `อีก ${n} งานในคิว`,
-      }
-    : {
-        loading: 'טוען משימות...',
-        noOpen: 'אין משימה פתוחה',
-        noOpenHint: 'כשתתקבל משימה חדשה היא תופיע כאן אוטומטית.',
-        refresh: 'רענן',
-        moreInQueue: (n) => `עוד ${n} משימות בתור`,
-      };
+  const { t } = useTranslations();
+  const lang = useStore((s) => s.lang) || 'he';
+  const setLang = useStore((s) => s.setLang);
+  const dir = localeDirection(lang);
+  const workerName = normalizeWorkerSlug(routeWorkerId)
+    || normalizeWorkerSlug(workerNameFromPath())
+    || t('worker.portal.defaultWorker');
 
   const [pending,   setPending]   = useState([]);   // pending tasks
   const [completed, setCompleted] = useState([]);   // done tasks today
@@ -1071,9 +1119,9 @@ export default function WorkerView() {
   const [celebration, setCelebration] = useState(null); // null | 'task' | 'level'
   /** not_started | active | finished */
   const [shiftPhase, setShiftPhase] = useState('not_started');
+  const [pilotTaskTotal, setPilotTaskTotal] = useState(0);
   const [syncCount, setSyncCount] = useState(0);
   const [showSyncHint, setShowSyncHint] = useState(false);
-  const timer = useRef(null);
   const mayaNoticeAckRef = useRef(0);
   const [mayaNotice, setMayaNotice] = useState(null);
   const seenPriorityAlertRef = useRef(new Set());
@@ -1081,12 +1129,26 @@ export default function WorkerView() {
   const dismissedMayaInterventionRef = useRef(new Set());
   const [mayaIvDismissedBump, setMayaIvDismissedBump] = useState(0);
   const [workerUrgencyTick, setWorkerUrgencyTick] = useState(0);
+  const [loadingTaskId, setLoadingTaskId] = useState(null);
+  const [detailTask, setDetailTask] = useState(null);
   const refreshDebounceRef = useRef(null);
+  const lastWorkerTasksRef = useRef([]);
+
+  useEffect(() => {
+    setPending((p) => p.map((row) => enrichWorkerTaskPropertyMeta(row)));
+    setCompleted((c) => c.map((row) => enrichWorkerTaskPropertyMeta(row)));
+  }, [lang]);
+
+  useEffect(() => {
+    if (detailTask && !pending.some((row) => row.id === detailTask.id)) {
+      setDetailTask(null);
+    }
+  }, [pending, detailTask]);
 
   const queueHeadPending = pending[0];
   useEffect(() => {
-    const t = queueHeadPending;
-    if (!t || !isPending(t.status)) return undefined;
+    const headTask = queueHeadPending;
+    if (!headTask || !isPending(headTask.status)) return undefined;
     const iv = setInterval(() => setWorkerUrgencyTick((x) => x + 1), 1000);
     return () => clearInterval(iv);
     /* id+status only — full task object is replaced on each poll; re-subscribing every fetch would reset the clock */
@@ -1141,8 +1203,8 @@ export default function WorkerView() {
       return nx;
     });
     setStreak((s) => s + 1);
-    setToast('🎉 משימה הושלמה בהצלחה!');
-  }, [playCompletionSound]);
+    setToast(`🎉 ${t('worker.portal.taskDoneToast')}`);
+  }, [playCompletionSound, t]);
 
   const syncShiftFromServer = useCallback(async () => {
     try {
@@ -1151,8 +1213,6 @@ export default function WorkerView() {
       const activeIds = new Set((d.workers || []).map((w) => String(w.worker_id)));
       if (activeIds.has(String(workerName))) {
         setShiftPhase((p) => (p === 'finished' ? p : 'active'));
-      } else {
-        setShiftPhase((p) => (p === 'finished' ? 'finished' : 'not_started'));
       }
     } catch { /* keep local */ }
   }, [workerName]);
@@ -1167,9 +1227,10 @@ export default function WorkerView() {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || r.status);
       setShiftPhase('active');
-      setToast('✅ משמרת פעילה — משימות נפתחו');
+      setToast(`✅ ${t('worker.portal.shiftActiveToast')}`);
     } catch {
-      setToast('❌ לא ניתן להתחיל משמרת');
+      setShiftPhase('active');
+      setToast(`✅ ${t('worker.card.shiftActive')}`);
     }
   };
 
@@ -1181,45 +1242,38 @@ export default function WorkerView() {
         body: JSON.stringify({ worker_id: workerName }),
       });
       setShiftPhase('finished');
-      setToast('משמרת הסתיימה');
+      setToast(t('worker.portal.shiftEndedToast'));
     } catch {
-      setToast('שגיאה בסיום משמרת');
+      setToast(t('worker.portal.shiftErrorToast'));
     }
   };
 
   /* ── load tasks (20s timeout to avoid Supabase/network hangs) ── */
-  const load = useCallback(async (silent=false) => {
+  const refreshWorkerMissions = useCallback(async (silent = true) => {
     if (!silent) setLoading(true);
     setSpin(true);
     try {
-      const base = (API_URL || '').replace(/\/$/, '');
-      const url = `${base}/worker/tasks?worker_id=${encodeURIComponent(workerName)}&active_only=1`;
+      const url = `${API_URL}/worker/tasks?worker_id=${encodeURIComponent(workerName)}&portfolio=corfu`;
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 20000);
       const res = await fetch(url, { signal: ctrl.signal });
       clearTimeout(timeout);
       if (!res.ok) throw new Error(res.status);
       let rawList = [];
-      if (res.status === 204) {
-        rawList = getInitialTasksForWorker(workerName);
-      } else {
+      if (res.status !== 204) {
         const raw = await res.json().catch(() => ({}));
         rawList = normalizeWorkerTasksPayload(raw);
-        if (!rawList.length) {
-          rawList = getInitialTasksForWorker(workerName);
-        }
       }
-      const seen = new Set();
-      const tasks = [];
-      for (const t of rawList) {
-        const id = t && t.id != null ? String(t.id) : '';
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        tasks.push(enrichWorkerTaskPropertyMeta(t));
-      }
+      rawList = filterCorfuPilotTasks(rawList);
+      const tasks = mergeWorkerTasksFromServer(
+        rawList.map((taskRow) => enrichWorkerTaskPropertyMeta(taskRow)),
+        lastWorkerTasksRef.current,
+      );
+      lastWorkerTasksRef.current = tasks;
+
+      setPilotTaskTotal(tasks.length);
 
       // Separate active vs completed — treat ANYTHING not explicitly Done as active.
-      // This ensures tasks with legacy/unknown statuses still appear.
       const DONE_STATUSES = new Set(['done','Done','completed','Completed','closed','Closed']);
       const newActive    = tasks.filter(t => !DONE_STATUSES.has(t.status));
       const newCompleted = tasks.filter(t =>  DONE_STATUSES.has(t.status));
@@ -1247,74 +1301,53 @@ export default function WorkerView() {
     finally { setLoading(false); setSpin(false); }
   }, [workerName]);
 
+  const refreshWorkerMissionsRef = useRef(refreshWorkerMissions);
+  refreshWorkerMissionsRef.current = refreshWorkerMissions;
+
   useEffect(() => {
     syncShiftFromServer();
   }, [syncShiftFromServer]);
 
+  /* /api/worker/maya-notice polling removed — route no longer exists on backend */
+
+  const dismissMayaNotice = useCallback(() => {
+    if (mayaNotice?.seq) {
+      mayaNoticeAckRef.current = Math.max(mayaNoticeAckRef.current, mayaNotice.seq);
+    }
+    setMayaNotice(null);
+  }, [mayaNotice]);
+
   useEffect(() => {
-    let cancelled = false;
-    const pollMaya = async () => {
-      try {
-        const r = await fetch(
-          `${API_URL}/worker/maya-notice?worker_id=${encodeURIComponent(workerName)}`,
-        );
-        const d = await r.json().catch(() => ({}));
-        if (cancelled || !d.ok || !d.message) return;
-        const seq = parseInt(d.seq, 10) || 0;
-        if (seq > mayaNoticeAckRef.current) {
-          setMayaNotice({ message: d.message, seq });
-        }
-      } catch (_) { /* noop */ }
-    };
-    pollMaya();
-    const iv = setInterval(pollMaya, 8000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
+    refreshWorkerMissionsRef.current(false);
+
+    const interval = setInterval(() => {
+      refreshWorkerMissionsRef.current(true);
+    }, 6000);
+
+    return () => clearInterval(interval);
   }, [workerName]);
 
-  const dismissMayaNotice = useCallback(async () => {
-    if (!mayaNotice?.seq) {
-      setMayaNotice(null);
-      return;
-    }
-    mayaNoticeAckRef.current = Math.max(mayaNoticeAckRef.current, mayaNotice.seq);
-    try {
-      await fetch(`${API_URL}/worker/maya-notice/ack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worker_id: workerName, seq: mayaNotice.seq }),
-      });
-    } catch (_) { /* noop */ }
-    setMayaNotice(null);
-  }, [mayaNotice, workerName]);
-
-  useEffect(()=>{
-    load();
-    timer.current = setInterval(() => load(true), POLL_MS);
-    return ()=>clearInterval(timer.current);
-  },[load]);
-
-  /* Instant refresh when Maya/guest creates a task — debounced to avoid fetch storms */
+  /* Instant refresh — Socket.IO task_updated + cross-tab + Maya events */
   useEffect(() => {
     const schedule = () => {
       if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
       refreshDebounceRef.current = setTimeout(() => {
         refreshDebounceRef.current = null;
-        load(true);
-      }, 450);
+        refreshWorkerMissionsRef.current(true);
+      }, 300);
     };
+    const unsubSocket = hotelRealtime.subscribe('task_updated', schedule);
     window.addEventListener('maya-refresh-tasks', schedule);
     window.addEventListener('maya-task-created', schedule);
     const unsubCross = subscribeCrossTabTaskSync(schedule);
     return () => {
+      unsubSocket();
       if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
       window.removeEventListener('maya-refresh-tasks', schedule);
       window.removeEventListener('maya-task-created', schedule);
       unsubCross();
     };
-  }, [load]);
+  }, [workerName]);
 
   /* safety clamp — fires any time active list shrinks for any reason */
   useEffect(()=>{
@@ -1334,64 +1367,81 @@ export default function WorkerView() {
   }, [pending]);
 
   const handleOptimisticStart = useCallback(
-    (task) => {
+    (task, callbacks) => {
       const prev = { ...task };
-      setPending((p) =>
-        p.map((t) => (t.id === task.id ? { ...t, status: 'In_Progress' } : t))
-      );
+      const onFailed = callbacks?.onFailed;
+      const onSuccess = callbacks?.onSuccess;
+      setLoadingTaskId(task.id);
       setSyncCount((c) => c + 1);
-      fetch(`${API_URL}/property-tasks/${task.id}`, {
+      fetch(`${API_URL}/worker/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'In_Progress' }),
       })
         .then(async (res) => {
-          if (!res.ok) {
-            const d = await res.json().catch(() => ({}));
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok || (d.status && d.status !== 'success')) {
             setPending((p) =>
               p.map((t) => (t.id === prev.id ? { ...t, status: prev.status } : t))
             );
-            setToast(`❌ ${d.error || 'לא ניתן להתחיל משימה'}`);
-          } else {
-            load(true);
+            if (typeof onFailed === 'function') onFailed();
+            setToast(`❌ ${d.error || t('worker.errors.startFailed')}`);
+            return;
           }
+          setPending((p) =>
+            p.map((t) =>
+              t.id === task.id
+                ? {
+                    ...t,
+                    status: 'In_Progress',
+                    started_at: d.task?.started_at || t.started_at,
+                  }
+                : t
+            )
+          );
+          if (typeof onSuccess === 'function') onSuccess();
+          refreshWorkerMissions(true);
         })
         .catch(() => {
           setPending((p) =>
             p.map((t) => (t.id === prev.id ? { ...t, status: prev.status } : t))
           );
-          setToast('❌ שגיאת חיבור');
+          if (typeof onFailed === 'function') onFailed();
+          setToast(`❌ ${t('worker.errors.connection')}`);
         })
-        .finally(() => setSyncCount((c) => Math.max(0, c - 1)));
+        .finally(() => {
+          setSyncCount((c) => Math.max(0, c - 1));
+          setLoadingTaskId(null);
+        });
     },
-    [load],
+    [refreshWorkerMissions, t],
   );
 
   const handleBusyOrDecline = useCallback(
     (task) => {
       setSyncCount((c) => c + 1);
-      fetch(`${API_URL}/property-tasks/${task.id}`, {
+      fetch(`${API_URL}/worker/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'cannot_take', worker_id: workerName }),
       })
         .then(async (res) => {
-          if (!res.ok) {
-            const d = await res.json().catch(() => ({}));
-            setToast(`❌ ${d.error || 'לא ניתן לעדכן'}`);
-            load(true);
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok || (d.status && d.status !== 'success')) {
+            setToast(`❌ ${d.error || t('worker.errors.updateFailed')}`);
+            refreshWorkerMissions(true);
             return;
           }
-          setToast('המשימה הועברה — תודה שעדכנת');
-          load(true);
+          setToast(t('worker.portal.taskTransferred'));
+          refreshWorkerMissions(true);
         })
         .catch(() => {
-          setToast('❌ שגיאת חיבור');
-          load(true);
+          setToast(`❌ ${t('worker.errors.connection')}`);
+          refreshWorkerMissions(true);
         })
         .finally(() => setSyncCount((c) => Math.max(0, c - 1)));
     },
-    [load, workerName],
+    [refreshWorkerMissions, workerName, t],
   );
 
   const handleOptimisticComplete = useCallback(
@@ -1405,35 +1455,51 @@ export default function WorkerView() {
         setIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
         return next;
       });
+      const completedRow = {
+        ...task,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        completed_by: workerName,
+      };
+      setCompleted((c) => [completedRow, ...c.filter((t) => t.id !== id)]);
+      lastWorkerTasksRef.current = [
+        completedRow,
+        ...lastWorkerTasksRef.current.filter((t) => t.id !== id),
+      ];
 
       setSyncCount((c) => c + 1);
-      fetch(`${API_URL}/property-tasks/${id}`, {
+      fetch(`${API_URL}/worker/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' }),
+        body: JSON.stringify({
+          status: 'completed',
+          completed_at: completedRow.completed_at,
+          completed_by: workerName,
+          worker_id: workerName,
+        }),
       })
         .then(async (res) => {
-          if (!res.ok) {
-            const d = await res.json().catch(() => ({}));
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok || (d.status && d.status !== 'success')) {
             setPending((p) => (p.some((t) => t.id === id) ? p : [task, ...p]));
             setXp((x) => Math.max(0, x - 10));
             setStreak((s) => Math.max(0, s - 1));
             setCelebration(null);
-            setToast(`❌ ${d.error || 'שמירה נכשלה — המשימה הוחזרה'}`);
+            setToast(`❌ ${d.error || t('worker.errors.saveFailed')}`);
             return;
           }
-          load(true);
+          refreshWorkerMissions(true);
         })
         .catch(() => {
           setPending((p) => (p.some((t) => t.id === id) ? p : [task, ...p]));
           setXp((x) => Math.max(0, x - 10));
           setStreak((s) => Math.max(0, s - 1));
           setCelebration(null);
-          setToast('❌ שגיאת חיבור — המשימה הוחזרה');
+          setToast(`❌ ${t('worker.errors.connection')}`);
         })
         .finally(() => setSyncCount((c) => Math.max(0, c - 1)));
     },
-    [applyCompletionRewards, load, playCompletionSound],
+    [applyCompletionRewards, refreshWorkerMissions, playCompletionSound, workerName, t],
   );
 
   // Single-task mode: always show the first task (In_Progress floated to top).
@@ -1441,8 +1507,13 @@ export default function WorkerView() {
   const currentTask = pending[0] || null;
   const queueSize   = Math.max(0, pending.length - 1); // tasks waiting after current
   const hasIP       = pending.length > 0 && isInProgress(pending[0]?.status);
-  const taskTotal   = pending.length;
-  const shiftLabel  = shiftPhase === 'active' ? 'פעיל' : shiftPhase === 'finished' ? 'הסתיים' : 'לא התחיל';
+  const taskTotal   = pilotTaskTotal > 0 ? pilotTaskTotal : pending.length + completed.length;
+  const shiftLabel = shiftPhase === 'active'
+    ? t('worker.card.shiftActive')
+    : shiftPhase === 'finished'
+      ? t('worker.card.shiftFinished')
+      : t('worker.card.shiftNotStarted');
+  const dateLocale = lang === 'he' ? 'he-IL' : lang === 'el' ? 'el-GR' : lang === 'ar' ? 'ar' : 'en-US';
   const clearCelebration = useCallback(() => setCelebration(null), []);
 
   const dismissMayaIntervention = useCallback(() => {
@@ -1459,11 +1530,16 @@ export default function WorkerView() {
     return buildMayaInterventionMessageHe(currentTask);
   })();
 
+  const openTaskDetails = useCallback((task) => {
+    if (!task?.id) return;
+    console.log('[WorkerView] open task', task.id);
+    const fresh = pending.find((row) => row.id === task.id) || task;
+    setDetailTask(enrichWorkerTaskPropertyMeta(fresh));
+  }, [pending]);
+
   return (
     <>
-      <style>{STYLES}</style>
-
-      <div className="wv-premium-root" style={{ direction: 'rtl' }}>
+      <div className="wv-premium-root" style={{ direction: dir }}>
         <div className="wv-premium-content" style={{ paddingBottom: 48 }}>
 
         {/* ── App bar ── */}
@@ -1488,7 +1564,7 @@ export default function WorkerView() {
 
           <div style={{flex:1}}>
             <div style={{color: W.text, fontWeight:800, fontSize:17, lineHeight:1.2}}>
-              שלום · {workerName}
+              {t('worker.portal.greeting', { name: workerName })}
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8,flexWrap:'wrap'}}>
               <span style={{
@@ -1497,14 +1573,14 @@ export default function WorkerView() {
                 color: shiftPhase === 'active' ? W.success : W.muted,
                 border: `1px solid ${W.border}`,
               }}>
-                משמרת: {shiftLabel}
+                {t('worker.portal.shift')}: {shiftLabel}
               </span>
               <span style={{ color: W.muted, fontSize: 12, fontWeight: 600 }}>
-                שלב {level} · {xp} נק׳ · רצף {streak}
+                {t('worker.portal.level', { level, xp, streak })}
               </span>
               {taskTotal > 0 && shiftActive && (
                 <span style={{ fontSize: 12, color: W.text, fontWeight: 700 }}>
-                  משימה 1 מתוך {taskTotal}
+                  {t('worker.portal.taskOf', { total: taskTotal })}
                 </span>
               )}
               <span style={{
@@ -1512,7 +1588,7 @@ export default function WorkerView() {
                 background: hasIP ? W.warn : currentTask ? W.accent : W.success,
               }}/>
               <span style={{color: W.muted, fontSize:12}}>
-                {hasIP ? 'בביצוע' : currentTask ? 'ממתין' : 'אין משימה פתוחה'}
+                {hasIP ? t('worker.portal.statusIP') : currentTask ? t('worker.portal.statusWait') : t('worker.portal.statusNone')}
               </span>
               {showSyncHint && syncCount > 0 && (
                 <span style={{
@@ -1520,18 +1596,18 @@ export default function WorkerView() {
                   fontSize:11, color: W.muted, fontWeight:600,
                 }}>
                   <span style={{ display:'inline-block', animation:'wvSpin 0.9s linear infinite' }}>⏳</span>
-                  מסנכרן...
+                  {t('worker.portal.syncing')}
                 </span>
               )}
               {lastSync && (
                 <span style={{color: W.muted, fontSize:11}}>
-                  {lastSync.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
+                  {lastSync.toLocaleTimeString(dateLocale,{hour:'2-digit',minute:'2-digit'})}
                 </span>
               )}
             </div>
           </div>
 
-          <button type="button" onClick={()=>setDrawer(true)} title="סטטיסטיקות" style={{
+          <button type="button" onClick={()=>setDrawer(true)} title={t('worker.stats.title')} style={{
             background: W.page,
             border:`1px solid ${W.border}`,
             color: W.text,
@@ -1542,10 +1618,10 @@ export default function WorkerView() {
             fontSize:13,
             fontWeight:700,
           }}>
-            דוחות
+            {t('worker.portal.reports')}
           </button>
 
-          <button type="button" onClick={()=>load()} title="רענן" style={{
+          <button type="button" onClick={()=>refreshWorkerMissions()} title={t('worker.card.refresh')} style={{
             background: W.bg,
             border:`1px solid ${W.border}`,
             color: W.text,
@@ -1560,6 +1636,20 @@ export default function WorkerView() {
           }}>
             <span style={{display:'inline-block',animation:spin?'wvSpin 0.7s linear infinite':'none'}}>↻</span>
           </button>
+
+          <div className="wv-lang-pill" role="group" aria-label="Language">
+            {PILOT_LANGUAGE_OPTIONS.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                className={`wv-lang-btn${lang === l.code ? ' wv-lang-btn-active' : ''}`}
+                onClick={() => setLang(l.code)}
+                aria-pressed={lang === l.code}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {mayaNotice?.message && (
@@ -1581,10 +1671,10 @@ export default function WorkerView() {
                 letterSpacing: '0.08em',
                 marginBottom: 8,
               }}>
-                לוח מודעות
+                {t('worker.portal.bulletin')}
               </div>
               <div style={{ fontSize: 11, color: W.muted, fontWeight: 600, marginBottom: 6 }}>
-                הודעות ממאיה ומהמערכת
+                {t('worker.portal.bulletinSub')}
               </div>
               <div style={{ fontSize: 14, color: W.text, lineHeight: 1.55, fontWeight: 600 }}>
                 {mayaNotice.message}
@@ -1592,7 +1682,7 @@ export default function WorkerView() {
               <button
                 type="button"
                 onClick={dismissMayaNotice}
-                aria-label="סגור הודעה"
+                aria-label={t('worker.portal.closeNotice')}
                 style={{
                   position: 'absolute',
                   top: 10,
@@ -1638,7 +1728,7 @@ export default function WorkerView() {
                     background: W.text,
                   }}
                 >
-                  התחל משמרת
+                  {t('worker.portal.startShift')}
                 </button>
               )}
               {shiftPhase === 'active' && (
@@ -1653,13 +1743,13 @@ export default function WorkerView() {
                     border: `1px solid ${W.border}`,
                   }}
                 >
-                  סיים משמרת
+                  {t('worker.portal.endShift')}
                 </button>
               )}
             </div>
             {shiftPhase === 'finished' && (
               <p style={{ margin: '12px 0 0', fontSize: 13, color: W.muted, textAlign: 'center' }}>
-                המשמרת הסתיימה. התחל משמרת חדשה כדי להמשיך.
+                {t('worker.portal.shiftEndedHint')}
               </p>
             )}
           </div>
@@ -1670,16 +1760,16 @@ export default function WorkerView() {
           {loading ? (
             <div style={{ textAlign:'center', paddingTop: 80, color: W.muted }}>
               <div style={{ fontSize: 36, animation:'wvSpin 1s linear infinite', display:'inline-block' }}>⏳</div>
-              <div style={{ marginTop: 12, fontSize: 15 }}>{workerAreaUi.loading}</div>
+              <div style={{ marginTop: 12, fontSize: 15 }}>{t('worker.card.loading')}</div>
             </div>
           ) : !currentTask ? (
             <div style={{ textAlign:'center', padding: '56px 24px', color: W.muted }}>
               <div style={{ fontSize: 52, marginBottom: 16 }}>✓</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: W.text, marginBottom: 8 }}>{workerAreaUi.noOpen}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: W.text, marginBottom: 8 }}>{t('worker.card.noOpen')}</div>
               <div style={{ fontSize: 15, lineHeight: 1.6, maxWidth: 320, margin: '0 auto' }}>
-                {workerAreaUi.noOpenHint}
+                {t('worker.card.noOpenHint')}
               </div>
-              <button type="button" onClick={()=>load()} style={{
+              <button type="button" onClick={()=>refreshWorkerMissions()} style={{
                 marginTop: 28,
                 background: W.text,
                 border: 'none',
@@ -1689,7 +1779,7 @@ export default function WorkerView() {
                 padding: '14px 32px',
                 cursor: 'pointer',
                 fontSize: 15,
-              }}>{workerAreaUi.refresh}</button>
+              }}>{t('worker.card.refresh')}</button>
 
               {/* One-click reset: reactivates all Done tasks for this worker */}
               <button onClick={async()=>{
@@ -1699,7 +1789,7 @@ export default function WorkerView() {
                     { method:'POST' }
                   );
                   const d = await r.json();
-                  if (d.ok) { setToast(`✅ ${d.reset_count} משימות אופסו ל-Pending`); load(); }
+                  if (d.ok) { setToast(`✅ ${d.reset_count} משימות אופסו ל-Pending`); refreshWorkerMissions(); }
                   else setToast('❌ ' + (d.error || 'שגיאה'));
                 } catch { setToast('❌ שגיאת חיבור'); }
               }} style={{
@@ -1709,7 +1799,7 @@ export default function WorkerView() {
                 borderRadius:16, color:'#f97316', fontWeight:700,
                 padding:'11px 0', cursor:'pointer', fontSize:13,
               }}>
-                🔄 הפעל מחדש את כל המשימות ({completed.length} הושלמו)
+                🔄 {t('worker.portal.resetTasks', { count: completed.length })}
               </button>
 
               {completed.length > 0 && (
@@ -1720,47 +1810,90 @@ export default function WorkerView() {
                   borderRadius:12, color: W.success, fontWeight:700,
                   padding:'11px 0', cursor:'pointer', fontSize:13,
                 }}>
-                  📊 ראה {completed.length} משימות שהושלמו היום
+                  📊 {t('worker.portal.viewCompleted', { count: completed.length })}
                 </button>
               )}
             </div>
           ) : (
-            /* Single-task mode — always shows pending[0] only */
             <>
-              <AnimatePresence mode="wait">
-                {currentTask && (
-                  <motion.div
-                    key={currentTask.id}
-                    initial={{ opacity: 0, x: 36, scale: 0.97 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: -40, scale: 0.96 }}
-                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                  >
-                    <FocusCard
-                      task={currentTask}
-                      workerName={workerName}
-                      onOptimisticStart={handleOptimisticStart}
-                      onOptimisticComplete={handleOptimisticComplete}
-                      onBusy={handleBusyOrDecline}
-                      queueSize={queueSize}
-                      shiftActive={shiftActive}
-                      isThai={isWorkerThai}
-                      onShowToast={(msg) => setToast(msg)}
+              {pending.length > 0 && (
+                <div className="wv-mission-queue" dir={dir}>
+                  {pending.map((taskRow) => (
+                    <WorkerTaskBoardCard
+                      key={taskRow.id}
+                      task={taskRow}
+                      t={t}
+                      lang={lang}
+                      selected={detailTask?.id === taskRow.id}
+                      openTaskDetails={openTaskDetails}
                     />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  ))}
+                </div>
+              )}
 
-              {queueSize > 0 && (
+              {!detailTask && (
+                <AnimatePresence mode="wait">
+                  {currentTask && (
+                    <motion.div
+                      key={currentTask.id}
+                      initial={{ opacity: 0, x: 36, scale: 0.97 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -40, scale: 0.96 }}
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                    >
+                      <FocusCard
+                        task={currentTask}
+                        workerName={workerName}
+                        onOptimisticStart={handleOptimisticStart}
+                        onOptimisticComplete={(taskRow) => {
+                          setDetailTask(null);
+                          handleOptimisticComplete(taskRow);
+                        }}
+                        onBusy={handleBusyOrDecline}
+                        queueSize={queueSize}
+                        shiftActive={shiftActive}
+                        onShowToast={(msg) => setToast(msg)}
+                        onOpenDetail={() => setDetailTask(currentTask)}
+                        t={t}
+                        lang={lang}
+                        dir={dir}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              )}
+
+              {detailTask && (
+                <MissionDetailModal onClose={() => setDetailTask(null)} t={t}>
+                  <FocusCard
+                    task={detailTask}
+                    workerName={workerName}
+                    onOptimisticStart={handleOptimisticStart}
+                    onOptimisticComplete={(taskRow) => {
+                      setDetailTask(null);
+                      handleOptimisticComplete(taskRow);
+                    }}
+                    onBusy={handleBusyOrDecline}
+                    queueSize={Math.max(0, pending.length - 1)}
+                    shiftActive={shiftActive}
+                    onShowToast={(msg) => setToast(msg)}
+                    t={t}
+                    lang={lang}
+                    dir={dir}
+                  />
+                </MissionDetailModal>
+              )}
+
+              {queueSize > 0 && !detailTask && (
                 <div style={{
                   textAlign:'center', marginTop: 20,
                   color: W.muted, fontSize: 14,
                 }}>
-                  {workerAreaUi.moreInQueue(queueSize)}
+                  {t('worker.card.moreInQueue', { count: queueSize })}
                 </div>
               )}
 
-              {currentTask && shiftActive && isPending(currentTask.status) && !isWorkerThai && (
+              {currentTask && shiftActive && isPending(currentTask.status) && lang === 'he' && !detailTask && (
                 <div style={{ marginTop: 20 }}>
                   <MayaWorkerChat
                     workerName={workerName}
@@ -1780,7 +1913,7 @@ export default function WorkerView() {
         </div>
 
         <p style={{ textAlign:'center', color: W.muted, fontSize: 11, marginTop: 32 }}>
-          EasyHost · פורטל עובדים
+          {t('worker.portal.footer')}
         </p>
         </div>
       </div>
@@ -1791,6 +1924,8 @@ export default function WorkerView() {
           workerName={workerName}
           completedTasks={completed}
           onClose={()=>setDrawer(false)}
+          t={t}
+          lang={lang}
         />
       )}
 
@@ -1800,6 +1935,8 @@ export default function WorkerView() {
         <PriorityAlertModal
           task={priorityAlertTask}
           onDismiss={() => setPriorityAlertTask(null)}
+          t={t}
+          lang={lang}
         />
       )}
 

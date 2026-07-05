@@ -179,8 +179,8 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await getDemoAuthToken('demo');
-      applyAuth(data.token, data.tenant_id || 'demo', data.role || 'admin', loginSuccess);
+      const data = await getDemoAuthToken('default');
+      applyAuth(data.token, data.tenant_id || 'default', data.role || 'admin', loginSuccess);
     } catch {
       // Backend unreachable — use local offline session so the demo still works
       const offlineToken = 'demo-offline-' + Date.now();

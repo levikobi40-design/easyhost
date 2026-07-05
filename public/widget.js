@@ -12,7 +12,7 @@
   // Get configuration from script tag
   const scriptTag = document.currentScript || document.querySelector('script[data-hotel-id]');
   const hotelId = scriptTag?.getAttribute('data-hotel-id') || 'default';
-  const apiUrl = scriptTag?.getAttribute('data-api-url') || 'http://127.0.0.1:5000';
+  const apiUrl = scriptTag?.getAttribute('data-api-url') || 'http://127.0.0.1:1000';
   const primaryColor = scriptTag?.getAttribute('data-primary-color') || '#6366f1';
   const position = scriptTag?.getAttribute('data-position') || 'right'; // 'left' or 'right'
 

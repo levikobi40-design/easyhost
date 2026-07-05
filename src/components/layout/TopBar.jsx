@@ -8,7 +8,9 @@ import { API_URL } from '../../utils/apiClient';
 import { notifyTasksChanged } from '../../utils/taskSyncBridge';
 import './TopBar.css';
 import { useMission } from '../../context/MissionContext';
-import { isDashboardAdmin, hasDeveloperOrSettingsHub, isOperationRole } from '../../utils/dashboardRoles';
+import { PILOT_LANGUAGE_OPTIONS } from '../../utils/pilotLanguages';
+import useTranslations from '../../hooks/useTranslations';
+import { hasDeveloperOrSettingsHub, isDashboardAdmin, isOperationRole } from '../../utils/dashboardRoles';
 
 /* ── Mode definitions ─────────────────────────────────────── */
 const SYSTEM_MODES = [
@@ -20,6 +22,7 @@ const SYSTEM_MODES = [
 
 const TopBar = () => {
   const navigate = useNavigate();
+  const { t } = useTranslations();
   const {
     lang, setLang, role, setRole, toggleSidebar,
     tenants, activeTenantId, setActiveTenantId,
@@ -32,10 +35,11 @@ const TopBar = () => {
   const [simDone,    setSimDone]    = useState(false);
   const orbRef = useRef(null);
 
-  const languages = [
-    { code: 'en', label: 'EN', flag: '🇺🇸' },
-    { code: 'he', label: 'HE', flag: '🇮🇱' },
-  ];
+  const languages = PILOT_LANGUAGE_OPTIONS.map((o) => ({
+    code: o.code,
+    label: o.label,
+    flag: o.code === 'he' ? '🇮🇱' : o.code === 'el' ? '🇬🇷' : o.code === 'ar' ? '🇸🇦' : '🇺🇸',
+  }));
 
   const normalise = (r) => {
     const map = { owner: 'host', manager: 'admin', host: 'host', staff: 'field', worker: 'field', operator: 'operator' };
@@ -111,11 +115,11 @@ const TopBar = () => {
               type="button"
               className="top-bar-hotels-btn"
               onClick={() => navigate('/properties')}
-              aria-label={lang === 'he' ? 'מלונות — רשימת נכסים' : 'Hotels — properties list'}
-              title={lang === 'he' ? 'מלונות / נכסים' : 'Hotels / Properties'}
+              aria-label={t('nav.properties')}
+              title={t('nav.properties')}
             >
               <Building2 size={20} aria-hidden />
-              <span className="top-bar-hotels-label">{lang === 'he' ? 'מלונות' : 'Hotels'}</span>
+              <span className="top-bar-hotels-label">{t('nav.properties')}</span>
             </button>
           )}
           <button
@@ -123,8 +127,8 @@ const TopBar = () => {
             className="top-bar-mission-refresh-btn"
             onClick={handleMissionHardRefresh}
             disabled={missionSyncing}
-            aria-label={lang === 'he' ? 'רענון לוח משימות וספירות' : 'Refresh tasks and status counts'}
-            title={lang === 'he' ? 'רענון לוח משימות (מסנכרן מסד נתונים)' : 'Refresh mission board & DB task counts'}
+            aria-label={t('worker.card.refresh')}
+            title={t('worker.card.refresh')}
           >
             <RefreshCw size={18} className={missionSyncing ? 'top-bar-refresh-spin' : ''} aria-hidden />
           </button>

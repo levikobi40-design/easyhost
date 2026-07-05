@@ -152,21 +152,32 @@ export function notifyFieldStaffStatusTap(detail) {
   );
 }
 
-/** Background validation: upcoming bookings vs prep-style open tasks (server /api/health/bookings-tasks-sync). */
+/** Background validation: upcoming bookings vs booking-source prep tasks only. */
 const BOOKING_TASK_SYNC_MS = 120000;
 let _bookingSyncTimer = null;
+let _lastDriftSignature = '';
+let _driftLoggedForSignature = false;
 
 async function runBookingTaskSyncValidationOnce() {
   try {
     const { fetchBookingTasksSyncHealth } = await import('../services/api');
     const snap = await fetchBookingTasksSyncHealth();
-    if (!snap || snap.aligned !== false) return;
-    console.warn('[EasyHost] Booking ↔ task sync drift', {
+    if (!snap || snap.aligned !== false) {
+      _lastDriftSignature = '';
+      _driftLoggedForSignature = false;
+      return;
+    }
+    const bookingOpen = snap.booking_open_tasks ?? snap.prep_like_open_tasks ?? 0;
+    const sig = `${snap.upcoming_bookings}|${bookingOpen}|${snap.drift_bookings_minus_prep_tasks}`;
+    if (sig === _lastDriftSignature && _driftLoggedForSignature) return;
+    _lastDriftSignature = sig;
+    _driftLoggedForSignature = true;
+    console.warn('[EasyHost] Booking ↔ task sync drift (missing booking prep tasks)', {
       upcoming: snap.upcoming_bookings,
-      prepLike: snap.prep_like_open_tasks,
+      bookingOpen,
+      nonBookingOpen: snap.non_booking_open_tasks,
       drift: snap.drift_bookings_minus_prep_tasks,
     });
-    window.dispatchEvent(new CustomEvent('easyhost-booking-task-drift', { detail: snap }));
   } catch (_) {
     /* offline / CORS — non-fatal */
   }

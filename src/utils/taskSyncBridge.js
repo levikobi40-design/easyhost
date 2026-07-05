@@ -20,6 +20,7 @@ function taskStatusLabelHe(st) {
 
 const BC_NAME = 'hotel-dashboard-tasks';
 const LS_KEY = 'hotel_task_sync_v1';
+const PENDING_MAYA_TASKS_KEY = 'hotel_pending_maya_tasks_v1';
 
 let broadcastChannel = null;
 
@@ -29,11 +30,112 @@ function getBroadcastChannel() {
   return broadcastChannel;
 }
 
-/**
- * Call after a task is created/updated (Maya chat, guest towels, inject, etc.).
- * @param {{ task?: object }} [opts] — optional task for optimistic Mission Board prepend
- */
-/** Optimistic Mission Board / PremiumDashboard — apply status before PATCH returns. */
+export function makeMayaClientTaskId() {
+  return `client_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isPersistedServerTaskId(id) {
+  const s = String(id || '').trim();
+  if (!s) return false;
+  if (s.startsWith('client_') || s.startsWith('local-') || s.startsWith('tmp-')) return false;
+  return true;
+}
+
+export function readPendingMayaTasksFromStorage() {
+  try {
+    const raw = localStorage.getItem(PENDING_MAYA_TASKS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((t) => t && t.pending_sync === true) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingMayaTasksToStorage(list) {
+  try {
+    const pending = (list || []).filter((t) => t && t.pending_sync === true);
+    if (!pending.length) {
+      localStorage.removeItem(PENDING_MAYA_TASKS_KEY);
+      return;
+    }
+    localStorage.setItem(PENDING_MAYA_TASKS_KEY, JSON.stringify(pending));
+  } catch (_) {}
+}
+
+export function registerPendingMayaTask(task) {
+  if (!task?.pending_sync) return;
+  const list = readPendingMayaTasksFromStorage();
+  const cid = String(task.client_id || task.id || '');
+  const next = [task, ...list.filter((t) => String(t.client_id || t.id) !== cid)];
+  writePendingMayaTasksToStorage(next);
+}
+
+export function clearPendingMayaTask(clientIdOrId) {
+  const key = String(clientIdOrId || '');
+  if (!key) return;
+  const next = readPendingMayaTasksFromStorage().filter(
+    (t) => String(t.client_id || '') !== key && String(t.id || '') !== key,
+  );
+  writePendingMayaTasksToStorage(next);
+}
+
+function buildCreatePayload(task) {
+  const client_id = task.client_id || makeMayaClientTaskId();
+  const description = (task.description || task.content || task.title || '').trim();
+  const payload = {
+    client_id,
+    source: 'maya',
+    property_id: task.property_id || '',
+    property_name: task.property_name || task.propertyName || '',
+    description: description || '',
+    title: description || '',
+    content: description || '',
+    raw_user_request: task.raw_user_request || task.user_request || task.rawUserRequest || '',
+    staff_name: task.staff_name || task.staffName || '',
+    staff_phone: task.staff_phone || '',
+    assigned_to: task.assigned_to || task.staff_id || '',
+    status: task.status || 'Pending',
+    task_type: task.task_type || task.taskType || '',
+    priority: task.priority || 'normal',
+    property_context: task.property_context || '',
+  };
+  console.debug('[MayaTask] POST payload title/description', payload.title, payload.description);
+  return payload;
+}
+
+/** POST /property-tasks when Maya returns a local-only row; keep pending_sync on failure. */
+export async function ensureMayaTaskPersisted(task) {
+  if (!task || typeof task !== 'object') return null;
+  if (isPersistedServerTaskId(task.id) && task.pending_sync !== true) {
+    return { ...task, pending_sync: false };
+  }
+  const payload = buildCreatePayload(task);
+  const { createPropertyTask } = await import('../services/api');
+  try {
+    const out = await createPropertyTask(payload);
+    const saved = out?.task || out;
+    if (saved?.id) {
+      clearPendingMayaTask(payload.client_id);
+      return { ...saved, client_id: payload.client_id, source: saved.source || 'maya', pending_sync: false };
+    }
+  } catch (e) {
+    console.warn('[taskSyncBridge] Maya task POST failed — keeping pending local row', e);
+  }
+  const pending = {
+    ...task,
+    ...payload,
+    id: task.id || payload.client_id,
+    client_id: payload.client_id,
+    source: 'maya',
+    pending_sync: true,
+    created_at: task.created_at || new Date().toISOString(),
+    status: task.status || 'Pending',
+  };
+  registerPendingMayaTask(pending);
+  return pending;
+}
+
 export function notifyMissionTaskLocalUpdate(taskId, status) {
   if (taskId == null || status == null) return;
   try {
@@ -43,7 +145,6 @@ export function notifyMissionTaskLocalUpdate(taskId, status) {
   } catch (_) {}
 }
 
-/** Batch optimistic patch: `updates` = [{ id or taskId, status }, …] */
 export function notifyMissionTasksBatchLocalUpdate(updates) {
   if (!Array.isArray(updates) || !updates.length) return;
   const norm = updates
@@ -81,13 +182,13 @@ export function notifyMissionTasksBatchLocalUpdate(updates) {
 export function notifyTasksChanged(opts = {}) {
   const { task } = opts;
   try {
-    window.dispatchEvent(new Event('maya-refresh-tasks'));
     if (task) {
       window.dispatchEvent(new CustomEvent('maya-task-created', { detail: { task } }));
     }
+    window.dispatchEvent(new Event('maya-refresh-tasks'));
   } catch (_) {}
   try {
-    hotelRealtime.publishLocal('task_updated', { ts: Date.now() });
+    hotelRealtime.publishLocal('task_updated', { task, ts: Date.now() });
   } catch (_) {}
   try {
     const ts = String(Date.now());
@@ -96,11 +197,21 @@ export function notifyTasksChanged(opts = {}) {
   } catch (_) {}
 }
 
-/**
- * Call after Maya registers a new staff member via register_staff action.
- * Components (StaffManager, StaffRosterDashboard) listen for 'maya-staff-registered'
- * and immediately re-fetch their staff list.
- */
+export async function notifyTasksChangedAsync(opts = {}) {
+  let { task } = opts;
+  if (task) {
+    task = await ensureMayaTaskPersisted(task);
+    if (task?.pending_sync) registerPendingMayaTask(task);
+    else if (task?.client_id) clearPendingMayaTask(task.client_id);
+  }
+  notifyTasksChanged({ ...opts, task });
+  return task;
+}
+
+export function notifyTasksChangedWithPersist(opts = {}) {
+  void notifyTasksChangedAsync(opts);
+}
+
 export function notifyStaffChanged(opts = {}) {
   const { staff } = opts;
   try {
@@ -112,7 +223,6 @@ export function notifyStaffChanged(opts = {}) {
   } catch (_) {}
 }
 
-/** Subscribe in MissionContext, WorkerView, GodModeDashboard so other tabs bump local state */
 export function subscribeCrossTabTaskSync(callback) {
   const handlers = [];
   let ch;

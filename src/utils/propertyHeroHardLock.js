@@ -2,6 +2,7 @@
  * Hard-locked hero for ROOMS / Sky Tower properties — survives refreshes via propertyImagePersistence.
  */
 import { persistPropertyImageOverrideFromItem } from './propertyImagePersistence';
+import { propertyHasPersistedGallery } from './propertyGallery';
 
 export const HERO_OFFICE_INTERIOR_ASSET = '/assets/images/office_interior.jpg';
 
@@ -18,6 +19,7 @@ export function applyHardLockHeroes(items) {
   if (!Array.isArray(items) || !items.length) return items || [];
   return items.map((p) => {
     if (!p || typeof p !== 'object') return p;
+    if (propertyHasPersistedGallery(p)) return p;
     if (!propertyNameRequiresOfficeInteriorHero(p.name)) return p;
     const hero = HERO_OFFICE_INTERIOR_ASSET;
     const next = {

@@ -386,6 +386,10 @@
   border-radius: 0.5rem;
   cursor: pointer;
   transition: background 0.2s, transform 0.15s;
+  white-space: nowrap;
+  overflow: visible;
+  min-width: fit-content;
+  word-break: keep-all;
 }
 
 .task-action-btn:hover:not(:disabled) {
@@ -752,7 +756,7 @@
   cursor: wait;
 }
 
-/* Hotel Bazaar Jaffa — room grid (images from public/assets/images/hotels/bazaar/) */
+/* Legacy room grid styles (unused in Christos pilot) */
 .task-calendar--bazaar {
   max-width: 1200px;
   margin: 0 auto;

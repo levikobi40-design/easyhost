@@ -1,0 +1,114 @@
+.property-image-manager-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.property-image-manager-tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #e5e7eb;
+  background: #f3f4f6;
+}
+
+.property-image-manager-tile--cover {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+
+.property-image-manager-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.property-image-manager-cover-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.95);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.property-image-manager-actions {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+}
+
+.property-image-manager-btn {
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  transition: background 0.15s ease;
+}
+
+.property-image-manager-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.property-image-manager-btn--cover {
+  flex: 1;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1f2937;
+}
+
+.property-image-manager-btn--cover:hover:not(:disabled) {
+  background: #fff;
+}
+
+.property-image-manager-btn--delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(220, 38, 38, 0.92);
+  color: #fff;
+}
+
+.property-image-manager-btn--delete:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.property-image-manager-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 100px;
+  padding: 20px;
+  border: 2px dashed #d1d5db;
+  border-radius: 16px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.property-image-manager-upload:hover:not(.property-image-manager-upload--busy) {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.property-image-manager-upload--busy {
+  pointer-events: none;
+  opacity: 0.7;
+}

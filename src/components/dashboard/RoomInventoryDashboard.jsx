@@ -40,7 +40,7 @@ function inferInventoryBucket(room) {
 /** Reliable Unsplash fallbacks — match app.py BOUTIQUE_HOTEL_PLACEHOLDER / Bazaar seed (no /assets 404s). */
 const DEFAULT_BOUTIQUE_HOTEL_URL =
   'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800&auto=format&fit=crop&q=85';
-/** Match app.py BAZAAR_IMG_* — Hotel Bazaar Jaffa room categories */
+/** Corfu pilot room category image fallbacks */
 const BAZAAR_STANDARD_URL =
   'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1200&auto=format&fit=crop&q=85';
 const BAZAAR_DELUXE_URL =

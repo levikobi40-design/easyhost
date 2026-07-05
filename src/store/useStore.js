@@ -29,8 +29,7 @@ export const useStore = create(
       }),
 
       tenants: [
-        { id: 'demo', name: 'Active Portfolios' },
-        { id: 'BAZAAR_JAFFA', name: 'Hotel Bazaar Jaffa' },
+        { id: 'demo', name: 'Christos Corfu Pilot' },
         { id: 'pilot-1', name: 'Pilot Group 1' },
         { id: 'pilot-2', name: 'Pilot Group 2' },
       ],
@@ -140,6 +139,10 @@ export const useStore = create(
       lastSelectedTask: null,
       setLastSelectedTask: (task) => set({ lastSelectedTask: task }),
 
+      /** Live task-board counters from TaskCalendar — Maya uses these for accurate counts. */
+      mayaTaskBoardContext: null,
+      setMayaTaskBoardContext: (ctx) => set({ mayaTaskBoardContext: ctx || null }),
+
       // Maya Chat State
       mayaMessages: [
         {
@@ -218,7 +221,7 @@ export const useStore = create(
           ],
         }),
 
-      /** Pilot: Hotel Bazaar Jaffa — Kobi / EasyHost greeting. */
+      /** Christos Corfu pilot — reset Maya chat greeting. */
       resetMayaChatForBazaar: () =>
         set({
           mayaIsTyping: false,
@@ -228,7 +231,7 @@ export const useStore = create(
               id: Date.now(),
               role: 'assistant',
               content:
-                'אהלן קובי, ניקיתי את כל נתוני הדמו. מלון בזאר מוכן עם 41 התמונות שלו. איך אפשר לעזור?',
+                'אהלן קובי, הנתונים מסונכרנים עם פיילוט קורפו. איך אפשר לעזור?',
               timestamp: new Date().toISOString(),
             },
           ],

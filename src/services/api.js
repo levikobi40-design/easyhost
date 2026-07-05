@@ -2,6 +2,8 @@ import i18n from '../i18n';
 import { API_BASE_URL } from '../config.js';
 import { API_URL, getAPIUrl, apiRequest, getAuthHeaders } from '../utils/apiClient';
 import { getWorkerPayloadForMaya } from '../utils/workerMemory';
+import useStore from '../store/useStore';
+import { filterLivePilotProperties } from '../utils/corfuPilotFilters';
 import { fetchWithTimeout } from '../utils/automationHandler';
 import {
   enqueueTaskUpdate,
@@ -205,6 +207,56 @@ export const getDemoAuthToken = async (tenantId) => {
   return await response.json();
 };
 
+const _isRealJwt = (t) =>
+  t && typeof t === 'string' && !t.startsWith('demo-offline-') && t.split('.').length === 3;
+
+/** Persist a demo JWT into the same stores read by getAuthHeaders(). */
+export function persistDemoAuthToken(auth) {
+  const token = auth?.token;
+  const tenantId = auth?.tenant_id || auth?.tenantId || 'default';
+  const role = auth?.role || 'admin';
+  if (!_isRealJwt(token)) return false;
+  try {
+    const raw = localStorage.getItem('hotel-enterprise-storage') || '{"state":{},"version":0}';
+    const parsed = JSON.parse(raw);
+    parsed.state = {
+      ...(parsed.state || {}),
+      authToken: token,
+      activeTenantId: tenantId,
+      role,
+      isAuthenticated: true,
+    };
+    localStorage.setItem('hotel-enterprise-storage', JSON.stringify(parsed));
+    localStorage.setItem('hotel-login-state', JSON.stringify({
+      token, tenantId, role, loggedInAt: Date.now(),
+    }));
+    localStorage.setItem('easyhost_auth_token', token);
+  } catch (_) {
+    return false;
+  }
+  try {
+    useStore.getState().loginSuccess(token, tenantId, role);
+  } catch (_) {
+    /* ignore */
+  }
+  return true;
+}
+
+/** Resolve Authorization for property API calls; refresh demo JWT when missing or offline. */
+export async function ensureValidAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+  if (headers.Authorization) return headers;
+  try {
+    const auth = await getDemoAuthToken('default');
+    if (persistDemoAuthToken(auth)) {
+      return { ...headers, ...getAuthHeaders() };
+    }
+  } catch (e) {
+    console.warn('[properties] demo auth refresh failed', e?.message);
+  }
+  return headers;
+}
+
 export const getPilotAccessToken = async (tenantName) => {
   const url = `${API_URL}/auth/pilot`;
   const response = await fetch(url, {
@@ -352,7 +404,7 @@ export const getManualRooms = async () => {
  * POST /ai/maya-command — Maya chat (tasks + Gemini). Same handler as POST /chat.
  * Raw AI tools may use POST /ai-response (God Mode / tools).
  */
-export const sendMayaCommand = async (command, tasksForAnalysis = null, history = null, language = null, { onDelta } = {}) => {
+export const sendMayaCommand = async (command, tasksForAnalysis = null, history = null, language = null, { onDelta, uiContext } = {}) => {
   const auth = getAuthHeaders();
   const headers = {
     'Content-Type': 'application/json',
@@ -379,6 +431,34 @@ export const sendMayaCommand = async (command, tasksForAnalysis = null, history 
     if (wm.workerDisplayName) payload.workerDisplayName = wm.workerDisplayName;
     if (wm.workerProfile) payload.workerProfile = wm.workerProfile;
     if (wm.workerMemoryLines?.length) payload.workerMemoryLines = wm.workerMemoryLines;
+  } catch (_) {}
+
+  try {
+    const boardCtx = uiContext || useStore.getState?.()?.mayaTaskBoardContext || null;
+    if (boardCtx && typeof boardCtx === 'object') {
+      if (boardCtx.current_visible_tasks_count != null) {
+        payload.current_visible_tasks_count = boardCtx.current_visible_tasks_count;
+      }
+      if (boardCtx.current_visible_in_progress_count != null) {
+        payload.current_visible_in_progress_count = boardCtx.current_visible_in_progress_count;
+      }
+      if (boardCtx.current_visible_pending_count != null) {
+        payload.current_visible_pending_count = boardCtx.current_visible_pending_count;
+      }
+      if (boardCtx.current_visible_completed_count != null) {
+        payload.current_visible_completed_count = boardCtx.current_visible_completed_count;
+      }
+      if (boardCtx.current_visible_properties_count != null) {
+        payload.current_visible_properties_count = boardCtx.current_visible_properties_count;
+      }
+      if (boardCtx.current_property_filter != null) {
+        payload.current_property_filter = boardCtx.current_property_filter;
+      }
+      if (boardCtx.current_portfolio_filter != null) {
+        payload.current_portfolio_filter = boardCtx.current_portfolio_filter;
+      }
+      payload.ui_task_board_sync = boardCtx;
+    }
   } catch (_) {}
 
   const parseMayaSseResponse = async (response, onDelta) => {
@@ -536,6 +616,66 @@ export const fetchMayaChatHistory = async () => {
   throw err;
 };
 
+/** POST /api/maya/invalidate-cache — drop stale Maya server caches (counts / grid). */
+export const invalidateMayaCache = async () => {
+  try {
+    const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    await fetch(`${API_URL}/maya/invalidate-cache`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+  } catch (_) {
+    /* non-blocking */
+  }
+};
+
+const STALE_MAYA_LS_KEYS = [
+  'maya_portfolio_stats_v1',
+  'maya_property_count_cache',
+  'easyhost_maya_live_snapshot_v1',
+  'easyhost_properties_mapped_local_v1',
+  'easyhost_properties_mapped_v2',
+  'maya_context_cache_v1',
+  'maya_brain_snapshot',
+  'portfolio_summary_cache',
+  'properties_cache_v1',
+  'properties_cache_v2',
+  'cached_properties_list',
+  'maya_memory_portfolio',
+];
+
+const STALE_MAYA_SS_KEYS = [
+  'easyhost_properties_mapped_v2',
+  'maya_portfolio_count_session',
+  'maya_live_properties_snapshot',
+];
+
+/** Clear client keys that may carry outdated portfolio/property counts for Maya. */
+export function clearStaleMayaClientCaches() {
+  if (typeof localStorage === 'undefined') return;
+  STALE_MAYA_LS_KEYS.forEach((k) => {
+    try { localStorage.removeItem(k); } catch (_) {}
+  });
+  if (typeof sessionStorage !== 'undefined') {
+    STALE_MAYA_SS_KEYS.forEach((k) => {
+      try { sessionStorage.removeItem(k); } catch (_) {}
+    });
+  }
+  try {
+    const raw = localStorage.getItem('hotel-enterprise-storage');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const state = parsed?.state;
+      if (state && typeof state === 'object') {
+        delete state.mayaTaskBoardContext;
+        delete state.cachedPropertyCount;
+        localStorage.setItem('hotel-enterprise-storage', JSON.stringify({ ...parsed, state }));
+      }
+    }
+  } catch (_) {}
+}
+
 /** GET /ai/property-context - properties + staff for AI Assistant (Maya) */
 export const getAIPropertyContext = async () => {
   let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -550,10 +690,12 @@ export const getAIPropertyContext = async () => {
     try {
       const { list } = await getProperties();
       if (Array.isArray(list) && list.length) {
+        const christos = list.filter((p) => String(p?.id || '').startsWith('christos-'));
+        const scoped = christos.length ? christos : list;
         return {
-          properties: list,
+          properties: scoped,
           staff_by_property: {},
-          summary_for_ai: `Portfolio: ${list.length} properties (synced from GET /properties).`,
+          summary_for_ai: `Portfolio: ${scoped.length} properties (live GET /properties).`,
         };
       }
     } catch (_) {
@@ -561,7 +703,17 @@ export const getAIPropertyContext = async () => {
     }
     return { properties: [], staff_by_property: {}, summary_for_ai: '' };
   }
-  return await response.json();
+  const data = await response.json();
+  const props = Array.isArray(data?.properties) ? data.properties : [];
+  const christos = props.filter((p) => String(p?.id || '').startsWith('christos-'));
+  if (christos.length && christos.length < props.length) {
+    return {
+      ...data,
+      properties: christos,
+      summary_for_ai: `Portfolio: ${christos.length} properties (Christos Corfu pilot, live API).`,
+    };
+  }
+  return data;
 };
 
 /**
@@ -612,13 +764,7 @@ export const getTasksVersion = async () => {
   }
 };
 
-/** Direct Flask origin (no proxy) — default matches config API_BASE_URL (localhost:1000 in dev). */
-const LIVE_TASKS_ORIGIN =
-  typeof process !== 'undefined' && process.env && process.env.REACT_APP_LIVE_TASKS_ORIGIN
-    ? String(process.env.REACT_APP_LIVE_TASKS_ORIGIN).replace(/\/$/, '')
-    : API_BASE_URL;
-
-/** GET /api/tasks — bypasses any proxy/CDN cache; direct origin + t=timestamp */
+/** GET /api/tasks — bypasses any proxy/CDN cache; relative /api in dev (CRA proxy → :1000). */
 export const getPropertyTasks = async (options = {}) => {
   const unlimited = options.limit === 0 || options.unlimited === true;
   const limit = unlimited ? 0 : options.limit != null ? Number(options.limit) : undefined;
@@ -647,7 +793,7 @@ export const getPropertyTasks = async (options = {}) => {
     qs.set('limit', String(Math.max(1, Math.min(500, Math.floor(limit)))));
     qs.set('offset', String(Math.max(0, Math.floor(offset) || 0)));
   }
-  const url = `${LIVE_TASKS_ORIGIN}/api/tasks?${qs.toString()}`;
+  const url = `${API_URL}/tasks?${qs.toString()}`;
   const response = await fetch(url, fetchOpts);
   if (response.status === 204) return paged ? { tasks: [], total: 0, hasMore: false } : [];
   if (!response.ok) {
@@ -677,7 +823,7 @@ export const fetchTaskStatusCounts = async () => {
   if (!headers.Authorization) {
     return { total: 0, pending: 0, in_progress: 0, done: 0 };
   }
-  const url = `${LIVE_TASKS_ORIGIN}/api/tasks/status-counts?t=${Date.now()}`;
+  const url = `${API_URL}/tasks/status-counts?t=${Date.now()}`;
   const response = await fetch(url, {
     method: 'GET',
     headers,
@@ -705,7 +851,7 @@ export const fetchBookingTasksSyncHealth = async () => {
       if (auth?.token) headers = { ...headers, Authorization: `Bearer ${auth.token}` };
     } catch (_) {}
   }
-  const url = `${LIVE_TASKS_ORIGIN}/api/health/bookings-tasks-sync?t=${Date.now()}`;
+  const url = `${API_URL}/health/bookings-tasks-sync?t=${Date.now()}`;
   const response = await fetch(url, { method: 'GET', headers, credentials: 'include', cache: 'no-store' });
   if (!response.ok) {
     return { ok: false, aligned: false, upcoming_bookings: 0, open_tasks_non_terminal: 0 };
@@ -734,7 +880,7 @@ export const createTask = async (payload) => {
   return await response.json();
 };
 
-/** POST /property-tasks - create task (Maya notification) */
+/** POST /api/tasks - create task (Maya / manual). */
 export const createPropertyTask = async (payload) => {
   let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
   if (!headers.Authorization) {
@@ -743,7 +889,7 @@ export const createPropertyTask = async (payload) => {
       if (auth?.token) headers = { ...headers, Authorization: `Bearer ${auth.token}` };
     } catch (_) {}
   }
-  const response = await fetch(`${API_URL}/property-tasks`, {
+  const response = await fetch(`${API_URL}/tasks`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -1087,36 +1233,46 @@ export const setAutomatedWelcomeSetting = async (payload) => {
   return response.json();
 };
 
-/** Unwrap common API shapes: raw array or { properties | rooms | data | list | items | manual_rooms: [...] } */
-function normalizePropertiesListPayload(data) {
-  if (Array.isArray(data)) return data;
-  if (data != null && typeof data === 'object') {
-    const keys = ['properties', 'rooms', 'manual_rooms', 'data', 'list', 'items'];
+/** Unwrap backend payload into a property row array. */
+export function coercePropertiesRows(result) {
+  if (Array.isArray(result)) return result.filter(Boolean);
+  if (result != null && typeof result === 'object') {
+    if (Array.isArray(result.data)) return result.data.filter(Boolean);
+    if (Array.isArray(result.properties)) return result.properties.filter(Boolean);
+    if (Array.isArray(result.list)) return result.list.filter(Boolean);
+    if (Array.isArray(result.raw)) return result.raw.filter(Boolean);
+    const keys = ['rooms', 'manual_rooms', 'items', 'results'];
     for (const k of keys) {
-      if (Array.isArray(data[k])) return data[k];
+      if (Array.isArray(result[k])) return result[k].filter(Boolean);
     }
+    if (result.property && typeof result.property === 'object') return [result.property];
   }
   return [];
 }
 
+export function normalizePropertiesListPayload(data) {
+  return coercePropertiesRows(data);
+}
+
 /** GET /properties (manual_rooms). Optional `{ limit, offset }` for server pagination. */
-export const getProperties = async (opts = {}) => {
-  const { initialProperties, ensurePropertyPortfolioImages } = await import('../data/initialProperties');
-  console.log('[properties] API_URL', API_URL);
-  let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    // No valid token — return the hardcoded initial portfolio so the UI is still usable,
-    // but don't hit the backend and generate a 401.
-    const list = ensurePropertyPortfolioImages(initialProperties.map((x) => ({ ...x })));
-    return {
-      list,
-      dbStatus: 'unauthenticated',
-      portfolioFallback: true,
-      networkError: false,
-      propertiesTotal: list.length,
-      propertiesHasMore: false,
-    };
+async function resolvePropertiesFetchHeaders() {
+  const build = () => ({ 'Content-Type': 'application/json', ...getAuthHeaders() });
+  let headers = build();
+  if (headers.Authorization) return headers;
+  try {
+    const auth = await getDemoAuthToken('default');
+    if (persistDemoAuthToken(auth)) {
+      headers = build();
+      if (headers.Authorization) return headers;
+    }
+  } catch (_) {
+    /* demo auth unavailable */
   }
+  return headers;
+}
+
+export const getProperties = async (opts = {}) => {
+  let headers = await resolvePropertiesFetchHeaders();
   const plimit = opts.limit != null ? Number(opts.limit) : undefined;
   const poffset = opts.offset != null ? Number(opts.offset) : 0;
   const paged = plimit != null && Number.isFinite(plimit) && plimit > 0;
@@ -1126,58 +1282,87 @@ export const getProperties = async (opts = {}) => {
     pq.set('limit', String(Math.max(1, Math.min(500, Math.floor(plimit)))));
     pq.set('offset', String(Math.max(0, Math.floor(poffset) || 0)));
   }
-  let response;
-  try {
+  const query = pq.toString();
+  const urls = [`${API_URL}/properties?${query}`];
+  if (typeof window !== 'undefined' && !API_URL.startsWith('http')) {
+    urls.push(`http://127.0.0.1:1000/api/properties?${query}`);
+  }
+  const fetchOnce = async (fetchUrl, hdrs) => {
     const fetchOpts = {
       method: 'GET',
-      headers,
+      headers: { 'Content-Type': 'application/json', ...hdrs },
       credentials: 'include',
       cache: 'no-store',
     };
     if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
       fetchOpts.signal = AbortSignal.timeout(45000);
     }
-    response = await fetch(`${API_URL}/properties?${pq.toString()}`, fetchOpts);
-  } catch (e) {
-    const slow = e?.name === 'TimeoutError' || String(e?.message || '').toLowerCase().includes('abort');
-    console.warn('[properties] network error — UI may use session cache', e);
+    return fetch(fetchUrl, fetchOpts);
+  };
+  let response = null;
+  let lastError = null;
+  for (const fetchUrl of urls) {
+    try {
+      response = await fetchOnce(fetchUrl, headers);
+      if (response.status === 401) {
+        try {
+          const auth = await getDemoAuthToken('default');
+          if (persistDemoAuthToken(auth)) {
+            headers = await resolvePropertiesFetchHeaders();
+            response = await fetchOnce(fetchUrl, headers);
+          }
+        } catch (_) {
+          /* retry without auth below */
+        }
+      }
+      if (response.ok) break;
+      if (response.status !== 401) break;
+      response = await fetchOnce(fetchUrl, {});
+      if (response.ok) break;
+    } catch (e) {
+      lastError = e;
+      response = null;
+    }
+  }
+  if (!response) {
+    console.warn('[properties] network error', lastError);
     return {
+      raw: [],
       list: [],
-      dbStatus: slow ? 'cache' : 'cache',
+      rows: [],
+      dbStatus: 'cache',
       portfolioFallback: true,
       networkError: true,
-      cacheLoading: true,
+      apiOk: false,
       propertiesTotal: 0,
       propertiesHasMore: false,
     };
   }
   const dbStatus = response.headers.get('X-DB-Status') || 'unknown';
-  let portfolioFallback = response.headers.get('X-Portfolio-Fallback') === '1';
+  const portfolioFallback = response.headers.get('X-Portfolio-Fallback') === '1';
   if (response.status === 204) {
-    console.warn('[properties] GET /properties returned 204 — emergency initialProperties');
-    portfolioFallback = true;
-    const list = initialProperties.map((x) => ({ ...x }));
     return {
-      list,
+      raw: [],
+      list: [],
+      rows: [],
       dbStatus,
-      portfolioFallback,
-      emergencyClient: true,
-      propertiesTotal: list.length,
+      portfolioFallback: false,
+      networkError: false,
+      apiOk: true,
+      propertiesTotal: 0,
       propertiesHasMore: false,
     };
   }
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url: `${API_URL}/properties`, status: 401 } }));
-    }
-    console.warn('[properties] GET /properties HTTP', response.status, '— using initialProperties (avoid 404 empty UI)');
-    const list = ensurePropertyPortfolioImages(initialProperties.map((x) => ({ ...x })));
     return {
-      list,
+      raw: [],
+      list: [],
+      rows: [],
       dbStatus: response.status >= 500 ? 'error' : `http_${response.status}`,
-      portfolioFallback: true,
+      portfolioFallback: false,
       networkError: response.status >= 500,
-      propertiesTotal: list.length,
+      apiOk: false,
+      propertiesTotal: 0,
       propertiesHasMore: false,
     };
   }
@@ -1187,29 +1372,19 @@ export const getProperties = async (opts = {}) => {
   } catch (_) {
     data = [];
   }
-  let list = normalizePropertiesListPayload(data);
-  if (!list.length) {
-    console.warn('[properties] /properties empty array — emergency initialProperties');
-    list = initialProperties.map((x) => ({ ...x }));
-    portfolioFallback = true;
-  } else {
-    list = ensurePropertyPortfolioImages(list);
-  }
-  console.log(
-    '[properties] /properties raw type:',
-    Array.isArray(data) ? 'array' : typeof data,
-    'normalized length:',
-    list.length,
-    'X-DB-Status:',
-    dbStatus,
-  );
-  const propertiesTotal = parseInt(response.headers.get('X-Properties-Total') || String(list.length), 10) || list.length;
+  const rows = coercePropertiesRows(data);
+  console.log('[Properties API] GET rows count', rows.length);
+  const headerTotal = parseInt(response.headers.get('X-Properties-Total') || '0', 10) || 0;
+  const propertiesTotal = headerTotal || rows.length;
   const propertiesHasMore = response.headers.get('X-Properties-Has-More') === '1';
   return {
-    list,
-    dbStatus,
+    raw: rows,
+    list: rows,
+    rows,
+    dbStatus: dbStatus === 'unknown' ? 'ok' : dbStatus,
     portfolioFallback,
     networkError: false,
+    apiOk: true,
     propertiesTotal,
     propertiesHasMore,
   };
@@ -1467,11 +1642,31 @@ export const createManualRoomWithDescription = async (name, description, photoUr
  */
 export const createProperty = async (payload = {}) => {
   const images = payload.pictures || payload.images || [];
+  const priceNum = payload.price_per_night ?? payload.nightly_price ?? payload.price;
+  const parsedPrice = priceNum != null && priceNum !== '' ? Number(priceNum) : undefined;
+  const rawTenant = useStore.getState().activeTenantId || 'default';
+  const tenantId = ['demo', 'BAZAAR_JAFFA', 'DEMO', 'DEMO-TENANT'].includes(String(rawTenant))
+    ? 'default'
+    : rawTenant;
+  const coverImage = String(payload.cover_image || payload.photo_url || payload.mainImage || images[0] || '').trim();
   const propertyData = {
+    id: payload.id ? String(payload.id).trim() : undefined,
     name: String(payload.name ?? '').trim() || 'Unnamed Property',
+    type: String(payload.type || payload.property_type || 'hotel').trim() || 'hotel',
+    city: String(payload.city || payload.location || '').trim(),
+    location: String(payload.city || payload.location || '').trim(),
+    country: String(payload.country || '').trim(),
+    tenant_id: tenantId,
+    status: String(payload.status || 'active').trim() || 'active',
     description: String(payload.description ?? ''),
-    price: Number(payload.price) || 0,
-    photo_url: String(payload.photo_url ?? ''),
+    price_per_night: Number.isFinite(parsedPrice) ? parsedPrice : undefined,
+    nightly_price: Number.isFinite(parsedPrice) ? parsedPrice : undefined,
+    price: Number.isFinite(parsedPrice) ? parsedPrice : undefined,
+    currency: String(payload.currency || 'USD').trim().toUpperCase() || 'USD',
+    photo_url: coverImage,
+    cover_image: coverImage,
+    image_url: coverImage,
+    mainImage: coverImage,
     images,
     pictures: images,
     amenities: payload.amenities || [],
@@ -1480,39 +1675,36 @@ export const createProperty = async (payload = {}) => {
     beds: Math.max(1, parseInt(payload.beds, 10) || 1),
     bathrooms: Math.max(1, parseInt(payload.bathrooms, 10) || 1),
   };
-  console.log('[createProperty] Sending:', propertyData);
+  console.log('[PropertyCreate] POST payload', propertyData);
 
-  // apiRequest already resolves auth headers via the updated getAuthHeaders()
-  // (which checks hotel-enterprise-storage → hotel-login-state → easyhost_auth_token).
-  // Only fetch a fresh demo token when all three localStorage keys are empty
-  // (e.g. brand new session before first login on Railway + ALLOW_DEMO_AUTH=true).
   if (!getAuthHeaders().Authorization) {
     try {
       const auth = await getDemoAuthToken('default');
-      if (auth?.token) {
-        // Store it so subsequent calls pick it up through getAuthHeaders()
-        try {
-          const raw = localStorage.getItem('hotel-enterprise-storage') || '{"state":{},"version":0}';
-          const parsed = JSON.parse(raw);
-          parsed.state = { ...(parsed.state || {}), authToken: auth.token, activeTenantId: auth.tenant_id || 'default' };
-          localStorage.setItem('hotel-enterprise-storage', JSON.stringify(parsed));
-          localStorage.setItem('hotel-login-state', JSON.stringify({ token: auth.token, tenantId: auth.tenant_id || 'default', role: auth.role || 'admin', loggedInAt: Date.now() }));
-          localStorage.setItem('easyhost_auth_token', auth.token);
-        } catch (_) { /* storage write failure — proceed anyway */ }
-      }
+      persistDemoAuthToken(auth);
     } catch (e) {
       console.warn('[createProperty] Demo auth token fetch failed:', e?.message);
     }
   }
 
   try {
-    return await apiRequest('/properties', { method: 'POST', body: propertyData });
+    const result = await apiRequest('/properties', { method: 'POST', body: propertyData });
+    const saved = result?.property || result;
+    console.log('[PropertyCreate] POST response id', saved?.id ?? null);
+    try {
+      const out = await getProperties({ limit: 500, offset: 0 });
+      const rows = coercePropertiesRows(out.rows ?? out.raw ?? out.list ?? out);
+      console.log('[Properties API] GET count after create', rows.length);
+    } catch (refetchErr) {
+      console.warn('[PropertyCreate] GET after create failed', refetchErr?.message);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('properties-refresh', { detail: { force: true } }));
+    }
+    return result;
   } catch (error) {
     const status = error?.status ?? error?.response?.status;
     const serverMsg = error?.data?.error ?? error?.data?.message ?? error?.message ?? 'Unknown error';
     console.error('[createProperty] Failed:', status, serverMsg, error);
-    // Re-throw a clean Error so PropertyCreatorModal displays it inline
-    // without a disruptive window.alert().
     throw new Error(serverMsg);
   }
 };

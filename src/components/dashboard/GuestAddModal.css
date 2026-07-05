@@ -1,6 +1,6 @@
-/* GuestAddModal — Minimalist thin design, Heebo 300, no lightning */
-
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500&display=swap');
+
+/* GuestAddModal — Minimalist thin design, Heebo 300, no lightning */
 
 .guest-add-modal-backdrop {
   position: fixed;

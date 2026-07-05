@@ -11,8 +11,9 @@ import {
   bulkImportPropertyStaff,
 } from '../../services/api';
 import { parseStaffFile } from '../../utils/staffImport';
-import PropertyGallery from './PropertyGallery';
+import PropertyImageManager from './PropertyImageManager';
 import { isBazaarJaffaProperty, BAZAAR_JAFFA_GUEST_POLICY } from '../../data/propertyData';
+import { formatPropertyPriceLabel, buildPropertyGalleryImages } from '../../utils/propertyGallery';
 import './PropertyManagementDashboard.css';
 
 const ROLES = ['Staff', 'מנהל', 'מנקה', 'מתחזק', 'דלפק', 'Security', 'Concierge'];
@@ -167,6 +168,9 @@ export default function PropertyManagementDashboard({ property, onBack, onEdit, 
 
   if (!property) return null;
 
+  const galleryImages = buildPropertyGalleryImages(property);
+  const priceLabel = formatPropertyPriceLabel(property);
+
   return (
     <div className="property-management-dashboard p-8 bg-[#FBFBFB] min-h-screen" dir="rtl">
       <button
@@ -180,8 +184,8 @@ export default function PropertyManagementDashboard({ property, onBack, onEdit, 
 
       <div className="flex flex-wrap gap-8 mb-10">
         <div className="w-32 h-24 rounded-2xl overflow-hidden bg-gray-100 shrink-0">
-          {property.mainImage ? (
-            <img src={property.mainImage} alt="" className="w-full h-full object-cover" />
+          {galleryImages[0] ? (
+            <img src={galleryImages[0]} alt="" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-2xl">🏨</div>
           )}
@@ -190,6 +194,12 @@ export default function PropertyManagementDashboard({ property, onBack, onEdit, 
           <h1 className="property-management-title text-2xl font-black text-gray-900 mb-1">
             {property.name}
           </h1>
+          {priceLabel && (
+            <p className="text-gray-800 text-sm font-bold mb-1">
+              {priceLabel}
+              <span className="text-gray-500 font-normal"> / night</span>
+            </p>
+          )}
           <p className="text-gray-500 text-sm">נהל עובדים ואוטומציה</p>
           {typeof onEdit === 'function' && (
             <button
@@ -221,12 +231,7 @@ export default function PropertyManagementDashboard({ property, onBack, onEdit, 
         </section>
       )}
 
-      {property.pictures && property.pictures.length > 0 && (
-        <div className="mb-8">
-          <h3 className="font-bold text-gray-900 mb-3">גלריית תמונות</h3>
-          <PropertyGallery property={property} />
-        </div>
-      )}
+      <PropertyImageManager property={property} onPropertyUpdate={onPropertyUpdate} />
 
       {/* AI Automation Toggle */}
       <div className="ai-automation-card bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-8">

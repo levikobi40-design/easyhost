@@ -30,14 +30,7 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
   const initialUrlsKey = (Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : []).join('||');
   useEffect(() => {
     const next = Array.isArray(initialUrls) ? initialUrls.filter(Boolean) : [];
-    setUploadedUrls((prev) => {
-      if (next.length === 0) return prev;            // never wipe on empty sync
-      if (next.length < prev.length) {
-        return [...new Set([...prev, ...next])];     // merge, keep local extras
-      }
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setUploadedUrls(next);
   }, [propertyId, initialUrlsKey]);
 
   const handleFileSelect = useCallback(

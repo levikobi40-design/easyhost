@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Plus, Search, Upload, Loader2, X,
 } from 'lucide-react';
-import { deleteProperty, createPropertyQuiet, bulkImportPropertyStaff, bootstrapOperationalData } from '../../services/api';
+import { deleteProperty, createPropertyQuiet, bulkImportPropertyStaff } from '../../services/api';
 import { useProperties } from '../../context/PropertiesContext';
-import { API_URL } from '../../utils/constants';
 import PropertyCreatorModal from './PropertyCreatorModal';
 import PropertySuitesView from './PropertySuitesView';
 import GuestAddModal from './GuestAddModal';
@@ -12,10 +11,6 @@ import PropertyManagementDashboard from './PropertyManagementDashboard';
 import PropertyCard from './PropertyCard';
 import useStore from '../../store/useStore';
 import { speakMayaReply } from '../../utils/mayaVoice';
-import { isHiddenDemoProperty } from '../../utils/bazaarProperties';
-import { ROOMS_BRANCH_PINS, ROOMS_PIN_ID_SET } from '../../config/roomsBranches';
-import { WEWORK_BRANCH_PINS, WEWORK_PIN_ID_SET } from '../../config/weworkBranches';
-import { inferPropertyEnterpriseMeta, uniqueSorted } from '../../utils/propertyEnterpriseMeta';
 import { BAZAAR_JAFFA_GUEST_POLICY } from '../../data/propertyData';
 import { PropertyGridSkeleton } from '../common/DashboardSkeletons';
 import {
@@ -26,113 +21,22 @@ import {
   rowToStaffBulkRow,
   chunkArray,
 } from '../../utils/massImportEngine';
-import { resolvePropertyCardImage } from '../../utils/propertyCardImages';
 import { persistPropertyImageOverrideFromItem } from '../../utils/propertyImagePersistence';
 import './PropertiesDashboard.css';
 
 const PAGE_SIZE = 20;
 
 const MAYA_PROP_SORT_CONFIRM =
-  'קובי, סידרתי את רשימת הנכסים — בזאר יפו וסיטי טאוור רמת גן בראש העמוד, עם גלריות מעודכנות.';
-
-const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&auto=format&fit=crop';
-
-function parsePriceFromDescription(description) {
-  if (!description) return null;
-  if (/מחירי בסיס זמניים:\s*₪0|₪0 לכל סוגי ההשכרה/i.test(description)) return '0';
-  const m = description.match(/מחיר\s*ללילה[:\s]*₪?(\d+)/i) || description.match(/₪(\d+)/);
-  return m ? m[1] : null;
-}
-
-function ensureFullImageUrl(url) {
-  if (!url || typeof url !== 'string') return PLACEHOLDER_IMAGE;
-  const u = url.trim();
-  if (u.startsWith('http://') || u.startsWith('https://')) return u;
-  if (u.startsWith('/assets/')) return u;
-  let filename = u.startsWith('/') ? u.replace(/^\/+/, '') : u;
-  if (filename.startsWith('api/')) return PLACEHOLDER_IMAGE;
-  if (filename.startsWith('uploads/')) return `${API_URL}/${filename}`;
-  return `${API_URL}/uploads/${filename}`;
-}
-
-function mapRoomToProperty(room, listIndex = 0) {
-  const price = parsePriceFromDescription(room.description);
-  const isCleaning = ['pending', 'assigned', 'on_my_way', 'in_progress'].includes(room.latest_status || room.status || '');
-  const pictures = Array.isArray(room.pictures) ? room.pictures.filter(Boolean) : [];
-  let imgUrl = (pictures[0] || room.image_url || room.photo_url || '').trim();
-  if (!imgUrl) {
-    imgUrl = resolvePropertyCardImage(room, listIndex);
-  }
-  return {
-    id: room.id != null ? String(room.id) : '',
-    name: room.name,
-    mainImage: ensureFullImageUrl(imgUrl),
-    photo_url: imgUrl,
-    pictures: pictures.filter(Boolean).map(ensureFullImageUrl),
-    status: isCleaning ? 'InProgress' : 'Ready',
-    price: price || '—',
-    guests: room.max_guests ?? room.guests ?? 2,
-    max_guests: room.max_guests ?? 2,
-    bedrooms: room.bedrooms ?? 1,
-    beds: room.beds ?? 1,
-    bathrooms: room.bathrooms ?? 1,
-    description: room.description || '',
-    amenities: Array.isArray(room.amenities) ? room.amenities : [],
-    ai_automation_enabled: Boolean(room.ai_automation_enabled),
-    createdAt: room.created_at || room.createdAt || '',
-    branchSlug: room.branchSlug || room.branch_slug || undefined,
-  };
-}
-
-function isBazaarJaffaName(p) {
-  const n = `${p?.name || ''}`.toLowerCase();
-  return /בזאר|bazaar|מלון בזאר|hotel bazaar|jaffa|יפו/.test(n);
-}
-
-function isCityTowerName(p) {
-  const n = `${p?.name || ''}`.toLowerCase();
-  return /city tower|סיטי טאוור|leonardo plaza|ליאונרדו|רמת גן|ramat gan/.test(n);
-}
-
-function isRoomsWorkspaceName(p) {
-  if (ROOMS_PIN_ID_SET.has(String(p?.id))) return true;
-  const n = `${p?.name || ''}`.toLowerCase();
-  return /rooms sky|sky tower|רומס|coworking|fattal/.test(n);
-}
-
-function isWeWorkWorkspaceName(p) {
-  if (WEWORK_PIN_ID_SET.has(String(p?.id))) return true;
-  const n = `${p?.name || ''}`.toLowerCase();
-  return /wework|ווי וורק/.test(n);
-}
-
-function sortDashboardProperties(list) {
-  const rank = (p) => {
-    if (isBazaarJaffaName(p)) return 0;
-    if (isCityTowerName(p)) return 1;
-    if (isRoomsWorkspaceName(p)) return 2;
-    if (isWeWorkWorkspaceName(p)) return 3;
-    return 4;
-  };
-  return [...list].sort((a, b) => {
-    const ra = rank(a);
-    const rb = rank(b);
-    if (ra !== rb) return ra - rb;
-    const db = Date.parse(b.createdAt || b.created_at || 0) || 0;
-    const da = Date.parse(a.createdAt || a.created_at || 0) || 0;
-    return db - da;
-  });
-}
+  'קובי, רשימת הנכסים מסונכרנת עם השרת — פיילוט קורפו.';
 
 const EASYHOST_BLUE = '#2563eb';
 const EASYHOST_BLUE_HOVER = '#1d4ed8';
 
 export default function PropertiesDashboard() {
   const {
-    properties: rawProperties,
+    properties,
     loading,
     refresh,
-    dbLoadStatus,
     applyPropertySnapshot,
     hasMoreProperties,
     loadingMoreProperties,
@@ -141,22 +45,11 @@ export default function PropertiesDashboard() {
   const addMayaMessage = useStore((s) => s.addMayaMessage);
   const role = useStore((s) => s.role);
   const activeTenantId = useStore((s) => s.activeTenantId);
-  useEffect(() => {
-    console.log('[PropertiesDashboard] mount', { loading, count: rawProperties?.length, dbLoadStatus });
-  }, [loading, rawProperties?.length, dbLoadStatus]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await bootstrapOperationalData();
-      } catch (_) {}
-      if (!cancelled) refresh(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refresh]);
+  const visibleProperties = Array.isArray(properties) ? properties : [];
+  const filteredProperties = visibleProperties;
+  console.log('[PropertiesDashboard] received count', visibleProperties.length);
+  console.log('[PropertiesDashboard] filtered count', filteredProperties.length);
 
   useEffect(() => {
     try {
@@ -168,29 +61,6 @@ export default function PropertiesDashboard() {
     }
     window.dispatchEvent(new CustomEvent('maya-ui-polish-ready', { detail: { source: 'properties-dashboard' } }));
   }, []);
-
-  useEffect(() => {
-    try {
-      if (sessionStorage.getItem('maya_bazaar_dashboard_cleanup_fired_v1') === '1') return;
-      sessionStorage.setItem('maya_bazaar_dashboard_cleanup_fired_v1', '1');
-      sessionStorage.setItem('maya_bazaar_cleanup_message_pending', '1');
-    } catch (_) {
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('maya-bazaar-dashboard-cleanup-ready', { detail: { source: 'properties-dashboard' } }));
-  }, []);
-
-  useEffect(() => {
-    if (activeTenantId !== 'BAZAAR_JAFFA') return;
-    try {
-      if (sessionStorage.getItem('maya_gallery_api_confirm_fired_v1') === '1') return;
-      sessionStorage.setItem('maya_gallery_api_confirm_fired_v1', '1');
-      sessionStorage.setItem('maya_gallery_api_confirm_pending', '1');
-    } catch (_) {
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('maya-bazaar-gallery-api-confirm-ready', { detail: { source: 'properties-dashboard' } }));
-  }, [activeTenantId]);
 
   const applyFiltersViewResults = useCallback(() => {
     setVisibleCount(PAGE_SIZE);
@@ -228,84 +98,14 @@ export default function PropertiesDashboard() {
     setSearchQuery('');
   }, []);
 
-  const properties = useMemo(() => {
-    const filtered = Array.isArray(rawProperties)
-      ? rawProperties.filter((p) => !isHiddenDemoProperty(p))
-      : [];
-    const sorted = sortDashboardProperties(filtered);
-    const list = sorted.map((room, idx) => mapRoomToProperty(room, idx));
-    return list.map((p) => ({
-      ...p,
-      ...inferPropertyEnterpriseMeta(p),
-    }));
-  }, [rawProperties]);
-
-  const cityOptions = useMemo(
-    () => uniqueSorted(properties.map((p) => String(p.city || '—').trim())),
-    [properties],
-  );
-  const brandOptions = useMemo(
-    () => uniqueSorted(properties.map((p) => String(p.brand || '').trim()).filter(Boolean)),
-    [properties],
-  );
-  const typeOptions = useMemo(() => uniqueSorted(properties.map((p) => p.propertyType)), [properties]);
-  const occOptions = useMemo(() => uniqueSorted(properties.map((p) => p.occupancy)), [properties]);
+  const cityOptions = useMemo(() => [], []);
+  const brandOptions = useMemo(() => [], []);
+  const typeOptions = useMemo(() => [], []);
+  const occOptions = useMemo(() => [], []);
 
   const branchOptions = useMemo(
-    () => [
-      { id: 'all', label: 'כל הסניפים' },
-      ...ROOMS_BRANCH_PINS.map((b) => ({ id: b.slug, label: `${b.name} · ${b.city}` })),
-      ...WEWORK_BRANCH_PINS.map((b) => ({ id: b.slug, label: `${b.name} · ${b.cityHe}` })),
-    ],
+    () => [{ id: 'all', label: 'כל הסניפים' }],
     [],
-  );
-
-  const filteredProperties = useMemo(() => {
-    const cityVal = (p) => String(p.city || '—').trim();
-    const brandVal = (p) => String(p.brand || '').trim();
-
-    let list = properties;
-    if (branchFilter !== 'all') {
-      const roomsPin = ROOMS_BRANCH_PINS.find((b) => b.slug === branchFilter);
-      if (roomsPin) {
-        list = list.filter((p) => p.branchSlug === branchFilter || String(p.id) === roomsPin.id);
-      } else {
-        const wwPin = WEWORK_BRANCH_PINS.find((b) => b.slug === branchFilter);
-        if (wwPin) {
-          list = list.filter((p) => p.branchSlug === branchFilter || String(p.id) === wwPin.id);
-        }
-      }
-    }
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((p) => {
-        const blob = `${p.name} ${p.id} ${p.city || ''} ${p.brand || ''} ${p.propertyType || ''} ${p.description || ''}`.toLowerCase();
-        return blob.includes(q);
-      });
-    }
-    if (cityFilter !== 'all') list = list.filter((p) => cityVal(p) === cityFilter);
-    if (brandFilter !== 'all') list = list.filter((p) => brandVal(p) === brandFilter);
-    if (propertyTypeFilter !== 'all') list = list.filter((p) => p.propertyType === propertyTypeFilter);
-    if (occupancyFilter !== 'all') list = list.filter((p) => p.occupancy === occupancyFilter);
-
-    if (
-      list.length === 0
-      && properties.length > 0
-      && !q
-      && branchFilter === 'all'
-      && cityFilter === 'all'
-      && brandFilter === 'all'
-      && propertyTypeFilter === 'all'
-      && occupancyFilter === 'all'
-    ) {
-      return properties;
-    }
-    return list;
-  }, [properties, branchFilter, searchQuery, cityFilter, brandFilter, propertyTypeFilter, occupancyFilter]);
-
-  const visibleProperties = useMemo(
-    () => filteredProperties.slice(0, visibleCount),
-    [filteredProperties, visibleCount],
   );
 
   const suitesData = useMemo(
@@ -326,7 +126,7 @@ export default function PropertiesDashboard() {
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchQuery, cityFilter, brandFilter, propertyTypeFilter, occupancyFilter, branchFilter, properties.length]);
+  }, [properties.length]);
 
   const loadMore = useCallback(() => {
     setVisibleCount((c) => {
@@ -425,6 +225,12 @@ export default function PropertiesDashboard() {
     setManagedProperty(property);
   };
 
+  useEffect(() => {
+    if (!managedProperty?.id) return;
+    const fresh = visibleProperties.find((p) => String(p.id) === String(managedProperty.id));
+    if (fresh) setManagedProperty(fresh);
+  }, [visibleProperties, managedProperty?.id]);
+
   const closeManageDashboard = () => {
     setManagedProperty(null);
     refresh(true);
@@ -435,12 +241,10 @@ export default function PropertiesDashboard() {
     setEditingProperty(null);
   };
 
-  const handleModalSuccess = (created) => {
+  const handleModalSuccess = async (created) => {
     const isNew = !editingProperty;
-    if (created && typeof applyPropertySnapshot === 'function') {
-      applyPropertySnapshot(created);
-    }
-    if (created?.id) {
+    await refresh(true, !isNew);
+    if (isNew && created?.id) {
       persistPropertyImageOverrideFromItem({
         id: created.id,
         mainImage: created.mainImage || created.photo_url || created.image_url,
@@ -460,9 +264,6 @@ export default function PropertiesDashboard() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     }
-    window.dispatchEvent(
-      new CustomEvent('properties-refresh', { detail: { force: true, silent: true } }),
-    );
     setImageRefreshKey((k) => k + 1);
     closeModal();
   };
@@ -488,13 +289,11 @@ export default function PropertiesDashboard() {
         onBack={closeManageDashboard}
         onEdit={(p) => { setManagedProperty(null); setEditingProperty(p); setShowPropertyModal(true); }}
         onPropertyUpdate={(updated) => {
-          // Update the local snapshot so PropertyManagementDashboard receives
-          // the backend-confirmed value immediately (prevents useEffect revert).
           setManagedProperty((prev) => (prev ? { ...prev, ...updated } : updated));
-          // Also push into PropertiesContext so the property card is up-to-date.
           if (typeof applyPropertySnapshot === 'function') {
             applyPropertySnapshot(updated);
           }
+          setImageRefreshKey((k) => k + 1);
         }}
       />
     );
@@ -639,23 +438,10 @@ export default function PropertiesDashboard() {
         </p>
       </div>
 
-      {!loading && dbLoadStatus === 'cache' && rawProperties?.length > 0 && (
-        <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-center text-sky-950 text-sm">
-          Loading from cache — port 1000 is slow; showing last synced portfolio until the server responds.
-        </div>
-      )}
-
       {loading ? (
         <PropertyGridSkeleton cards={9} />
       ) : (
         <>
-      {!loading && properties.length === 0 && dbLoadStatus !== 'ok' && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-amber-950 text-sm">
-          {dbLoadStatus === 'cache' || dbLoadStatus === 'stale'
-            ? 'Loading from cache — port 1000 is slow or unreachable; showing last synced portfolio.'
-            : 'Database loading or timeout'}
-        </div>
-      )}
         <div id="properties-dashboard-grid" className="properties-grid">
           {!loading && filteredProperties.length === 0 && (
             <div className="col-span-full text-center py-16 text-gray-500 rounded-2xl border border-dashed border-gray-200 bg-white/80">

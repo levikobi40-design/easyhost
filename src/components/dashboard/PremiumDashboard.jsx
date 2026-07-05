@@ -21,7 +21,7 @@ const TASK_CHART_COLORS = ['#3b82f6', '#10b981'];
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
 /**
- * Pilot / simulation refresh — Hotel Bazaar Jaffa (61-room engine) + portfolio occupancy.
+ * Christos Corfu pilot — live ops refresh from API.
  */
 const refreshHotelOpsSimulation = async () => {
   const headers = { 'Content-Type': 'application/json' };

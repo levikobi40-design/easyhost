@@ -15,7 +15,6 @@ import {
 import useStore from '../store/useStore';
 import { MAYA_AI_RULES } from '../config/mayaRules';
 import i18n from '../i18n';
-import { notifyTasksChanged } from '../utils/taskSyncBridge';
 import '../utils/mayaBrain';
 import { getBazaarJaffaPolicyTextForMaya } from '../data/propertyData';
 
@@ -88,7 +87,7 @@ ${MAYA_AI_RULES.STAFF_MEMORY?.rule || ''}
 ${MAYA_AI_RULES.ACTION_RULE.rule}
 ${MAYA_AI_RULES.DYNAMIC_DETAILS.rule}
 
-Authoritative Hotel Bazaar Jaffa guest policy (recite when asked; do not contradict):
+Authoritative Christos Corfu guest policy (recite when asked; do not contradict):
 ${getBazaarJaffaPolicyTextForMaya()}
 `.trim();
 
@@ -717,8 +716,8 @@ class MayaOrchestrator {
     const history = options.history || [];
     const language = options.language || 'en';  // en | he — Maya responds in guest language
     const onDelta = options.onDelta || null;
-    // Passed as 5th arg to sendMayaCommand so delta tokens reach the UI for every LLM path
-    const cmdOpts = onDelta ? { onDelta } : {};
+    const uiContext = options.uiContext || useStore.getState?.()?.mayaTaskBoardContext || null;
+    const cmdOpts = { ...(onDelta ? { onDelta } : {}), ...(uiContext ? { uiContext } : {}) };
     const lowerCommand = command.toLowerCase();
 
     // "Send this to Kobi" / "Send to Alma" - open WhatsApp for selected task
@@ -903,12 +902,14 @@ class MayaOrchestrator {
         }
         const taskCreated = mayaResult.taskCreated || mayaResult.action === 'add_task' || !!mayaResult.task;
         if (taskCreated) {
-          notifyTasksChanged({ task: mayaResult.task });
           return {
             success: true,
             message: mayaResult.message || mayaResult.displayMessage || mayaResult.response,
             displayMessage: mayaResult.displayMessage || mayaResult.message || mayaResult.response,
             taskCreated,
+            task: mayaResult.task,
+            tasks: mayaResult.tasks,
+            parsed: mayaResult.parsed,
           };
         }
         if (mayaResult.displayMessage || mayaResult.message || mayaResult.response) {

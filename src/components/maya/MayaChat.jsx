@@ -5,8 +5,8 @@ import useTranslations from '../../hooks/useTranslations';
 import useStore from '../../store/useStore';
 import { maya } from '../../services/agentOrchestrator';
 import { API_URL, withAuthFetchInit } from '../../utils/apiClient';
-import { updatePropertyTaskStatus, fetchMayaChatHistory } from '../../services/api';
-import { notifyTasksChanged, notifyMissionTaskLocalUpdate, notifyStaffChanged } from '../../utils/taskSyncBridge';
+import { updatePropertyTaskStatus, fetchMayaChatHistory, invalidateMayaCache, clearStaleMayaClientCaches } from '../../services/api';
+import { notifyTasksChanged, notifyTasksChangedWithPersist, notifyMissionTaskLocalUpdate, notifyStaffChanged } from '../../utils/taskSyncBridge';
 import {
   speakMayaReply,
   cancelMayaSpeech,
@@ -18,10 +18,16 @@ import {
   stripAsciiControlChars,
   stripSSMLForDisplay,
 } from '../../utils/mayaVoice';
+import {
+  translatePropertyName,
+  translateTaskDescription,
+  translateStaffLabel,
+  formatWorkerDisplayText,
+} from '../../utils/taskDisplayI18n';
 import { getWorkerSpeechOptions } from '../../utils/workerMemory';
 import './MayaChat.css';
 
-/** After Hotel Bazaar policy KB sync — spoken once per browser (sessionStorage). */
+/** One-time policy KB sync line (sessionStorage). */
 const BAZAAR_POLICY_KB_LINE =
   'קובי, למדתי את כל חוקי המלון. אני יודעת שיש לנו 32 חדרים, שאין לנו כשרות ושלצ\'ק-אאוט מאוחר אנחנו גובים 170 ש"ח. אני מוכנה לענות לכל אורח. מה עכשיו?';
 
@@ -230,19 +236,31 @@ const TaskCard = memo(function TaskCard({ task, onComplete }) {
 
   if (!task) return null;
 
-  const propLabel = task.property_name || task.propertyName || '—';
+  const propLabel = formatWorkerDisplayText(
+    translatePropertyName(
+      task.property_id,
+      task.property_name || task.propertyName || task.hotel_name || task.room || '',
+    ),
+    '',
+  );
+  const titleLabel = propLabel || t('worker.card.hotel');
+  const descText = formatWorkerDisplayText(
+    translateTaskDescription(task) || task.description || task.content,
+    '—',
+  );
+  const staffLabel = formatWorkerDisplayText(translateStaffLabel(task.staff_name), '');
   return (
     <div className={`maya-task-card ${done ? 'maya-task-card--done' : ''}`}>
       <div className="mtc-header">
         <span className="mtc-emoji">{typeEmoji[task.task_type] || '📋'}</span>
-        <span className="mtc-title">{propLabel === '—' ? '🏨 Hotel' : propLabel}</span>
+        <span className="mtc-title">{propLabel ? propLabel : `🏨 ${titleLabel}`}</span>
         <span className={`mtc-badge ${task.priority === 'high' ? 'mtc-badge--high' : ''}`}>
           {priorityLabel[task.priority] || t('mayaChat.priorityNormal')}
         </span>
       </div>
-      <p className="mtc-desc">{task.description || task.content || '—'}</p>
-      {task.staff_name && (
-        <p className="mtc-staff">👤 {task.staff_name}</p>
+      <p className="mtc-desc">{descText}</p>
+      {staffLabel && (
+        <p className="mtc-staff">👤 {staffLabel}</p>
       )}
       <button
         type="button"
@@ -344,6 +362,8 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
   const messagesEndRef    = useRef(null);
   /** Tracks whether the chat panel was already open on the previous render. */
   const prevChatOpenRef  = useRef(false);
+  /** Force scroll after user send / Maya reply (ignore near-bottom guard). */
+  const forceScrollRef   = useRef(false);
   /** Prevents concurrent duplicate GET /maya/chat-history requests. */
   const historyFetchInFlightRef = useRef(false);
   const feedSinceRef     = useRef(Date.now());
@@ -1239,10 +1259,10 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
     // Consider the user "at the bottom" if within 80 px of the end.
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
-    if (!justOpened && !isNearBottom) {
-      // User has scrolled up to read history — don't interrupt them.
+    if (!justOpened && !isNearBottom && !forceScrollRef.current) {
       return;
     }
+    forceScrollRef.current = false;
 
     const scrollToBottom = () => {
       if (messagesEndRef.current) {
@@ -1323,6 +1343,11 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
        never blocks the initial render, but runs immediately rather than waiting
        for browser idle time (old requestIdleCallback timeout was up to 1200 ms). ── */
   useEffect(() => {
+    clearStaleMayaClientCaches();
+    if (authToken) invalidateMayaCache();
+  }, [authToken]);
+
+  useEffect(() => {
     if (!authToken) return undefined;
     let cancelled = false;
     const tid = window.setTimeout(() => {
@@ -1394,7 +1419,7 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
               text: content,
               taskId: ev.task?.id,
             });
-            notifyTasksChanged({ task: ev.task });
+            notifyTasksChanged();
           } else {
             const content = ev.text || t('mayaChat.messageSent');
             addMayaActivityEntry({
@@ -1456,7 +1481,7 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
           data:    { taskCreated: true, task },
         });
         speakAssistantReply(assistantContent);
-        notifyTasksChanged({ task });
+        notifyTasksChanged();
         onAfterSendSuccess?.();
       } else {
         addMayaMessage({
@@ -1510,6 +1535,7 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
 
       setLast429(false); // clear previous 429 banner on new AI attempt
       if (voiceOnlyMaya) clearBiktaAutoCloseTimer();
+      forceScrollRef.current = true;
       addMayaMessage({ role: 'user', content: msg });
       setMayaTyping(true);
 
@@ -1524,6 +1550,7 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
       // onDelta: called per-token by parseMayaSseResponse as Gemini yields chunks
       const onDelta = (chunk) => {
         streamedText += chunk;
+        forceScrollRef.current = true;
         patchMayaMessage(streamMsgId, { content: streamedText, streaming: true });
       };
 
@@ -1586,6 +1613,7 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
           streaming: false,
           ...(isBulkTaskUpdate ? {} : { data: result }),
         });
+        forceScrollRef.current = true;
 
         try {
           await mayaBrainMod.applyClientSideTaskUpdatesFromMayaResult(result);
@@ -1614,7 +1642,12 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
             }),
           });
           triggerShake();
-          notifyTasksChanged({ task: result.task || result.task_data || (Array.isArray(result.tasks) ? result.tasks[0] : null) });
+          const createdTask = result?.task || (Array.isArray(result?.tasks) ? result.tasks[0] : null);
+          if (createdTask) {
+            notifyTasksChangedWithPersist({ task: createdTask });
+          } else {
+            notifyTasksChanged();
+          }
         }
         if (result.staffRegistered) {
           notifyStaffChanged({ staff: result.staff });

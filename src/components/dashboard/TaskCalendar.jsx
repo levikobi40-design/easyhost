@@ -6,8 +6,7 @@ import { useProperties } from '../../context/PropertiesContext';
 import TaskListErrorBoundary from '../common/TaskListErrorBoundary';
 import useStore from '../../store/useStore';
 import { useMission } from '../../context/MissionContext';
-import { getBazaarHotelRoomCards } from '../../data/bazaarHotelRooms';
-import { isLegacyMockHotelTask } from '../../utils/bazaarTasks';
+import { isChristosCorfuTask } from '../../utils/corfuPilotFilters';
 import { maya } from '../../services/agentOrchestrator';
 import { toWhatsAppPhone } from '../../utils/phone';
 import { taskCalendarSafeStr as safeStr, getTaskCalendarWhatsAppMessage as getWhatsAppMessage } from '../../utils/taskCalendarWhatsApp';
@@ -15,29 +14,36 @@ import TaskCalendarTaskCard from './TaskCalendarTaskCard';
 import TaskCreatorModal from './TaskCreatorModal';
 import { missionTaskIsInProgress, missionTaskIsSeen, missionTaskIsDone } from '../../utils/taskCalendarStatus';
 import { TaskBoardSkeleton } from '../common/DashboardSkeletons';
+import useTranslations from '../../hooks/useTranslations';
+import { isRtlLang } from '../../utils/languages';
+import { translateTaskDescription } from '../../utils/taskDisplayI18n';
+import { CHRISTOS_PROPERTY_IDS } from '../../data/initialProperties';
 import './TaskCalendar.css';
 
+const PORTFOLIO_CORFU = 'corfu';
+const PORTFOLIO_ACTIVE = 'active';
+
 export default function TaskCalendar() {
+  const { t } = useTranslations();
   const {
     tasks,
     loading,
     loadingMore,
     hasMoreTasks,
-    tasksTotal,
-    taskStatusCounts,
-    prependTask,
     updateTaskInList,
     loadMoreTasks,
+    quietSyncTasks,
   } = useMission();
   const { properties } = useProperties();
   const [filter, setFilter] = useState('all'); // 'all' | 'pending' | 'completed'
+  const [managerPortfolioFilter, setManagerPortfolioFilter] = useState(PORTFOLIO_CORFU);
   const [propertyFilter, setPropertyFilter] = useState('all'); // 'all' | property name
   const [reportLoading, setReportLoading] = useState(false);
   const [managementLoading, setManagementLoading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(null);
   const lang = useStore((s) => s.lang) || 'en';
+  const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
   const activeTenantId = useStore((s) => s.activeTenantId);
-  const isBazaarPilot = activeTenantId === 'BAZAAR_JAFFA';
   const setLastSelectedTask = useStore((s) => s.setLastSelectedTask);
   const toggleMayaChat = useStore((s) => s.toggleMayaChat);
   const addMayaMessage = useStore((s) => s.addMayaMessage);
@@ -76,28 +82,15 @@ export default function TaskCalendar() {
   useEffect(() => {
     const onTaskCreated = (e) => {
       const newTask = e?.detail?.task;
-      if (newTask && newTask.id) {
-        const descFallback = safeStr(newTask.description ?? newTask.title ?? newTask.task_type ?? newTask.content) || 'ביצוע משימה';
-        const propFallback = safeStr(newTask.property_name ?? newTask.room ?? newTask.room_number) || 'חדר לא ידוע';
-        const staffFallback = safeStr(newTask.staff_name ?? newTask.worker_name) || 'לא ידוע';
-        const taskWithActions = {
-          ...newTask,
-          description:   descFallback,
-          title:         descFallback,
-          property_name: propFallback,
-          staff_name:    staffFallback,
-          worker_name:   staffFallback,
-          status: newTask.status || 'Pending',
-          actions: newTask.actions || [{ label: 'ראיתי ✅', value: 'seen' }, { label: 'בוצע 🏁', value: 'done' }],
-        };
-        prependTask(taskWithActions);
-        setHighlightedTaskId(newTask.id);
+      if (newTask?.id) {
+        setHighlightedTaskId(String(newTask.id));
         setTimeout(() => setHighlightedTaskId(null), 2500);
       }
+      quietSyncTasks();
     };
     window.addEventListener('maya-task-created', onTaskCreated);
     return () => window.removeEventListener('maya-task-created', onTaskCreated);
-  }, [prependTask]);
+  }, [quietSyncTasks]);
 
   const [showTaskCreator, setShowTaskCreator] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
@@ -121,7 +114,7 @@ export default function TaskCalendar() {
       const withPhone = (staff || []).find((s) => (s.phone_number || s.phone || '').trim());
       const phone = withPhone?.phone_number || withPhone?.phone;
       if (!phone) {
-        window.alert('לא נמצא טלפון לניקיון בנכס. הוסיפו עובד ניקיון ב״Staff & Planner״.');
+        window.alert(t('taskCalendar.cleanerPhoneMissing'));
         return;
       }
       const msg = getWhatsAppMessage(t);
@@ -130,7 +123,7 @@ export default function TaskCalendar() {
     } finally {
       setCleanerLoading((m) => ({ ...m, [tid]: false }));
     }
-  }, []);
+  }, [t]);
   const handleUndoMarkDone = useCallback(async () => {
     if (!undoOffer) return;
     const { taskId, revertTo } = undoOffer;
@@ -146,15 +139,15 @@ export default function TaskCalendar() {
       if (res?.queued) {
         addNotification({
           type: 'info',
-          title: 'מאיה',
-          message: 'השינוי נשמר מקומית — יסונכרן כשהחיבור חוזר',
+          title: t('taskCalendar.maya'),
+          message: t('taskCalendar.savedOffline'),
         });
       }
     } catch (e) {
       updateTaskInList(taskId, (t) => ({ ...t, status: 'Done' }));
-      window.alert(e?.message || 'עדכון נכשל');
+      window.alert(e?.message || t('taskCalendar.updateFailed'));
     }
-  }, [undoOffer, updateTaskInList, addNotification]);
+  }, [undoOffer, updateTaskInList, addNotification, t]);
 
   const handleToggleStatus = useCallback(async (taskId, newStatus, task) => {
     if (!taskId) return;
@@ -175,7 +168,7 @@ export default function TaskCalendar() {
     }
 
     const prevStatus = task?.status;
-    const staffName = (task?.staff_name ?? task?.staffName ?? 'העובד').trim() || 'העובד';
+    const staffName = (task?.staff_name ?? task?.staffName ?? t('taskCalendar.otherStaff')).trim() || t('taskCalendar.otherStaff');
     updateTaskInList(taskId, (t) => ({ ...t, status: newStatus }));
     if (String(newStatus).toLowerCase() === 'done') {
       setFilter('completed');
@@ -186,8 +179,8 @@ export default function TaskCalendar() {
       if (res?.queued) {
         addNotification({
           type: 'info',
-          title: 'מאיה',
-          message: 'העדכון נשמר מקומית ויסונכרן כשהחיבור חוזר',
+          title: t('taskCalendar.maya'),
+          message: t('taskCalendar.savedOffline'),
         });
       }
       if (newStatus === 'Done') {
@@ -209,27 +202,27 @@ export default function TaskCalendar() {
             body:    JSON.stringify({ task_id: taskId, staff_name: staffName }),
           });
         } catch (_) { /* non-critical */ }
-        addMayaMessage({ role: 'assistant', content: `${staffName} אישר את המשימה ✅ הטיימר הופסק.` });
+        addMayaMessage({ role: 'assistant', content: t('taskCalendar.staffAck', { name: staffName }) });
         toggleMayaChat(true);
       } else if (newStatus === 'Done') {
-        addMayaMessage({ role: 'assistant', content: `${staffName} סיים את המשימה ✅` });
-        addNotification({ type: 'success', title: 'מאיה', message: `${staffName} סיים את המשימה` });
+        addMayaMessage({ role: 'assistant', content: t('taskCalendar.staffDone', { name: staffName }) });
+        addNotification({ type: 'success', title: t('taskCalendar.maya'), message: t('taskCalendar.staffDoneNotify', { name: staffName }) });
         toggleMayaChat(true);
       }
     } catch (e) {
       updateTaskInList(taskId, (t) => ({ ...t, status: prevStatus }));
       setUndoOffer((cur) => (cur?.taskId === taskId ? null : cur));
-      window.alert(e?.message || 'עדכון נכשל');
+      window.alert(e?.message || t('taskCalendar.updateFailed'));
     }
-  }, [addMayaMessage, addNotification, toggleMayaChat, updateTaskInList, undoOffer]);
+  }, [addMayaMessage, addNotification, toggleMayaChat, updateTaskInList, undoOffer, t]);
 
   const isDone = (task) => missionTaskIsDone(task);
   const isInProgress = (task) => missionTaskIsInProgress(task);
   const isSeen = (task) => missionTaskIsSeen(task);
 
   const filteredTasks = (tasks ?? []).filter((t) => {
-    if (isLegacyMockHotelTask(t)) return false;
     if ((t?.status || '').toLowerCase() === 'archived') return false;
+    if (managerPortfolioFilter === PORTFOLIO_CORFU && !isChristosCorfuTask(t)) return false;
     // Status filter
     if (filter === 'pending' && isDone(t)) return false;
     if (filter === 'completed' && !isDone(t)) return false;
@@ -285,7 +278,7 @@ export default function TaskCalendar() {
 
   const TASK_RENDER_BATCH = 48;
   const [renderLimit, setRenderLimit] = useState(TASK_RENDER_BATCH);
-  const filterScrollKey = `${filter}\0${propertyFilter}`;
+  const filterScrollKey = `${filter}\0${propertyFilter}\0${managerPortfolioFilter}`;
   const filterScrollKeyRef = useRef(filterScrollKey);
   useEffect(() => {
     if (filterScrollKeyRef.current !== filterScrollKey) {
@@ -341,15 +334,56 @@ export default function TaskCalendar() {
     return () => ob.disconnect();
   }, [needApiPage, loadMoreTasks, tasksForDisplay.length, visibleTasks.length]);
 
-  const barFromSql =
-    Number(taskStatusCounts?.total) === Number(tasksTotal) && Number(tasksTotal) >= 0;
-  const totalCount = tasksTotal > 0 ? tasksTotal : tasks?.length ?? 0;
-  const inProgressCount = barFromSql
-    ? Number(taskStatusCounts.in_progress) || 0
-    : tasks.filter((t) => isInProgress(t) || isSeen(t)).length;
-  const completedCount = barFromSql
-    ? Number(taskStatusCounts.done) || 0
-    : tasks.filter((t) => isDone(t)).length;
+  const totalCount = filteredTasks.length;
+  const visiblePropertiesCount = useMemo(() => {
+    const christosSet = new Set(CHRISTOS_PROPERTY_IDS.map(String));
+    if (managerPortfolioFilter === PORTFOLIO_CORFU) {
+      const fromProps = (properties ?? []).filter((p) => christosSet.has(String(p?.id || '').trim()));
+      if (fromProps.length) return fromProps.length;
+      const fromTasks = new Set(
+        filteredTasks.map((t) => String(t?.property_id || '').trim()).filter((id) => christosSet.has(id)),
+      );
+      if (fromTasks.size) return fromTasks.size;
+      return CHRISTOS_PROPERTY_IDS.length;
+    }
+    if ((properties ?? []).length) return properties.length;
+    return new Set(filteredTasks.map((t) => t?.property_id).filter(Boolean)).size;
+  }, [properties, filteredTasks, managerPortfolioFilter]);
+  const inProgressCount = filteredTasks.filter((t) => {
+    const s = (t.status || '').toLowerCase().replace(/\s+/g, '_');
+    return s === 'pending' || s === 'in_progress' || s === 'active';
+  }).length;
+  const completedCount = filteredTasks.filter((t) => {
+    const s = (t.status || '').toLowerCase();
+    return s === 'completed' || s === 'done';
+  }).length;
+  const pendingCount = filteredTasks.filter((t) => {
+    const s = (t.status || '').toLowerCase();
+    return s === 'pending' || !t.status;
+  }).length;
+
+  const setMayaTaskBoardContext = useStore((s) => s.setMayaTaskBoardContext);
+  useEffect(() => {
+    setMayaTaskBoardContext({
+      current_visible_tasks_count: totalCount,
+      current_visible_in_progress_count: inProgressCount,
+      current_visible_pending_count: pendingCount,
+      current_visible_completed_count: completedCount,
+      current_visible_properties_count: visiblePropertiesCount,
+      current_property_filter: propertyFilter === 'all' ? null : propertyFilter,
+      current_portfolio_filter: managerPortfolioFilter,
+      updated_at: Date.now(),
+    });
+  }, [
+    totalCount,
+    inProgressCount,
+    pendingCount,
+    completedCount,
+    visiblePropertiesCount,
+    propertyFilter,
+    managerPortfolioFilter,
+    setMayaTaskBoardContext,
+  ]);
 
   const handleManagementAnalysis = useCallback(async () => {
     setManagementLoading(true);
@@ -406,64 +440,26 @@ export default function TaskCalendar() {
     }
   }, [toggleMayaChat, addMayaMessage]);
 
-  const bazaarImageFallback =
-    'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&q=80';
-
-  if (isBazaarPilot) {
-    const bazaarRooms = getBazaarHotelRoomCards();
-    return (
-      <div className="task-calendar task-calendar--bazaar p-10 bg-[#FBFBFB] min-h-screen" dir="rtl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-10">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center">
-              <CalendarCheck size={28} className="text-amber-600" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-black text-gray-900">לוח משימות</h1>
-              <p className="text-gray-500 mt-1">מלון בזאר יפו — חדרים לפי סוג (Superior, Deluxe וכו׳). תמונות: public/assets/images/hotels/bazaar</p>
-            </div>
-          </div>
-        </div>
-        <div className="bazaar-hotel-grid">
-          {bazaarRooms.map((room) => (
-            <div key={room.id} className="bazaar-hotel-card">
-              <div className="bazaar-hotel-card-thumb">
-                <img
-                  src={room.imageSrc}
-                  alt=""
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.src = bazaarImageFallback;
-                  }}
-                />
-              </div>
-              <p className="bazaar-hotel-card-label">{room.labelHe}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="task-calendar p-10 bg-[#FBFBFB] min-h-screen" dir="rtl">
+    <div className="task-calendar p-10 bg-[#FBFBFB] min-h-screen" dir={dir}>
       <TaskCreatorModal
         isOpen={showTaskCreator}
         onClose={() => setShowTaskCreator(false)}
-        onSuccess={(task) => {
-          prependTask(task);
+        onSuccess={() => {
+          quietSyncTasks();
           setShowTaskCreator(false);
         }}
       />
       <div className="task-status-bar">
         <span className="task-status-total">
-          <strong>{totalCount}</strong> משימות סה"כ
+          {t('taskCalendar.statsTotal', { count: totalCount })}
         </span>
         <span className="task-status-in-progress">
-          <strong>{inProgressCount}</strong> בתהליך
+          <strong>{inProgressCount}</strong> {t('taskCalendar.statsInProgressShort')}
         </span>
         <span className="task-status-completed">
-          <strong>{completedCount}</strong> הושלמו
+          <strong>{completedCount}</strong> {t('taskCalendar.statsCompletedShort')}
         </span>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-10">
@@ -472,11 +468,23 @@ export default function TaskCalendar() {
             <CalendarCheck size={28} className="text-amber-600" />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-gray-900">לוח משימות</h1>
-            <p className="text-gray-500 mt-1">משימות שנוצרו על ידי מאיה – ניקיון, תחזוקה ושירות</p>
+            <h1 className="text-3xl font-black text-gray-900">{t('taskCalendar.title')}</h1>
+            <p className="text-gray-500 mt-1">{t('taskCalendar.subtitle')}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <div className="task-property-select-wrap">
+            <ChevronDown size={14} className="task-property-select-icon" aria-hidden="true" />
+            <select
+              className="task-property-select"
+              value={managerPortfolioFilter}
+              onChange={(e) => setManagerPortfolioFilter(e.target.value)}
+              aria-label={t('taskCalendar.filterPortfolio')}
+            >
+              <option value={PORTFOLIO_CORFU}>{t('taskCalendar.portfolioCorfu')}</option>
+              <option value={PORTFOLIO_ACTIVE}>{t('taskCalendar.portfolioActive')}</option>
+            </select>
+          </div>
           {/* Property dropdown */}
           <div className="task-property-select-wrap">
             <ChevronDown size={14} className="task-property-select-icon" aria-hidden="true" />
@@ -484,9 +492,9 @@ export default function TaskCalendar() {
               className="task-property-select"
               value={propertyFilter}
               onChange={(e) => setPropertyFilter(e.target.value)}
-              aria-label="סנן לפי נכס"
+              aria-label={t('taskCalendar.filterProperty')}
             >
-              <option value="all">כל הנכסים</option>
+              <option value="all">{t('taskCalendar.allProperties')}</option>
               {properties.map((p) => (
                 <option key={p.id ?? p.name} value={(p.name ?? '').toString()}>
                   {p.name}
@@ -511,21 +519,21 @@ export default function TaskCalendar() {
               className={`task-filter-btn ${filter === 'all' ? 'active' : ''}`}
               onClick={() => setFilter('all')}
             >
-              הכל
+              {t('taskCalendar.filterAll')}
             </button>
             <button
               type="button"
               className={`task-filter-btn ${filter === 'pending' ? 'active' : ''}`}
               onClick={() => setFilter('pending')}
             >
-              ממתין
+              {t('taskCalendar.filterPending')}
             </button>
             <button
               type="button"
               className={`task-filter-btn ${filter === 'completed' ? 'active' : ''}`}
               onClick={() => setFilter('completed')}
             >
-              הושלם
+              {t('taskCalendar.filterCompleted')}
             </button>
           </div>
           <button
@@ -533,19 +541,19 @@ export default function TaskCalendar() {
             onClick={() => setShowTaskCreator(true)}
             className="task-management-btn"
             style={{ background: 'rgba(0,255,136,0.12)', borderColor: 'rgba(0,255,136,0.4)', color: '#00ff88' }}
-            title="הוסף משימה ידנית"
+            title={t('taskCalendar.addTask')}
           >
             <Plus size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-            הוסף משימה
+            {t('taskCalendar.addTask')}
           </button>
           <button
             type="button"
             onClick={handleManagementAnalysis}
             disabled={managementLoading}
             className="task-management-btn"
-            title="מאיה מנתחת את הלוח ומציעה תזכורות"
+            title={t('taskCalendar.analyzeBoard')}
           >
-            {managementLoading ? 'מנתחת...' : 'בוא נראה אותה מנהלת'}
+            {managementLoading ? t('taskCalendar.analyzing') : t('taskCalendar.analyzeBoard')}
           </button>
           <button
             type="button"
@@ -554,7 +562,7 @@ export default function TaskCalendar() {
             className="task-daily-report-btn"
           >
             <FileText size={18} />
-            {reportLoading ? 'מייצר...' : 'דוח יומי'}
+            {reportLoading ? t('taskCalendar.generating') : t('taskCalendar.dailyReport')}
           </button>
         </div>
       </div>
@@ -565,8 +573,8 @@ export default function TaskCalendar() {
       ) : filteredTasks.length === 0 ? (
         <div className="task-calendar-empty bg-white rounded-2xl p-12 text-center border border-gray-100">
           <CalendarCheck size={48} className="text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500 font-bold">אין משימות כרגע</p>
-          <p className="text-sm text-gray-400 mt-1">כשמאיה תשלח הודעה לעובד, המשימה תופיע כאן</p>
+          <p className="text-gray-500 font-bold">{t('taskCalendar.empty')}</p>
+          <p className="text-sm text-gray-400 mt-1">{t('taskCalendar.emptyHint')}</p>
         </div>
       ) : (
         <div ref={taskListWrapRef} className="task-calendar-virtual-host">
@@ -599,7 +607,7 @@ export default function TaskCalendar() {
             <div ref={apiPageSentinelRef} className="task-calendar-scroll-sentinel" aria-hidden style={{ minHeight: 32 }} />
           ) : null}
           {loadingMore ? (
-            <p className="text-xs text-slate-500 py-3 text-center" dir="rtl">טוען משימות נוספות…</p>
+            <p className="text-xs text-slate-500 py-3 text-center" dir={dir}>{t('taskCalendar.loadingMore')}</p>
           ) : null}
         </div>
       )}
@@ -612,16 +620,16 @@ export default function TaskCalendar() {
             <button className="tc-lightbox-close" onClick={() => setLightboxUrl(null)}>✕</button>
             <img
               src={lightboxUrl}
-              alt="תמונת משימה מוגדלת"
+              alt={t('taskCalendar.lightboxAlt')}
               className="tc-lightbox-img"
-              onError={e => { e.currentTarget.alt = 'תמונה לא נמצאה'; }}
+              onError={e => { e.currentTarget.alt = t('taskCalendar.imageMissing'); }}
             />
             <a
               href={lightboxUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="tc-lightbox-open"
-            >פתח בחלון חדש ↗</a>
+            >{t('taskCalendar.openNewWindow')}</a>
           </div>
         </div>
       )}

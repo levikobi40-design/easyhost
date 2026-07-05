@@ -122,7 +122,7 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
         property_id:   String(propertyId),
         property_name: selectedProp?.name || propertyId,
         description:   description.trim(),
-        task_type:     taskType,
+        task_type:     `worker.taskTypes.${taskType === 'checkin' ? 'checkin' : taskType === 'cleaning' ? 'cleaning' : taskType === 'maintenance' ? 'maintenance' : 'service'}`,
         staff_name:    staffName.trim() || undefined,
         staff_phone:   staffPhone.trim() || undefined,
         due_at:        dueAt || undefined,
@@ -164,8 +164,8 @@ export default function TaskCreatorModal({ isOpen, onClose, onSuccess }) {
         created_at:    raw?.created_at ?? new Date().toISOString(),
         due_at:        raw?.due_at ?? dueAt ?? null,
         actions:       Array.isArray(raw?.actions) ? raw.actions : [
-          { label: 'ראיתי ✅', value: 'seen' },
-          { label: 'בוצע 🏁', value: 'done' },
+          { value: 'seen' },
+          { value: 'done' },
         ],
       };
 

@@ -1,7 +1,15 @@
 import React, { memo } from 'react';
 import { Phone, MessageCircle, Building2 } from 'lucide-react';
 import { toWhatsAppPhone, getTaskWhatsAppPhone } from '../../utils/phone';
-import { formatHebrewDate, taskTypeLabelHe } from '../../utils/hebrewFormat';
+import {
+  translateTaskDescription,
+  translatePropertyName,
+  translateTaskType,
+  formatTaskDate,
+} from '../../utils/taskDisplayI18n';
+import useTranslations from '../../hooks/useTranslations';
+import useStore from '../../store/useStore';
+import { isRtlLang } from '../../utils/languages';
 import {
   missionTaskIsDone as isDone,
   missionTaskIsInProgress as isInProgress,
@@ -14,6 +22,17 @@ import {
   missionTaskIsTowelCleaning as isTowelCleaningTask,
 } from '../../utils/taskCalendarStatus';
 import { taskCalendarSafeStr as safeStr, getTaskCalendarWhatsAppMessage as getWhatsAppMessage } from '../../utils/taskCalendarWhatsApp';
+
+function statusLabel(t, task) {
+  if (isDone(task)) return t('taskCalendar.status.done');
+  if (isDelayed(task)) return t('taskCalendar.status.delayed');
+  if (isInProgress(task)) return t('taskCalendar.status.inProgress');
+  if (isSeen(task)) return t('taskCalendar.status.seen');
+  if (isSearchingStaff(task)) return t('taskCalendar.status.searching');
+  if (isEscalated(task)) return t('taskCalendar.status.escalated');
+  if (isUnacked(task)) return t('taskCalendar.status.unack');
+  return t('taskCalendar.status.pending');
+}
 
 function TaskCalendarTaskCardInner({
   task,
@@ -28,43 +47,58 @@ function TaskCalendarTaskCardInner({
   togglingId,
   undoOffer,
 }) {
-  const t = task;
-  const formatDate = (str) => formatHebrewDate(str, { includeTime: true });
+  const { t } = useTranslations();
+  const lang = useStore((s) => s.lang) || 'en';
+  const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
+  const row = task;
+  const formatDate = (str) => formatTaskDate(str, lang, { includeTime: true });
+  const desc = translateTaskDescription(row);
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug('[TaskCard] rendered title/description', {
+      id: row.id,
+      title: row.title,
+      description: desc,
+    });
+  }
+  const propLabel = translatePropertyName(row.property_id, row.property_name || row.propertyName);
+  const roomRaw = safeStr(row.room_number || row.room);
+  const staffFallback = t('taskCalendar.otherStaff');
 
   return (
     <div className="task-calendar-grid-cell">
       <div
         className={[
           'task-card',
-          isDone(t) ? 'task-done'
-            : isDelayed(t) ? 'task-delayed'
-            : isInProgress(t) ? 'task-in-progress'
-            : isSeen(t) ? 'task-seen'
-            : isUnacked(t) ? 'task-unack'
-            : isEscalated(t) ? 'task-escalated'
+          isDone(row) ? 'task-done'
+            : isDelayed(row) ? 'task-delayed'
+            : isInProgress(row) ? 'task-in-progress'
+            : isSeen(row) ? 'task-seen'
+            : isUnacked(row) ? 'task-unack'
+            : isEscalated(row) ? 'task-escalated'
             : 'task-pending',
-          highlightedTaskId === t.id ? 'task-card-pop' : '',
-          isCheckinSoonPinned(t) ? 'task-pinned-checkin' : '',
+          highlightedTaskId === row.id ? 'task-card-pop' : '',
+          isCheckinSoonPinned(row) ? 'task-pinned-checkin' : '',
         ].filter(Boolean).join(' ')}
-        onClick={() => setLastSelectedTask(t)}
+        onClick={() => setLastSelectedTask(row)}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && setLastSelectedTask(t)}
+        onKeyDown={(e) => e.key === 'Enter' && setLastSelectedTask(row)}
+        dir={dir}
       >
         <div className="task-card-thumb">
           <div className="task-card-thumb-fallback" aria-hidden>
             <Building2 size={32} />
           </div>
           {(() => {
-            const prop = t.property_id ? properties.find((p) => p.id === t.property_id) : null;
-            const thumbUrl = (t.property_pictures && t.property_pictures[0])
+            const prop = row.property_id ? properties.find((p) => p.id === row.property_id) : null;
+            const thumbUrl = (row.property_pictures && row.property_pictures[0])
               || (prop?.pictures && prop.pictures[0])
               || prop?.photo_url
-              || t.photo_url;
+              || row.photo_url;
             return thumbUrl ? (
               <img
                 src={thumbUrl}
-                alt={safeStr(t.property_name ?? t.propertyName) || 'נכס'}
+                alt={propLabel || t('taskCalendar.propertyAlt')}
                 className="task-card-thumb-img"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
@@ -73,61 +107,52 @@ function TaskCalendarTaskCardInner({
         </div>
         <div className="task-card-header">
           <span className={`task-status-badge ${
-            isDone(t) ? 'done'
-              : isDelayed(t) ? 'delayed'
-              : isInProgress(t) ? 'in_progress'
-              : isSeen(t) ? 'seen'
-              : isSearchingStaff(t) ? 'searching'
-              : isEscalated(t) ? 'escalated'
-              : isUnacked(t) ? 'unack'
+            isDone(row) ? 'done'
+              : isDelayed(row) ? 'delayed'
+              : isInProgress(row) ? 'in_progress'
+              : isSeen(row) ? 'seen'
+              : isSearchingStaff(row) ? 'searching'
+              : isEscalated(row) ? 'escalated'
+              : isUnacked(row) ? 'unack'
               : 'pending'
           }`}>
-            {isDone(t) ? 'הושלם ✅'
-              : isDelayed(t) ? 'באיחור ⏱️'
-              : isInProgress(t) ? 'בטיפול ⚙️'
-              : isSeen(t) ? 'אושר 👀'
-              : isSearchingStaff(t) ? 'מחפשת צוות'
-              : isEscalated(t) ? '🚨 הוסלם'
-              : isUnacked(t) ? '⏰ ממתין לאישור'
-              : 'ממתין'}
+            {statusLabel(t, row)}
           </span>
-          <span className="task-date">{formatDate(t.created_at)}</span>
+          <span className="task-date">{formatDate(row.created_at)}</span>
         </div>
-        {isCheckinSoonPinned(t) && (
+        {isCheckinSoonPinned(row) && (
           <div className="task-pin-banner" role="status">
-            צ&apos;ק-אין בפחות מ-4 שעות — עדיפות עליונה
+            {t('taskCalendar.pinCheckin')}
           </div>
         )}
-        {isUnacked(t) && (
+        {isUnacked(row) && (
           <div className="task-unack-warning">
-            ⚠️ לא אושר — מאיה תשלח תזכורת בקרוב
+            {t('taskCalendar.unackWarning')}
           </div>
         )}
-        {isEscalated(t) && (
+        {isEscalated(row) && (
           <div className="task-escalated-notice">
-            🔁 הועבר ל: {t.escalated_to || 'עובד אחר'}
+            {t('taskCalendar.escalatedTo', { name: row.escalated_to || staffFallback })}
           </div>
         )}
-        <p className="task-description">
-          {safeStr(t.description) || safeStr(t.task_title) || safeStr(t.title) || safeStr(t.content) || ''}
-        </p>
-        {t.task_type && (
-          <p className="text-xs text-slate-500 font-semibold mt-1">{taskTypeLabelHe(t.task_type)}</p>
+        <p className="task-description">{desc}</p>
+        {row.task_type && (
+          <p className="text-xs text-slate-500 font-semibold mt-1">{translateTaskType(row.task_type)}</p>
         )}
-        {safeStr(t.property_context) && (
-          <p className="text-xs text-gray-500 mt-0.5">{safeStr(t.property_context)}</p>
+        {safeStr(row.property_context) && (
+          <p className="text-xs text-gray-500 mt-0.5">{safeStr(row.property_context)}</p>
         )}
-        {t.photo_url && (
+        {row.photo_url && (
           <button
             type="button"
             className="task-photo-link"
-            onClick={(e) => { e.stopPropagation(); setLightboxUrl(t.photo_url); }}
-            aria-label="צפה בתמונת המשימה"
-            title="לחץ להגדלה"
+            onClick={(e) => { e.stopPropagation(); setLightboxUrl(row.photo_url); }}
+            aria-label={t('taskCalendar.viewPhoto')}
+            title={t('taskCalendar.viewPhoto')}
           >
             <img
-              src={t.photo_url}
-              alt="תמונת משימה"
+              src={row.photo_url}
+              alt={t('taskCalendar.taskPhoto')}
               className="task-photo-thumb"
               onError={(e) => { e.currentTarget.closest('.task-photo-link').style.display = 'none'; }}
             />
@@ -135,33 +160,33 @@ function TaskCalendarTaskCardInner({
           </button>
         )}
         <div className="task-meta">
-          {(t.property_name || t.propertyName) && (
+          {propLabel && (
             <div className="task-meta-row">
               <span className="task-meta-icon" aria-hidden>🏠</span>
-              <span>{safeStr(t.property_name || t.propertyName)}</span>
+              <span>{propLabel}</span>
             </div>
           )}
-          {(t.room_number || t.room) && (
+          {roomRaw && (
             <div className="task-meta-row">
               <span className="task-meta-icon" aria-hidden>🚪</span>
-              <span>חדר {safeStr(t.room_number || t.room)}</span>
+              <span>{t('taskCalendar.roomLabel', { room: roomRaw })}</span>
             </div>
           )}
-          {(t.staff_name || t.staffName) && (
+          {(row.staff_name || row.staffName) && (
             <div className="task-meta-row flex items-center gap-2">
               <span className="task-meta-icon" aria-hidden>👤</span>
-              <span>{safeStr(t.staff_name || t.staffName)}</span>
-              {((t.staff_phone || t.staffPhone) || getTaskWhatsAppPhone(t)) && (
+              <span>{safeStr(row.staff_name || row.staffName)}</span>
+              {((row.staff_phone || row.staffPhone) || getTaskWhatsAppPhone(row)) && (
                 <>
-                  <a href={`tel:+${getTaskWhatsAppPhone(t) || toWhatsAppPhone(t.staff_phone || t.staffPhone)}`} className="task-phone-link" title="התקשר" onClick={(e) => e.stopPropagation()}>
+                  <a href={`tel:+${getTaskWhatsAppPhone(row) || toWhatsAppPhone(row.staff_phone || row.staffPhone)}`} className="task-phone-link" title={t('taskCalendar.callStaff')} onClick={(e) => e.stopPropagation()}>
                     <Phone size={14} />
                   </a>
                   <a
-                    href={`https://wa.me/${getTaskWhatsAppPhone(t) || toWhatsAppPhone(t.staff_phone || t.staffPhone)}?text=${encodeURIComponent(getWhatsAppMessage(t))}`}
+                    href={`https://wa.me/${getTaskWhatsAppPhone(row) || toWhatsAppPhone(row.staff_phone || row.staffPhone)}?text=${encodeURIComponent(getWhatsAppMessage(row))}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="task-whatsapp-btn"
-                    title="שליחת וואטסאפ"
+                    title={t('taskCalendar.whatsappStaff')}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <MessageCircle size={22} />
@@ -170,77 +195,78 @@ function TaskCalendarTaskCardInner({
               )}
             </div>
           )}
-          {((t.staff_phone || t.staffPhone) || getTaskWhatsAppPhone(t)) && !(t.staff_name || t.staffName) && (
+          {((row.staff_phone || row.staffPhone) || getTaskWhatsAppPhone(row)) && !(row.staff_name || row.staffName) && (
             <div className="task-meta-row task-phone">
               <Phone size={16} />
-              <a href={`tel:${safeStr(t.staff_phone || t.staffPhone).replace(/\D/g, '')}`} className="task-phone-link" onClick={(e) => e.stopPropagation()}>{safeStr(t.staff_phone || t.staffPhone)}</a>
-              <a href={`https://wa.me/${getTaskWhatsAppPhone(t) || toWhatsAppPhone(t.staff_phone || t.staffPhone)}?text=${encodeURIComponent(getWhatsAppMessage(t))}`} target="_blank" rel="noopener noreferrer" className="task-whatsapp-btn" title="שליחת וואטסאפ" onClick={(e) => e.stopPropagation()}>
+              <a href={`tel:${safeStr(row.staff_phone || row.staffPhone).replace(/\D/g, '')}`} className="task-phone-link" onClick={(e) => e.stopPropagation()}>{safeStr(row.staff_phone || row.staffPhone)}</a>
+              <a href={`https://wa.me/${getTaskWhatsAppPhone(row) || toWhatsAppPhone(row.staff_phone || row.staffPhone)}?text=${encodeURIComponent(getWhatsAppMessage(row))}`} target="_blank" rel="noopener noreferrer" className="task-whatsapp-btn" title={t('taskCalendar.whatsappStaff')} onClick={(e) => e.stopPropagation()}>
                 <MessageCircle size={22} />
               </a>
             </div>
           )}
         </div>
-        {isTowelCleaningTask(t) && t.property_id && (
+        {isTowelCleaningTask(row) && row.property_id && (
           <div className="task-cleaner-wa" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="task-cleaner-wa-btn"
-              disabled={cleanerLoading[t.id]}
-              onClick={(e) => openPropertyCleanerWhatsApp(t, e)}
+              disabled={cleanerLoading[row.id]}
+              onClick={(e) => openPropertyCleanerWhatsApp(row, e)}
             >
               <MessageCircle size={18} />
-              {cleanerLoading[t.id] ? 'טוען…' : 'וואטסאפ לניקיון (לפי נכס)'}
+              {cleanerLoading[row.id] ? t('taskCalendar.cleanerLoading') : t('taskCalendar.cleanerWa')}
             </button>
           </div>
         )}
         <div className="task-card-actions" onClick={(e) => e.stopPropagation()}>
-          {isDone(t) && undoOffer?.taskId === t.id && (
+          {isDone(row) && undoOffer?.taskId === row.id && (
             <button
               type="button"
               className="task-undo-btn"
-              disabled={togglingId === t.id}
+              disabled={togglingId === row.id}
               onClick={(e) => {
                 e.stopPropagation();
                 handleUndoMarkDone();
               }}
             >
-              בטל השלמה (5 שנ׳)
+              {t('taskCalendar.undoDone')}
             </button>
           )}
-          {!isDone(t) && (
+          {!isDone(row) && (
             <>
-              {(t.actions || [{ label: 'ראיתי ✅', value: 'confirmed' }, { label: 'בוצע 🏁', value: 'done' }])
+              {(row.actions || [{ label: t('taskCalendar.confirmSeen'), value: 'confirmed' }, { label: t('taskCalendar.markDone'), value: 'done' }])
                 .filter(
                   (a) =>
-                    (a.value === 'confirmed' && !isSeen(t) && !isInProgress(t)) || a.value === 'done',
+                    (a.value === 'confirmed' && !isSeen(row) && !isInProgress(row)) || a.value === 'done',
                 )
                 .map((a) => {
                   const status = a.value === 'confirmed' ? 'In_Progress' : 'Done';
                   const isConfirm = a.value === 'confirmed';
+                  const label = isConfirm ? t('taskCalendar.confirmSeen') : t('taskCalendar.markDone');
                   return (
                     <button
                       key={a.value}
                       type="button"
-                      disabled={togglingId === t.id}
-                      onClick={() => handleToggleStatus(t.id, status, t)}
-                      className={`task-action-btn ${isConfirm ? 'task-action-seen' : 'task-action-done'} ${togglingId === t.id ? 'loading' : ''}`}
-                      title={isConfirm ? 'אישור קבלה' : 'סמן כהושלם'}
+                      disabled={togglingId === row.id}
+                      onClick={() => handleToggleStatus(row.id, status, row)}
+                      className={`task-action-btn ${isConfirm ? 'task-action-seen' : 'task-action-done'} ${togglingId === row.id ? 'loading' : ''}`}
+                      title={isConfirm ? t('taskCalendar.confirmTitle') : t('taskCalendar.markDoneFull')}
                     >
-                      {togglingId === t.id ? <span className="task-toggle-spinner" /> : a.label}
+                      {togglingId === row.id ? <span className="task-toggle-spinner" /> : label}
                     </button>
                   );
                 })}
             </>
           )}
-          {isDone(t) && (
+          {isDone(row) && (
             <button
               type="button"
-              disabled={togglingId === t.id}
-              onClick={() => handleToggleStatus(t.id, 'Pending', t)}
-              className={`task-action-btn task-action-revert ${togglingId === t.id ? 'loading' : ''}`}
-              title="חזרה לממתין"
+              disabled={togglingId === row.id}
+              onClick={() => handleToggleStatus(row.id, 'Pending', row)}
+              className={`task-action-btn task-action-revert ${togglingId === row.id ? 'loading' : ''}`}
+              title={t('taskCalendar.revertTitle')}
             >
-              {togglingId === t.id ? <span className="task-toggle-spinner" /> : 'חזרה לממתין'}
+              {togglingId === row.id ? <span className="task-toggle-spinner" /> : t('taskCalendar.revertPending')}
             </button>
           )}
         </div>
@@ -257,7 +283,6 @@ function areTaskCardPropsEqual(prev, next) {
     if (prev.task?.escalation_status !== next.task?.escalation_status) return false;
     if (prev.task?.due_at !== next.task?.due_at) return false;
     if (prev.task?.ack_deadline !== next.task?.ack_deadline) return false;
-    // Content fields — re-render if the visible text changes
     if (prev.task?.description !== next.task?.description) return false;
     if (prev.task?.title !== next.task?.title) return false;
     if ((prev.task?.room_number || prev.task?.room) !== (next.task?.room_number || next.task?.room)) return false;

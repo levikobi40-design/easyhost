@@ -61,6 +61,33 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.guest-lang-pill {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.guest-lang-btn {
+  min-width: 2rem;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.guest-lang-btn-active {
+  background: rgba(0, 200, 117, 0.35);
+  color: #fff;
 }
 
 .guest-logo {

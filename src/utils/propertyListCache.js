@@ -21,15 +21,19 @@ function readLocalMapped() {
 export function saveMappedPropertyList(items, opts = {}) {
   const force = opts.force === true;
   if (!Array.isArray(items)) return;
+  const filtered = items.filter((p) => {
+    const id = String(p?.id || '');
+    return id.startsWith('christos-') || !/bazaar|sky\s*tower|leonardo|wework|rooms-branch/i.test(String(p?.name || ''));
+  });
+  if (!filtered.length && !force) return;
   try {
     const prevSess = loadMappedPropertyList();
     const prevLen = prevSess?.items?.length || 0;
-    if (!force && items.length === 0 && prevLen > 0) return;
-    if (!force && prevLen > 0 && items.length > 0 && items.length < Math.min(prevLen, 8)) return;
+    if (!force && filtered.length === 0 && prevLen > 0) return;
   } catch (_) {
     /* ignore */
   }
-  const payload = JSON.stringify({ savedAt: Date.now(), items });
+  const payload = JSON.stringify({ savedAt: Date.now(), items: filtered });
   try {
     if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(KEY, payload);
   } catch {
@@ -48,11 +52,15 @@ export function loadMappedPropertyList() {
       const raw = sessionStorage.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.items)) return parsed;
+        if (parsed && Array.isArray(parsed.items) && parsed.items.length) {
+          return parsed;
+        }
       }
     }
   } catch {
     /* fall through */
   }
-  return readLocalMapped();
+  const local = readLocalMapped();
+  if (local?.items?.length) return local;
+  return null;
 }

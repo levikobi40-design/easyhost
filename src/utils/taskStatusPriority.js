@@ -82,3 +82,106 @@ export function mergeTasksFromServerPoll(prevList, serverList, locksMap) {
     return m;
   });
 }
+
+function isTempClientId(id) {
+  const s = String(id || '');
+  return s.startsWith('client_') || s.startsWith('local-') || s.startsWith('tmp-');
+}
+
+/** Dedupe by id first, then client_id (server rows win over temp local ids). */
+export function dedupeTaskListByIdAndClient(list) {
+  const seenIds = new Set();
+  const seenClientIds = new Set();
+  const out = [];
+  for (const row of list || []) {
+    if (!row) continue;
+    const id = row.id != null ? String(row.id) : '';
+    const cid = row.client_id ? String(row.client_id) : '';
+    if (id && seenIds.has(id)) continue;
+    if (cid && seenClientIds.has(cid)) continue;
+    if (id && isTempClientId(id)) {
+      if (cid && seenClientIds.has(cid)) continue;
+      if (seenClientIds.has(id)) continue;
+    }
+    if (id) seenIds.add(id);
+    if (cid) seenClientIds.add(cid);
+    if (id && isTempClientId(id)) seenClientIds.add(id);
+    out.push(row);
+  }
+  return out;
+}
+
+export function logTasksMergeDebug(backend, pending, merged) {
+  const pick = (arr) => (arr || []).map((t) => t?.id || t?.client_id || '?');
+  console.log('[Tasks] backend', pick(backend));
+  console.log('[Tasks] pending', pick(pending));
+  console.log('[Tasks] merged', pick(merged));
+}
+
+/**
+ * Server list is authoritative.
+ * pendingLocals: only pending_sync rows (storage + memory).
+ * tail: scrolled pages beyond the current server head fetch.
+ */
+export function mergeMissionTaskLists(pendingLocals, serverHead, tail = [], locksMap = null) {
+  const pending = Array.isArray(pendingLocals) ? pendingLocals : [];
+  const head = (Array.isArray(serverHead) ? serverHead : []).map((row) =>
+    (locksMap ? applyTaskStatusLock(row, locksMap) : row),
+  );
+
+  const serverById = new Map();
+  const serverByClientId = new Map();
+  for (const t of head) {
+    if (t?.id != null) serverById.set(String(t.id), t);
+    const cid = t?.client_id ? String(t.client_id) : '';
+    if (cid) serverByClientId.set(cid, t);
+  }
+
+  const stillPending = pending.filter((local) => {
+    if (!local || local.pending_sync !== true) return false;
+    const cid = local.client_id ? String(local.client_id) : '';
+    const lid = local.id != null ? String(local.id) : '';
+    if (cid && serverByClientId.has(cid)) return false;
+    if (lid && serverByClientId.has(lid)) return false;
+    if (lid && serverById.has(lid) && !isTempClientId(lid)) return false;
+    return true;
+  });
+
+  const serverIds = new Set(head.map((t) => String(t.id)));
+  const safeTail = (Array.isArray(tail) ? tail : []).filter((t) => {
+    if (!t?.id || t.pending_sync === true) return false;
+    return !serverIds.has(String(t.id));
+  });
+
+  const merged = dedupeTaskListByIdAndClient([...stillPending, ...head, ...safeTail]);
+  logTasksMergeDebug(head, stillPending, merged);
+  return merged;
+}
+
+function isTerminalDoneStatus(status) {
+  const raw = String(status ?? '').trim().toLowerCase();
+  return raw === 'done' || raw === 'completed' || raw === 'closed';
+}
+
+/** Worker poll — server authoritative; never regress a locally completed row on stale poll/socket. */
+export function mergeWorkerTasksFromServer(fetched, prevList = null) {
+  const list = Array.isArray(fetched) ? fetched : [];
+  const prevById = new Map((prevList ?? []).map((t) => [String(t.id), t]));
+  const merged = dedupeTaskListByIdAndClient(
+    list.map((srv) => {
+      if (!srv?.id) return srv;
+      const local = prevById.get(String(srv.id));
+      if (local && isTerminalDoneStatus(local.status) && !isTerminalDoneStatus(srv.status)) {
+        return {
+          ...srv,
+          status: local.status,
+          completed_at: local.completed_at || srv.completed_at,
+          completed_by: local.completed_by || srv.completed_by,
+        };
+      }
+      return srv;
+    }),
+  );
+  logTasksMergeDebug(list, [], merged);
+  return merged;
+}

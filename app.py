@@ -47,6 +47,8 @@ print(
     flush=True,
 )
 
+DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default")
+
 import json
 import time
 import uuid
@@ -400,113 +402,50 @@ def _cloudinary_upload(data_bytes: bytes, folder: str = "easyhost") -> str:
     return result["secure_url"]
 
 
-MAYA_SYSTEM_INSTRUCTION = """You are Maya — the high-end AI Operations Manager for Easyhost, embedded in Kobi's real portfolio (boutique hotels, workspaces, ROOMS). You are not a chatbot, not a generic assistant, and not a scripted "support bot". You run live operations: professional, fast, precise, calm under load. Your default voice is fluent, natural Hebrew — varied sentences, human rhythm, zero robotic filler. Mirror English only if the user writes English.
+MAYA_SYSTEM_INSTRUCTION = """You are Maya — the high-end AI Operations Manager for Easyhost, embedded in Kobi's Christos Corfu pilot portfolio (3 live properties). You are not a chatbot or generic assistant. You run live operations: professional, fast, precise, calm under load. Default voice: fluent natural Hebrew. Mirror English only if the user writes English.
 
-You combine executive judgment with floor-level execution: you answer open operational and guest questions with clear reasoning and empathy — not only by opening tasks. When Kobi or staff ask "why", "what's best", or "how does this site work", synthesize PROPERTY_KNOWLEDGE_DB and LIVE DATA before you act. Acknowledge stress briefly when relevant, then move to facts or action.
+Primary language is Hebrew. For JSON task objects use Hebrew task_type when applicable: ניקיון חדר | תחזוקה | שירות | צ'ק-אין.
 
-Primary language is Hebrew — user-facing "message" / "question" strings and task descriptions you author should match the user's language. For JSON task objects, use Hebrew task_type when applicable: ניקיון חדר | תחזוקה | שירות | צ'ק-אין.
+INTENT FIRST:
+• SERVICE REQUEST → add_task / add_tasks with full description (issue + unit + property when known).
+• OPERATIONAL QUESTION → use STATS_JSON + LIVE DATA / SEARCH_TOOL only; action "info". If STATS_JSON lacks total_properties or total_tasks and LIVE DATA is empty, reply exactly: "אין לי נתונים עדכניים כרגע" — never guess counts from memory or old demos.
+• SMALL TALK → action "info", warm brief reply; no task unless explicit request.
 
-INTENT FIRST (always classify before acting):
-• SERVICE REQUEST — user wants work dispatched (clean, fix, send staff, "open a task", "תתקן", "תנקו", urgent leak, etc.) → add_task / add_tasks with a full, specific content line (issue + room + site when known).
-• OPERATIONAL QUESTION — who / when / why / how many / status / fastest / last cleaner / occupancy / what's open. Treat STATS_JSON plus the LIVE DATA / SEARCH_TOOL block in your system prompt as the result of an internal database search over tasks and properties — cite only those facts; never invent workers or room states. → action "info" only; do NOT create tasks for pure questions.
-• SMALL TALK & GUEST EXPERIENCE — hello, thanks, jokes, venting, "how are you", casual chat, local tips without a work order → action "info" with a short, warm human reply; no task unless they add an explicit request.
+You are the live ops brain for the Christos Corfu pilot. Ground every count in STATS_JSON and LIVE DATA. Kobi is your owner (קובי). Never invent occupancy %, property counts (22/30/61/15), or task totals. Never describe yourself as software or AI.
 
-You are also Maya — the live ops brain for Kobi's multi-site portfolio. For operational questions, your first grounding step is the live snapshot in STATS_JSON (same facts as GET /api/stats) plus LIVE DATA. Kobi is your owner; address him as קובי. Do not name other people in replies except when Kobi explicitly asks comparative staff questions (e.g. who is fastest / מי הכי מהיר) — then name exactly one worker with one evidence-based line from the data. Synthesize occupancy, staffing, and the task board from the prompt only — never invent a fixed "80%" occupancy; use real numbers or say "לפי לוח החדרים" / "לפי הנתונים" when unsure. Never describe yourself as software, an AI, a chatbot, or a language model.
+CHRISTOS CORFU PILOT (authoritative property names — use exact names from the prompt property list):
+• Corfu Luxury Villa (christos-thaleri-villa-corfu)
+• Manto Apartments (christos-manto-beach-apartment-barbati)
+• Manto Beach Suite (christos-manto-luxury-beach-2p-barbati)
 
-PROPERTY_KNOWLEDGE: When PROPERTY_KNOWLEDGE_DB appears in LIVE DATA, those lines are permanent learned facts about external sites (WeWork, etc.) — including rules, capacity signals, local POIs, and review-derived guest preferences. Use them for guest/worker answers and strategic suggestions; do not contradict without asking Kobi to refresh. You may run autonomous web + Maps research when Kobi asks you to learn, meet, or research a named site — results are stored for future turns.
+ANTI-SPAM: Answer directly. When user mentions one property, restrict facts to that property only unless they ask for full portfolio.
 
-WeWork Ministore (מיניסטור / Ministore): Treat this as a premium flex workspace in Kobi's portfolio — same Luxury Property Operations Manager hat: concise Hebrew, concierge polish, noise/amenities/quiet zones from PROPERTY_KNOWLEDGE_DB when present; never generic "connection" excuses.
+OPERATIONAL MANDATE: Prioritize guest safety and crew load. Every add_task must map to a real property name from the live list.
 
-ROOMS BSR CITY (Petah Tikva / פתח תקווה) — authoritative site facts (cite exactly; do not invent):
-- MUST cite when relevant: **2 workspace floors**, **8 meeting rooms**, **~2,000 sqm gym** (plus ~3,800 sqm office footprint and ~850 sqm balcony/terrace; meeting rooms include layouts up to ~20 people).
-- Property: ROOMS BSR CITY Petah Tikva — BSR City, Tower Y, Jabotinsky 2; ~400 m to Red Line light rail, ~150 m to central bus station.
-- Core numbers: 2 floors of workspace; ~3,800 sqm office footprint (plus ~850 sqm balcony/terrace); 8 meeting rooms (smaller rooms ~5–8 people; larger rooms up to ~20 people); ~2,000 sqm gym.
-- Access & policy: 24/7 building access; dog-friendly workspace.
-- Amenities: eco-lake on site, furnished offices, complimentary coffee/snacks, phone booths for quiet work, App-to-Desk room service, cleaning, IT support, Fattal Club access; underground parking (cars, scooters, bikes).
-- Guest/worker guidance: quiet work → phone booths; facility “what we have” questions → action "info" only unless the user reports a clear repair.
-PROPERTY_KNOWLEDGE_DB may add more detail — never contradict these facts without confirmation from Kobi.
+PERSONA: Israeli, professional, warm, brief. Never mention API keys, models, or HTTP errors in user-facing fields.
 
-ANTI-SPAM & SCOPE:
-- Answer the question directly. Do NOT open with "קובי, אני כאן", "הלוח חזר לעבוד", or similar status boilerplate unless Kobi just reported an outage.
-- When Kobi mentions ONE site (e.g. בזאר / Bazaar / Jaffa / סיטי טאוור / ROOMS), restrict facts, tasks, and property context to that site only — do NOT list every property in the portfolio unless he explicitly asks for a full portfolio list or "כל הנכסים".
-- recent_open_tasks in STATS_JSON are tasks that are NOT Done/completed. recent_completed_snapshot lists tasks already completed in the DB — never describe those as still open or In Progress.
-
-OPERATIONAL MANDATE:
-- Prioritize guest safety, revenue protection, and crew load-balancing across ALL sites.
-- When asked for a daily plan, infer the Top 5 urgent tasks from pending work (high priority / checkout pressure / leaks / VIP arrivals) and name specific properties from the list provided in the user prompt.
-- You read and write operational reality through the task system: every add_task must map to a real property name from the portfolio list and persist in the database.
-
-MAYA 2.0 — GLOBAL OPS EXPERT (not a chatbot):
-- You produce Morning Briefs: occupancy pulse from live data when available, Top 5 urgent tasks, cleaning wave schedule (checkout morning vs arrival afternoon), and VIP / checkout watchlist when relevant.
-- Tie task creation to real check-out pressure: if the guest mentions checkout time or housekeeping before a deadline, use high priority and Cleaning staff.
-- Every task you authorize through JSON must persist as real DB work — use exact property names from the prompt's property list.
-
-PERSONA & VOICE (Hebrew-first; mirror English only if the user writes English):
-- Tone: Israeli, professional, warm, and brief — premium Easyhost ops: fast answers, natural Hebrew, no filler — like a real manager on headset with Kobi and the floor team.
-- Use natural phrases when fitting: e.g. "קובי, אני על זה", "סגור, המנקים בדרך", "אל תדאג, אני מטפלת בזה".
-- NEVER mention API keys, tokens, models, JSON internals, quotas, HTTP errors, Twilio, SMS delivery, or messaging providers to the user-facing "message" or "question" fields. Those fields are spoken aloud and shown in chat — stay fully in character; describe operations in hotel terms (tasks, rooms, staff) only.
-- If something would fail in reality, say something like: "קובי, יש לי רגע עומס בקבלה, תגיד לי שוב?" — never blame "AI" or servers.
-
-MULTI-PROPERTY DISAMBIGUATION (critical):
-- Vibes: Bazaar Jaffa = bohemian, historic Bauhaus, flea market, artsy. City Tower Ramat Gan = urban, business, elegant, Diamond Exchange / בורסה area.
-- POOL: Hotel Bazaar Jaffa has NO on-site swimming pool. Leonardo Plaza City Tower HAS a seasonal rooftop pool. ROOMS Sky Tower is a coworking space — no guest hotel pool; use "event / meeting space" language for pools only if relevant to City Tower.
-- Always use propertyName from the property list in tasks; match "בזאר" / Jaffa / Bazaar to Hotel Bazaar Jaffa; "סיטי טאוור" / City Tower / Leonardo / Ramat Gan / בורסה to Leonardo Plaza City Tower; "רומס" / ROOMS / Sky Tower / coworking / Fattal to ROOMS Sky Tower when relevant.
-
-HOTEL BAZAAR JAFFA — authoritative facts (use for guest/staff answers; do not contradict):
-- Guest room inventory (hotel): 32 rooms at this property for stay/product questions.
-- Operations / occupancy dashboards: the live 61-unit portfolio grid (Bazaar + 14 ROOMS sites) is the source of truth for occupancy — use LIVE DATA in the system prompt; occupancy% = (occupied units / 61) × 100 when the grid total is 61. Never invent "80%" or a fixed task count.
-- Check-in: 15:00–23:59. On Saturdays and public holidays: check-in only after 18:00.
-- Check-out: until 11:00. On Saturdays and public holidays: until 14:00.
-- Late check-out: 170 ILS, subject to availability/approval.
-- Kashrut: no kosher meals or kosher kitchen facilities on site.
-- Facilities: 24-hour reception and security, gym, restaurant, elevator, accessible rooms — NO hotel pool on site.
-- House rules: no smoking; no pets; no parties; guests must be 18+ unless accompanied by a parent/guardian.
-
-LEONARDO PLAZA CITY TOWER (RAMAT GAN) — authoritative facts:
-- Tone: urban, business, elegant — near Diamond Exchange / הבורסה.
-- Building: 17 floors. Spa: Share Spa. Rooftop pool: seasonal. Business Lounge. Kosher: Ramat Gan Rabbinate.
-- Room types: Deluxe (14 m²), Deluxe Grand, Executive, Club (floors 16–17), Junior Suite, Jacuzzi Suite, Accessible Deluxe.
-- Check-in / check-out: standard 15:00 / 11:00. Saturday and public holidays: 18:00 check-in / 14:00 check-out. Late checkout: 250 ILS (subject to availability).
-
-ROOMS SKY TOWER — coworking workspace (ROOMS by Fattal) — authoritative facts:
-- Tone: urban, business, elegant — flexible workspace (not a hotel guest stay).
-- Size: ~2000 sqm. Features: mini-cinema (up to ~50 people), lounge, bar, hot desks, private offices.
-- Pricing (indicative): private offices ~4,000–10,000 ILS; meeting rooms ~250–300 ILS/hour; daily desk ~150 ILS — always state subject to current rates and availability.
-- Inventory language: offices (by capacity), meeting rooms, event / cinema spaces — not "hotel room types".
-
-HOTEL BAZAAR JAFFA — DEALS & CAMPAIGNS (Bazaar only — always use when relevant to pricing, packages, or “what to do” for Jaffa stays):
-- Special events / live music: partner venue “Barby” (Tel Aviv). Example artists and shows include Teapacks (טיפקס), Mercedes Band, Ninet (נינט), Fortisakharof (Fortis), and similar acts — rotate suggestions by day of week and guest dates.
-- Packages (sell as bundles with stays): Spa, Culinary, and “Tastes & Relaxation” / טעמים ורגיעה — offer separate Weekend vs Weekday rate tiers when the guest mentions dates.
-- Discounts: 10% general public; 20% Passover (פסח) campaign when seasonally relevant; 25% member-exclusive; 50% second night for active reservists (מילואים) with valid ID — state subject to availability and policy.
-- PROACTIVE SALES: If the guest asks about מחירים/prices, כמה עולה, “what to do”, מה לעשות, boredom, or activities — you MUST propose ONE concrete package or combo in “message” (e.g. midweek Barby show + room, Spa weekend bundle, or reservist second-night offer). Tie the suggestion to their stay dates or weekday (e.g. “Since you’re here Wednesday, want tickets for Ninet at Barby with your room?”). Keep “message” short and natural in Hebrew unless the user writes English.
-
-ABSOLUTE RULES — never break them:
-1. Return ONLY valid JSON to this system (no markdown outside the JSON). Your "message" and "question" strings inside the JSON must sound like Maya the manager, per PERSONA & VOICE above.
-2. Never enumerate properties, staff, or amenities unless "report" or "property list" is explicitly requested.
-3. SINGLE task (most requests) → return exactly:
-   {"action":"add_task","task":{"staffName":"<name>","content":"<full clear description in Hebrew>","propertyName":"<property>","task_type":"<ניקיון חדר|תחזוקה|שירות|צ'ק-אין>","priority":"<normal|high>","status":"Pending"}}
-4. MULTIPLE tasks — user mentions a quantity ("2", "שניים", "three", "שלוש", etc.) OR lists separate issues for different rooms → return:
-   {"action":"add_tasks","tasks":[<task_obj_1>, <task_obj_2>, ...]}
-   Create EXACTLY as many distinct task objects as requested. Each must have a unique content and propertyName.
-5. Information / question only → return:
-   {"action":"info","message":"<short answer; if pricing or activities/“what to do”, include one tailored package/deal suggestion from HOTEL BAZAAR DEALS & CAMPAIGNS>"}
-6. MISSING or AMBIGUOUS property/room — if you CANNOT determine which site (Bazaar Jaffa vs City Tower Ramat Gan vs ROOMS Sky Tower) OR which room/office this task belongs to → return:
-   {"action":"clarify","question":"באיזה מלון או אתר מדובר — בזאר יפו, סיטי טאוור רמת גן, או רומס סקיי טאוור? אני צריכה פרט מדויק כדי לפתוח את המשימה."}
-   NEVER invent a property name. NEVER use "Unknown", "חדר לא ידוע", or a placeholder.
+ABSOLUTE RULES:
+1. Return ONLY valid JSON (no markdown). "message" / "question" must sound like Maya.
+2. Never enumerate properties/staff unless explicitly asked for a full list.
+3. SINGLE task → {"action":"add_task","task":{...}}
+4. MULTIPLE tasks → {"action":"add_tasks","tasks":[...]}
+5. Information only → {"action":"info","message":"..."}
+6. MISSING property — if you cannot determine which Christos property → {"action":"clarify","question":"באיזה נכס מדובר — וילה Thaleri, Manto Apartments, או Manto Beach Suite?"}
+   NEVER invent property names or use placeholders.
 
 FIELD RULES:
-- content: Write the FULL, specific intent (e.g. "תיקון נזילה בברז במטבח" not just "תיקון"). Include room number.
-- task_type: "ניקיון חדר" for ניקיון/מגבות/housekeeping | "תחזוקה" for תיקון/נזילה/תחזוקה/repair/leak | "שירות" for כל השאר | "צ'ק-אין" when check-in prep is the main work
-- priority: "high" if the user says דחוף/בהול/urgent/asap/critical | otherwise "normal"
-- staffName: Alma → Cleaning | Kobi → Maintenance | Avi → Electrical (חשמל/מנורה/קצר/bulb/power/circuit)
-- propertyName: use the exact name from the property list provided in the prompt; use the closest match if a room number is given.
-- Language: respond in the same language the user writes in (Hebrew by default)."""
+- content: full specific intent in Hebrew
+- task_type: ניקיון חדר | תחזוקה | שירות | צ'ק-אין
+- priority: high if דחוף/urgent else normal
+- staffName: Alma→Cleaning, Kobi→Maintenance, Avi→Electrical
+- propertyName: exact name from live property list in prompt
+- Language: match user language (Hebrew default)."""
 
 # Pinned portfolio hotels (must match UI — see PropertiesContext buildBazaarJaffaPinned / buildCityTowerPinned)
 MAYA_PINNED_PROPERTY_LABELS = [
-    "Hotel Bazaar Jaffa",
-    "Leonardo Plaza City Tower",
-    "ROOMS Sky Tower",
+    "Corfu Luxury Villa",
+    "Manto Apartments",
+    "Manto Beach Suite",
 ]
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
@@ -522,6 +461,603 @@ TASK_TYPE_MAINTENANCE_HE = "תחזוקה"
 TASK_TYPE_SERVICE_HE = "שירות"
 TASK_TYPE_CHECKIN_HE = "צ'ק-אין"
 TASK_TYPE_VIP_HE = "אורח VIP"
+
+# Corfu pilot — Greece property IDs (3 properties, 3 tasks)
+CHRISTOS_WORKER_TASK_IDS = GREECE_PILOT_SEED_TASK_IDS = frozenset({
+    "seed-greece-pilot-deep-clean",
+    "seed-greece-pilot-linen-change",
+    "seed-greece-pilot-maintenance-check",
+})
+CHRISTOS_MANTO_PROPERTY_ID = "christos-manto-beach-apartment-barbati"
+CHRISTOS_PRIMARY_WORKER_TASK_ID = "seed-greece-pilot-deep-clean"
+CHRISTOS_PROPERTY_IDS = frozenset({
+    "christos-thaleri-villa-corfu",
+    "christos-manto-beach-apartment-barbati",
+    "christos-manto-luxury-beach-2p-barbati",
+})
+CORFU_LUXURY_ROOM_IMG = (
+    "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1200&q=85"
+)
+CORFU_BEACH_ROOM_IMG = (
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=85"
+)
+
+TASK_SOURCE_BOOKING = "booking"
+TASK_SOURCE_MAYA = "maya"
+TASK_SOURCE_MANUAL = "manual"
+TASK_SOURCE_SYSTEM = "system"
+VALID_TASK_SOURCES = frozenset({
+    TASK_SOURCE_BOOKING,
+    TASK_SOURCE_MAYA,
+    TASK_SOURCE_MANUAL,
+    TASK_SOURCE_SYSTEM,
+})
+
+
+def _normalize_task_source(raw, fallback=TASK_SOURCE_MANUAL):
+    s = str(raw or "").strip().lower()
+    return s if s in VALID_TASK_SOURCES else fallback
+
+
+def _infer_legacy_task_source(row):
+    """Default source when column is empty (legacy rows)."""
+    bid = str(getattr(row, "booking_id", None) or "").strip()
+    rid = str(getattr(row, "reservation_id", None) or "").strip()
+    if bid or rid:
+        return TASK_SOURCE_BOOKING
+    stored = str(getattr(row, "source", None) or "").strip().lower()
+    if stored in VALID_TASK_SOURCES:
+        return stored
+    tid = str(getattr(row, "id", None) or "").strip()
+    if tid.startswith("seed-"):
+        return TASK_SOURCE_SYSTEM
+    desc = (
+        (getattr(row, "description", None) or "")
+        + " "
+        + (getattr(row, "task_type", None) or "")
+    ).lower()
+    if "[ical_uid:" in desc or any(
+        x in desc
+        for x in ("check-in", "checkin", "צ'ק", "הכנה", "prep", "room ready")
+    ):
+        return TASK_SOURCE_BOOKING
+    return TASK_SOURCE_MANUAL
+
+
+def _effective_task_source(row):
+    stored = str(getattr(row, "source", None) or "").strip().lower()
+    if stored in VALID_TASK_SOURCES:
+        return stored
+    return _infer_legacy_task_source(row)
+
+
+def _task_source_from_payload(data):
+    if not isinstance(data, dict):
+        return TASK_SOURCE_MANUAL
+    raw = str(data.get("source") or "").strip().lower()
+    if raw in VALID_TASK_SOURCES:
+        return raw
+    if raw == "guest":
+        return TASK_SOURCE_MANUAL
+    if data.get("from_maya") or data.get("maya"):
+        return TASK_SOURCE_MAYA
+    if data.get("booking_id") or data.get("reservation_id"):
+        return TASK_SOURCE_BOOKING
+    return TASK_SOURCE_MANUAL
+
+
+def _task_source_payload_fields(row):
+    src = _effective_task_source(row)
+    return {
+        "source": src,
+        "client_id": str(getattr(row, "client_id", None) or "").strip(),
+        "booking_id": str(getattr(row, "booking_id", None) or "").strip(),
+        "reservation_id": str(getattr(row, "reservation_id", None) or "").strip(),
+    }
+
+
+CHRISTOS_PROPERTY_I18N = {
+    "christos-thaleri-villa-corfu": "worker.properties.thaleriVilla",
+    "christos-manto-beach-apartment-barbati": "worker.properties.mantoApt",
+    "christos-manto-luxury-beach-2p-barbati": "worker.properties.manto2p",
+}
+I18N_TASK_PREFIX = "@i18n:"
+
+
+def _task_type_to_i18n_key(raw):
+    """Map DB / form task_type to frontend i18n key."""
+    x = str(raw or "").strip()
+    if x.startswith("worker."):
+        return x
+    low = x.lower()
+    if low in ("cleaning", "ניקיון חדר") or x == TASK_TYPE_CLEANING_HE:
+        return "worker.taskTypes.cleaning"
+    if low in ("maintenance", "תחזוקה") or x == TASK_TYPE_MAINTENANCE_HE:
+        return "worker.taskTypes.maintenance"
+    if low in ("service", "שירות") or x == TASK_TYPE_SERVICE_HE:
+        return "worker.taskTypes.service"
+    if low in ("checkin", "check-in", "צ'ק-אין") or x == TASK_TYPE_CHECKIN_HE:
+        return "worker.taskTypes.checkin"
+    if low == "cleaning":
+        return "worker.taskTypes.cleaning"
+    return x or "worker.taskTypes.service"
+
+
+def _description_to_i18n_or_text(raw, task_type_key=""):
+    """Store i18n key for empty/system descriptions; keep manager free-text as-is."""
+    t = str(raw or "").strip()
+    if t.startswith(I18N_TASK_PREFIX) or t.startswith("worker."):
+        return t
+    if t:
+        return t
+    tk = str(task_type_key or "").strip()
+    if tk.startswith("worker.tasks."):
+        return f"{I18N_TASK_PREFIX}{tk}"
+    return f"{I18N_TASK_PREFIX}worker.defaultDescription"
+
+
+def _christos_property_i18n_ref(property_id):
+    """Frontend i18n key reference for Christos property labels."""
+    pid = (property_id or "").strip()
+    key = CHRISTOS_PROPERTY_I18N.get(pid)
+    return f"{I18N_TASK_PREFIX}{key}" if key else ""
+
+
+def _christos_property_display_he(property_id, fallback=""):
+    """Legacy — prefer i18n refs; return fallback only."""
+    return (fallback or "").strip()
+
+
+def _guest_display_name_he(raw_name):
+    """Map synthetic Guest N → אורח N for Hebrew UI."""
+    n = (raw_name or "").strip()
+    if not n:
+        return "אורח"
+    m = re.match(r"^Guest\s+(\d+)\s*$", n, re.I)
+    if m:
+        return f"אורח {m.group(1)}"
+    return n
+
+
+def _format_date_he(iso_or_date):
+    """YYYY-MM-DD → DD.MM.YYYY for Hebrew-facing copy."""
+    try:
+        s = str(iso_or_date or "")[:10]
+        dt = datetime.strptime(s, "%Y-%m-%d").date()
+        return dt.strftime("%d.%m.%Y")
+    except Exception:
+        return str(iso_or_date or "")[:10]
+
+
+def _sanitize_worker_facing_task_text(text):
+    """Strip internal tags / English debug blobs from user-visible task titles."""
+    if not text:
+        return ""
+    t = str(text)
+    t = re.sub(r"\[(?:booking_ref|ical_uid)[^\]]*\]", "", t, flags=re.I)
+    t = re.sub(r"\[SIM-ENGINE\]\s*", "", t, flags=re.I)
+    t = re.sub(r"\s+", " ", t).strip(" ·—-")
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _task_primary_display_text(raw_desc, task_type_key=""):
+    """User-visible title/description — prefer free-text before i18n fallbacks."""
+    raw = (raw_desc or "").strip()
+    if not raw:
+        return _description_to_i18n_or_text("", task_type_key)
+    primary = raw.split("|")[0].split("—")[0].strip()
+    primary = _sanitize_worker_facing_task_text(primary)
+    if primary and not _maya_is_generic_task_content(primary):
+        if primary.startswith(I18N_TASK_PREFIX) or primary.startswith("worker."):
+            return _description_to_i18n_or_text(primary, task_type_key)
+        return primary
+    if raw.startswith(I18N_TASK_PREFIX) or raw.startswith("worker."):
+        return _description_to_i18n_or_text(raw, task_type_key)
+    if primary:
+        return primary
+    return _description_to_i18n_or_text("", task_type_key)
+
+
+def _task_room_number_from_text(*texts):
+    for src in texts:
+        s = str(src or "")
+        m = re.search(r"(?:חדר|room)\s*#?\s*(\d{1,6})", s, re.I)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def _christos_corfu_portfolio_seed():
+    """Greece pilot — 3 Corfu properties (English canonical names in DB)."""
+    now = datetime.now(timezone.utc).isoformat()
+    defs = [
+        (
+            "christos-thaleri-villa-corfu",
+            "Corfu Luxury Villa",
+            CORFU_LUXURY_ROOM_IMG,
+            6, 3, 4, 2, 88,
+        ),
+        (
+            "christos-manto-beach-apartment-barbati",
+            "Manto Apartments",
+            CORFU_BEACH_ROOM_IMG,
+            4, 2, 2, 1, 85,
+        ),
+        (
+            "christos-manto-luxury-beach-2p-barbati",
+            "Manto Beach Suite",
+            CORFU_BEACH_ROOM_IMG,
+            2, 1, 1, 1, 92,
+        ),
+    ]
+    rows = []
+    for pid, name, img, guests, br, beds, bath, occ in defs:
+        rows.append({
+            "id": pid,
+            "name": name,
+            "description": "Greece Corfu pilot property.",
+            "photo_url": img,
+            "image_url": img,
+            "amenities": ["Corfu", "Greece", "Pilot"],
+            "status": "Active",
+            "occupancy_rate": occ,
+            "created_at": now,
+            "branch_slug": pid,
+            "max_guests": guests,
+            "bedrooms": br,
+            "beds": beds,
+            "bathrooms": bath,
+            "ai_automation_enabled": False,
+            "tenant_id": DEFAULT_TENANT_ID,
+        })
+    return rows
+
+
+def _christos_active_worker_task_rows():
+    """Greece pilot — exactly 3 pending tasks (i18n keys only)."""
+    now = datetime.now(timezone.utc).isoformat()
+    worker = "worker"
+    rows = [
+        {
+            "id": "seed-greece-pilot-deep-clean",
+            "property_id": "christos-thaleri-villa-corfu",
+            "property_name": f"{I18N_TASK_PREFIX}worker.properties.thaleriVilla",
+            "description": f"{I18N_TASK_PREFIX}worker.tasks.deepClean",
+            "status": "Pending",
+            "staff_name": worker,
+            "task_type": "worker.taskTypes.cleaning",
+            "priority": "normal",
+            "created_at": now,
+        },
+        {
+            "id": "seed-greece-pilot-linen-change",
+            "property_id": "christos-manto-beach-apartment-barbati",
+            "property_name": f"{I18N_TASK_PREFIX}worker.properties.mantoApt",
+            "description": f"{I18N_TASK_PREFIX}worker.tasks.linenChange",
+            "status": "Pending",
+            "staff_name": worker,
+            "task_type": "worker.taskTypes.cleaning",
+            "priority": "normal",
+            "created_at": now,
+        },
+        {
+            "id": "seed-greece-pilot-maintenance-check",
+            "property_id": "christos-manto-luxury-beach-2p-barbati",
+            "property_name": f"{I18N_TASK_PREFIX}worker.properties.manto2p",
+            "description": f"{I18N_TASK_PREFIX}worker.tasks.maintenanceCheck",
+            "status": "Pending",
+            "staff_name": worker,
+            "task_type": "worker.taskTypes.maintenance",
+            "priority": "normal",
+            "created_at": now,
+        },
+    ]
+    return rows
+
+
+def _repair_christos_seed_tasks(session, tenant_id=DEFAULT_TENANT_ID):
+    """Fix Christos seed rows: valid property_id + open status for manager/worker boards."""
+    if not session or not PropertyTaskModel:
+        return 0
+    templates = {t["id"]: t for t in _christos_active_worker_task_rows()}
+    christos_ids = set(CHRISTOS_PROPERTY_IDS)
+    _open = frozenset({
+        "pending", "in_progress", "in progress", "inprogress", "waiting",
+        "delayed", "assigned", "accepted", "seen", "started", "active",
+    })
+    repaired = 0
+    try:
+        for tid, tpl in templates.items():
+            row = (
+                session.query(PropertyTaskModel)
+                .filter(
+                    or_(
+                        PropertyTaskModel.tenant_id == tenant_id,
+                        PropertyTaskModel.tenant_id.is_(None),
+                    )
+                )
+                .filter(PropertyTaskModel.id == tid)
+                .first()
+            )
+            if not row:
+                continue
+            pid = (tpl.get("property_id") or "").strip()
+            changed = False
+            if pid in christos_ids and (row.property_id or "").strip() != pid:
+                row.property_id = pid
+                changed = True
+            pname = (tpl.get("property_name") or "").strip()
+            if pname and (row.property_name or "").strip() != pname:
+                row.property_name = pname
+                changed = True
+            desc_tpl = (tpl.get("description") or "").strip()
+            if desc_tpl:
+                clean_desc = _sanitize_worker_facing_task_text(desc_tpl)
+                if clean_desc and (row.description or "").strip() != clean_desc:
+                    row.description = clean_desc
+                    changed = True
+            st = (row.status or "").strip().lower()
+            if st in ("done", "completed", "archived", "cancelled", "closed"):
+                pass  # worker/Maya completion is authoritative — never reopen seed rows
+            elif st not in _open:
+                row.status = "Pending"
+                changed = True
+            staff = (tpl.get("staff_name") or "").strip()
+            if staff and st not in ("done", "completed", "archived", "cancelled", "closed"):
+                if (row.staff_name or "").strip() != staff:
+                    row.staff_name = staff
+                    changed = True
+            if changed:
+                repaired += 1
+        for row in (
+            session.query(PropertyTaskModel)
+            .filter(
+                or_(
+                    PropertyTaskModel.tenant_id == tenant_id,
+                    PropertyTaskModel.tenant_id.is_(None),
+                )
+            )
+            .all()
+        ):
+            tid = (row.id or "").strip()
+            pid = (row.property_id or "").strip()
+            if tid in templates:
+                continue
+            src = _effective_task_source(row)
+            if src in (TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL, TASK_SOURCE_BOOKING):
+                continue
+            if src == TASK_SOURCE_SYSTEM and tid.startswith("seed-"):
+                if (getattr(row, "source", None) or "").strip().lower() != TASK_SOURCE_SYSTEM:
+                    row.source = TASK_SOURCE_SYSTEM
+                    repaired += 1
+            if pid and pid not in christos_ids:
+                continue
+            i18n_ref = _christos_property_i18n_ref(pid)
+            if i18n_ref and (row.property_name or "").strip() != i18n_ref:
+                row.property_name = i18n_ref
+                repaired += 1
+            raw_desc = (row.description or "").strip()
+            if raw_desc:
+                clean = _sanitize_worker_facing_task_text(raw_desc)
+                if clean != raw_desc:
+                    row.description = clean
+                    repaired += 1
+        if repaired:
+            session.commit()
+            _bump_tasks_version()
+            print(f"[_repair_christos_seed] repaired {repaired} Christos seed tasks", flush=True)
+    except Exception as e:
+        session.rollback()
+        print(f"[_repair_christos_seed] {e}", flush=True)
+    return repaired
+
+
+def _christos_corfu_worker_task_rows():
+    """Backward-compatible alias."""
+    return _christos_active_worker_task_rows()
+
+
+_LEGACY_DEMO_PROPERTY_NAMES = frozenset({
+    "alma", "chandler", "אלמה", "צ'נדלר", "צנדלר",
+})
+
+
+def _purge_legacy_demo_properties(tenant_id=DEFAULT_TENANT_ID):
+    """Remove legacy Alma/Chandler demo properties + cascaded tasks/staff."""
+    if not SessionLocal or not ManualRoomModel:
+        return {"deleted_properties": 0, "deleted_tasks": 0}
+    session = SessionLocal()
+    deleted_props = deleted_tasks = 0
+    try:
+        for r in session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).all():
+            nm = str(getattr(r, "name", "") or "").strip()
+            nm_l = nm.lower()
+            desc = str(getattr(r, "description", "") or "").lower()
+            if (
+                nm_l in _LEGACY_DEMO_PROPERTY_NAMES
+                or nm in _LEGACY_DEMO_PROPERTY_NAMES
+                or "villa alma" in desc
+                or "chandler suite" in desc
+            ):
+                pid = r.id
+                if PropertyTaskModel:
+                    deleted_tasks += session.query(PropertyTaskModel).filter_by(
+                        property_id=pid,
+                    ).delete(synchronize_session=False)
+                if PropertyStaffModel:
+                    session.query(PropertyStaffModel).filter_by(property_id=pid).delete(
+                        synchronize_session=False
+                    )
+                session.delete(r)
+                deleted_props += 1
+        if deleted_props:
+            session.commit()
+            print(
+                f"[_purge_legacy_demo] removed {deleted_props} legacy properties, "
+                f"{deleted_tasks} tasks",
+                flush=True,
+            )
+        return {"deleted_properties": deleted_props, "deleted_tasks": deleted_tasks}
+    except Exception as e:
+        session.rollback()
+        print(f"[_purge_legacy_demo] {e}", flush=True)
+        return {"deleted_properties": 0, "deleted_tasks": 0}
+    finally:
+        session.close()
+
+
+def seed_active_properties(tenant_id=DEFAULT_TENANT_ID):
+    """Insert 3 Greece pilot properties + 3 pending worker tasks (idempotent)."""
+    if not SessionLocal or not ManualRoomModel:
+        return {"properties": 0, "tasks": 0, "ok": False}
+    _purge_legacy_demo_properties(tenant_id)
+    props_added = tasks_added = 0
+    christos_ids = set(CHRISTOS_PROPERTY_IDS)
+
+    session = SessionLocal()
+    try:
+        existing_ids = {
+            r[0]
+            for r in session.query(ManualRoomModel.id).filter_by(tenant_id=tenant_id).all()
+        }
+        for row in _christos_corfu_portfolio_seed():
+            if not isinstance(row, dict):
+                continue
+            rid = row.get("id")
+            if not rid or rid not in christos_ids:
+                continue
+            if rid not in existing_ids:
+                session.add(
+                    ManualRoomModel(
+                        id=rid,
+                        tenant_id=tenant_id,
+                        owner_id=None,
+                        name=row["name"],
+                        description=row.get("description") or "",
+                        photo_url=(row.get("photo_url") or row.get("image_url") or "").strip(),
+                        amenities=json.dumps(row.get("amenities") or []),
+                        status="active",
+                        created_at=row.get("created_at") or now_iso(),
+                        max_guests=int(row.get("max_guests") or 2),
+                        bedrooms=int(row.get("bedrooms") or 1),
+                        beds=int(row.get("beds") or 1),
+                        bathrooms=int(row.get("bathrooms") or 1),
+                        occupancy_rate=float(row.get("occupancy_rate") or 80),
+                    )
+                )
+                props_added += 1
+                existing_ids.add(rid)
+            else:
+                ob = session.query(ManualRoomModel).filter_by(id=rid, tenant_id=tenant_id).first()
+                if ob:
+                    ob.name = row["name"]
+                    ob.status = "active"
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"[seed_active_properties] properties: {e}", flush=True)
+        return {"properties": 0, "tasks": 0, "ok": False, "error": str(e)}
+    finally:
+        session.close()
+
+    if not PropertyTaskModel:
+        return {"properties": props_added, "tasks": 0, "ok": props_added > 0}
+
+    session = SessionLocal()
+    try:
+        _repair_christos_seed_tasks(session, tenant_id)
+        have = {
+            r[0]
+            for r in session.query(PropertyTaskModel.id).filter(
+                or_(PropertyTaskModel.tenant_id == tenant_id, PropertyTaskModel.tenant_id.is_(None))
+            ).all()
+        }
+        for t in _christos_active_worker_task_rows():
+            tid = t.get("id")
+            pid = t.get("property_id") or ""
+            if not tid or tid in have or pid not in christos_ids:
+                continue
+            session.add(
+                PropertyTaskModel(
+                    id=tid,
+                    tenant_id=tenant_id,
+                    property_id=pid,
+                    staff_id="",
+                    assigned_to="",
+                    description=(t.get("description") or "Task").strip(),
+                    status="Pending",
+                    created_at=t.get("created_at") or now_iso(),
+                    property_name=t.get("property_name") or "",
+                    staff_name=t.get("staff_name") or "worker",
+                    staff_phone="",
+                    task_type=t.get("task_type") or TASK_TYPE_SERVICE_HE,
+                    priority=t.get("priority") or "normal",
+                    source=TASK_SOURCE_SYSTEM,
+                )
+            )
+            tasks_added += 1
+        session.commit()
+        if tasks_added:
+            _bump_tasks_version()
+        print(
+            f"[seed_active_properties] +{props_added} properties, +{tasks_added} tasks "
+            f"(Christos portfolio)",
+            flush=True,
+        )
+        return {"properties": props_added, "tasks": tasks_added, "ok": True}
+    except Exception as e:
+        session.rollback()
+        print(f"[seed_active_properties] tasks: {e}", flush=True)
+        return {"properties": props_added, "tasks": 0, "ok": False, "error": str(e)}
+    finally:
+        session.close()
+
+
+def ensure_christos_corfu_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID):
+    """Alias — Christos seed used on boot and worker API."""
+    return seed_active_properties(tenant_id)
+
+
+def _is_junk_mock_property(room_or_dict):
+    """Bazaar / ROOMS / WeWork / pilot demo rows — not Christos Corfu."""
+    if not room_or_dict:
+        return True
+    if isinstance(room_or_dict, dict):
+        pid = str(room_or_dict.get("id") or "")
+        nm = str(room_or_dict.get("name") or "")
+        desc = str(room_or_dict.get("description") or "")
+    else:
+        pid = str(getattr(room_or_dict, "id", "") or "")
+        nm = str(getattr(room_or_dict, "name", "") or "")
+        desc = str(getattr(room_or_dict, "description", "") or "")
+    if pid in CHRISTOS_PROPERTY_IDS:
+        return False
+    blob = f"{pid} {nm} {desc}".lower()
+    he = f"{nm} {desc}"
+    if pid.startswith("rooms-branch-") or pid.startswith("wework-"):
+        return True
+    if pid in ("bazaar-jaffa-hotel", "leonardo-city-tower-ramat-gan"):
+        return True
+    if any(x in blob for x in (
+        "wework", "we-work", "bazaar", "rooms-branch", "rooms sky",
+        "hotel bazaar", "leonardo plaza", "city tower", "ministore",
+    )):
+        return True
+    if any(x in he for x in ("בזאר", "מלון בזאר", "יפו")):
+        return True
+    if re.search(r"^חדרים[\s·]", nm) or nm.startswith("חדרים "):
+        return True
+    for city in ("הרצליה", "מודיעין", "באר שבע", "ירושלים", "חיפה", "BSR", "בסר"):
+        if city in nm or city in he:
+            if "christos" not in blob and "corfu" not in blob and "manto" not in blob:
+                return True
+    try:
+        if nm.strip() in set(DEMO_PILOT_PROPERTY_NAMES or []):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _is_task_type_cleaning(tt):
@@ -1282,6 +1818,48 @@ _CORS_RESOURCE_KW = {
 }
 CORS(app, resources={r"/*": _CORS_RESOURCE_KW})
 
+# ── Socket.IO (same port as Flask — localhost:1000 in dev) ───────────────────
+try:
+    from flask_socketio import SocketIO, emit as _socketio_emit
+except ImportError:
+    SocketIO = None  # type: ignore[misc, assignment]
+    _socketio_emit = None
+
+socketio = (
+    SocketIO(
+        app,
+        cors_allowed_origins=_CORS_ORIGINS + ["http://localhost:1000", "http://127.0.0.1:1000"],
+        async_mode="threading",
+        path="/socket.io",
+        logger=False,
+        engineio_logger=False,
+    )
+    if SocketIO
+    else None
+)
+
+
+def _emit_task_realtime(task_dict=None, action="updated"):
+    """Push task create/update to all connected clients (manager ↔ worker sync)."""
+    payload = {"action": action, "task": task_dict or {}, "ts": time.time()}
+    try:
+        if socketio:
+            socketio.emit("task_updated", payload)
+            print(f"[socketio] task_updated action={action} id={(task_dict or {}).get('id', '')[:8]}", flush=True)
+    except Exception as _sock_e:
+        print(f"[socketio] emit failed: {_sock_e}", flush=True)
+
+
+if socketio:
+
+    @socketio.on("connect")
+    def _socketio_on_connect():
+        print("[socketio] client connected", flush=True)
+
+    @socketio.on("ping")
+    def _socketio_on_ping(data):
+        _socketio_emit("pong", data or {})
+
 # ── Session & Cookie config ──────────────────────────────────────────────────
 from datetime import timedelta
 _jwt_secret_env = os.getenv("JWT_SECRET", "").strip()
@@ -1732,12 +2310,18 @@ def _migrate_row_images_to_cloud(session, r):
     return changed
 
 
+def _row_has_inline_base64(r) -> bool:
+    """True only when row stores confirmed data:image/* payloads (not external/local URLs)."""
+    if _is_data_uri(getattr(r, "photo_url", None)):
+        return True
+    _, gallery = _split_description_gallery(getattr(r, "description", None) or "")
+    return any(_is_data_uri(g) for g in gallery)
+
+
 def _strip_row_base64(session, r):
     """
-    Last-resort de-bloat: remove inline base64 data URIs from a row (keeps the
-    property, drops the heavy inline image) so the DB stays lean even when a
-    Cloudinary migration is impossible (not configured, or a corrupt blob that
-    fails to upload). Returns True when the row was modified.
+    Last-resort de-bloat: remove inline base64 data URIs only.
+    Preserves http(s) and /uploads URLs in gallery; never injects replacements.
     """
     changed = False
     if _is_data_uri(getattr(r, "photo_url", None)):
@@ -1746,7 +2330,10 @@ def _strip_row_base64(session, r):
     main, gallery = _split_description_gallery(r.description or "")
     if gallery and any(_is_data_uri(g) for g in gallery):
         kept = [g for g in gallery if not _is_data_uri(g)]
-        r.description = _merge_description_gallery(main, kept)
+        if kept:
+            r.description = _merge_description_gallery(main, kept)
+        else:
+            r.description = _merge_description_gallery(main, [], allow_empty_marker=True)
         changed = True
     if changed:
         try:
@@ -1774,23 +2361,26 @@ def _debloat_base64_images(reason="boot"):
         session = SessionLocal()
         try:
             like = "%data:image/%"
-            rows = session.query(ManualRoomModel).filter(
+            candidates = session.query(ManualRoomModel).filter(
                 or_(
                     ManualRoomModel.photo_url.like(like),
                     ManualRoomModel.description.like(like),
                 )
             ).all()
+            rows = [r for r in candidates if _row_has_inline_base64(r)]
             summary["scanned"] = len(rows)
             if not rows:
-                print(f"[debloat:{reason}] no base64 images found — DB is clean", flush=True)
+                print(f"[debloat:{reason}] no-op scanned=0 migrated=0 stripped=0", flush=True)
                 return summary
-            print(f"[debloat:{reason}] found {len(rows)} bloated row(s) — cleaning…", flush=True)
+            print(f"[debloat:{reason}] base64_rows={len(rows)} — processing…", flush=True)
             for r in rows:
                 try:
+                    if not _row_has_inline_base64(r):
+                        continue
                     if _migrate_row_images_to_cloud(session, r):
                         summary["migrated"] += 1
                         continue
-                    # Cloudinary off or this blob failed to upload → strip the bloat.
+                    # Cloudinary off or upload failed → strip confirmed base64 only.
                     if _strip_row_base64(session, r):
                         summary["stripped"] += 1
                 except Exception as _re:
@@ -1801,8 +2391,9 @@ def _debloat_base64_images(reason="boot"):
                         pass
                     print(f"[debloat:{reason}] row {getattr(r,'id',None)} failed: {_re}", flush=True)
             print(
-                f"[debloat:{reason}] done — migrated={summary['migrated']}, "
-                f"stripped={summary['stripped']}, failed={summary['failed']}",
+                f"[debloat:{reason}] done scanned={summary['scanned']} "
+                f"migrated={summary['migrated']} stripped={summary['stripped']} "
+                f"failed={summary['failed']}",
                 flush=True,
             )
             return summary
@@ -1935,7 +2526,6 @@ JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
 #   New (secure) defaults:   AUTH_DISABLED=false  ALLOW_DEMO_AUTH=false
 ALLOW_DEMO_AUTH = os.getenv("ALLOW_DEMO_AUTH", "true").lower() == "true"   # pilot default: open demo token endpoint
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"      # false = enforce Bearer JWT on protected routes
-DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default")
 
 # Demo/portfolio property seeding. DISABLED by default so deleted properties
 # never reappear after a Railway restart/redeploy. The old behaviour re-created
@@ -2307,6 +2897,8 @@ if create_engine and sessionmaker and declarative_base:
         beds = Column(Integer, default=1)
         bathrooms = Column(Integer, default=1)
         occupancy_rate = Column(Float, default=80.0)  # demo / dashboard — persisted (not computed)
+        price_per_night = Column(Float, nullable=True)
+        currency = Column(String, default="USD")
 
         tenant = relationship("TenantModel")
 
@@ -2350,6 +2942,7 @@ if create_engine and sessionmaker and declarative_base:
         # ── Performance tracking ──────────────────────────────
         started_at = Column(String)          # ISO when worker accepted task
         completed_at = Column(String)        # ISO when worker marked done
+        completed_by = Column(String)        # worker handle / name who marked done
         duration_minutes = Column(String)    # float stored as string for SQLite compat
         worker_notes = Column(Text)          # Optional notes the worker adds
         photo_url = Column(String)           # Image linked to this task (uploaded on creation)
@@ -2357,6 +2950,10 @@ if create_engine and sessionmaker and declarative_base:
         task_type = Column(String)           # Cleaning | Maintenance | Service
         tenant_id = Column(String, index=True, default=DEFAULT_TENANT_ID)  # multi-tenant isolation
         due_at = Column(String)              # ISO target time (check-in prep, iCal-driven)
+        source = Column(String, default="manual")  # booking | maya | manual | system
+        client_id = Column(String)           # frontend dedupe id for Maya/manual creates
+        booking_id = Column(String)
+        reservation_id = Column(String)
 
     class WorkerStatsModel(Base):
         """Aggregated per-worker daily performance — updated by the Performance Agent."""
@@ -2636,6 +3233,8 @@ if create_engine and sessionmaker and declarative_base:
                 ("bedrooms", "INTEGER DEFAULT 1"),
                 ("beds", "INTEGER DEFAULT 1"),
                 ("bathrooms", "INTEGER DEFAULT 1"),
+                ("price_per_night", "FLOAT"),
+                ("currency", "VARCHAR DEFAULT 'USD'"),
             ]:
                 if not _manual_rooms_need(col):
                     continue
@@ -2749,11 +3348,16 @@ if create_engine and sessionmaker and declarative_base:
         print(f"[init_db] Initialising schema on {db_label}…")
         try:
             Base.metadata.create_all(ENGINE)
+            ensure_property_tasks_table()
+            try:
+                seed_active_properties(DEFAULT_TENANT_ID)
+                print("[init_db] ✅ seed_active_properties: Christos + worker tasks", flush=True)
+            except Exception as _cs_err:
+                print(f"[init_db] seed_active_properties note: {_cs_err}", flush=True)
             ensure_users_table()
             ensure_staff_schema()
             ensure_manual_rooms_occupancy_column()
             ensure_property_staff_table()
-            ensure_property_tasks_table()
             ensure_property_tasks_reporting_indexes()
             ensure_bookings_table()
             ensure_property_knowledge_table()
@@ -2763,10 +3367,7 @@ if create_engine and sessionmaker and declarative_base:
                 pass
             except Exception as _bsr_pk:
                 print(f"[init_db] BSR CITY property knowledge seed note: {_bsr_pk}")
-            try:
-                _seed_rooms_branches()
-            except Exception as _br_err:
-                print(f"[init_db] rooms_branches seed note: {_br_err}")
+            # _seed_rooms_branches disabled — Christos pilot only
             print(f"[init_db] ✅ Schema ready on {db_label}")
         except Exception as _ie:
             print(f"[init_db] ❌ Schema init error: {_ie}")
@@ -2865,8 +3466,9 @@ if create_engine and sessionmaker and declarative_base:
             except Exception as e:
                 print("[ensure_property_tasks_table] Note:", e)
         for col in ["property_name", "staff_name", "staff_phone", "staff_id",
-                    "started_at", "completed_at", "duration_minutes", "worker_notes",
-                    "photo_url", "priority", "task_type", "tenant_id", "due_at"]:
+                    "started_at", "completed_at", "completed_by", "duration_minutes", "worker_notes",
+                    "photo_url", "priority", "task_type", "tenant_id", "due_at",
+                    "source", "client_id", "booking_id", "reservation_id"]:
             with ENGINE.connect() as connection:
                 try:
                     connection.execute(text(f"ALTER TABLE property_tasks ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
@@ -2883,9 +3485,30 @@ if create_engine and sessionmaker and declarative_base:
                     text("UPDATE property_tasks SET tenant_id = :d WHERE tenant_id IS NULL OR tenant_id = ''"),
                     {"d": DEFAULT_TENANT_ID},
                 )
+                connection.execute(
+                    text(
+                        "UPDATE property_tasks SET source = 'booking' "
+                        "WHERE (source IS NULL OR source = '') AND ("
+                        "(booking_id IS NOT NULL AND booking_id != '') OR "
+                        "(reservation_id IS NOT NULL AND reservation_id != '')"
+                        ")"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE property_tasks SET source = 'system' "
+                        "WHERE (source IS NULL OR source = '') AND id LIKE 'seed-%'"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE property_tasks SET source = 'manual' "
+                        "WHERE source IS NULL OR source = ''"
+                    )
+                )
                 connection.commit()
         except Exception as _ue:
-            print("[ensure_property_tasks] tenant backfill note:", _ue)
+            print("[ensure_property_tasks] tenant/source backfill note:", _ue)
 
     def ensure_bookings_table():
         """Create bookings table if it doesn't exist."""
@@ -3849,6 +4472,125 @@ def _property_tasks_query_for_tenant(session, tenant_id):
     return q
 
 
+def _christos_pilot_room_rows(tenant_id, user_id, rooms=None):
+    """Christos seed properties plus any user-created rows (non-junk)."""
+    rows = rooms if rooms is not None else list_manual_rooms(tenant_id, owner_id=user_id)
+    christos = [r for r in rows if isinstance(r, dict) and r.get("id") in CHRISTOS_PROPERTY_IDS]
+    extras = [
+        r for r in rows
+        if isinstance(r, dict)
+        and r.get("id") not in CHRISTOS_PROPERTY_IDS
+        and not _is_junk_mock_property(r)
+    ]
+    if christos:
+        return christos + extras
+    return rows
+
+
+def _christos_pilot_is_active(tenant_id, user_id, rooms=None):
+    rows = rooms if rooms is not None else list_manual_rooms(tenant_id, owner_id=user_id)
+    return any(isinstance(r, dict) and r.get("id") in CHRISTOS_PROPERTY_IDS for r in rows)
+
+
+def _maya_invalidate_stale_caches(tenant_id):
+    """Drop cached stats/grid metrics so Maya re-reads live DB counts."""
+    try:
+        stale = [k for k in _MAYA_STATS_CACHE if str(k).startswith(f"{tenant_id}:")]
+        for k in stale:
+            _MAYA_STATS_CACHE.pop(k, None)
+    except Exception:
+        pass
+    try:
+        _MAYA_BAZAAR_METRICS_CACHE.pop(tenant_id or "_", None)
+        _MAYA_BAZAAR_METRICS_CACHE.pop("_", None)
+    except Exception:
+        pass
+    try:
+        _invalidate_maya_rooms_staff_cache(tenant_id)
+    except Exception:
+        pass
+
+
+def _maya_active_property_ids(session, tenant_id):
+    """Step 1 — IDs of properties that still exist in manual_rooms (not soft-deleted)."""
+    if not ManualRoomModel:
+        return []
+    _inactive = frozenset(("deleted", "removed", "archived", "inactive"))
+    try:
+        props = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).all()
+    except Exception:
+        return []
+    ids = []
+    for p in props:
+        pid = getattr(p, "id", None)
+        if not pid:
+            continue
+        st = (getattr(p, "status", None) or "").strip().lower()
+        if st in _inactive:
+            continue
+        ids.append(pid)
+    christos = [i for i in ids if i in CHRISTOS_PROPERTY_IDS]
+    if christos:
+        return christos
+    return ids
+
+
+_MAYA_OPEN_TASK_STATUSES = (
+    "pending", "in_progress", "in progress", "active",
+    "Pending", "In_Progress", "In Progress", "Active",
+    "accepted", "assigned", "started", "seen", "delayed",
+    "searching_for_staff",
+)
+
+
+def _property_tasks_query_for_maya(session, tenant_id):
+    """Step 2 base — tenant tasks whose property_id is in live manual_rooms (no join)."""
+    q = _property_tasks_query_for_tenant(session, tenant_id)
+    if q is None:
+        return None
+    valid_ids = _maya_active_property_ids(session, tenant_id)
+    if not valid_ids:
+        return q.filter(PropertyTaskModel.id.is_(None))
+    return q.filter(PropertyTaskModel.property_id.in_(valid_ids))
+
+
+def _christos_dashboard_tasks_query(session, tenant_id):
+    """GET /api/tasks — Christos properties + persisted maya/manual rows."""
+    q = _property_tasks_query_for_tenant(session, tenant_id)
+    if q is None:
+        return None
+    christos_list = list(CHRISTOS_PROPERTY_IDS)
+    return q.filter(
+        or_(
+            PropertyTaskModel.property_id.in_(christos_list),
+            PropertyTaskModel.source.in_([TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL]),
+        )
+    )
+
+
+def _maya_fetch_open_tasks(session, tenant_id):
+    """Two-step fetch: active properties → open tasks only (Maya counts / context)."""
+    valid_ids = _maya_active_property_ids(session, tenant_id)
+    if not valid_ids or not PropertyTaskModel:
+        return []
+    q = _property_tasks_query_for_tenant(session, tenant_id)
+    if q is None:
+        return []
+    try:
+        return (
+            q.filter(PropertyTaskModel.property_id.in_(valid_ids))
+            .filter(or_(
+                PropertyTaskModel.status.in_(_MAYA_OPEN_TASK_STATUSES),
+                PropertyTaskModel.status.is_(None),
+                PropertyTaskModel.status == "",
+            ))
+            .all()
+        )
+    except Exception as e:
+        print(f"[_maya_fetch_open_tasks] {e}", flush=True)
+        return []
+
+
 # ── RBAC query scoping ─────────────────────────────────────────────────────────
 # Central helpers that translate the JWT identity (tenant_id, user_id, app_role,
 # worker_handle) into SQL-level row filters. Every list query for tasks,
@@ -4149,22 +4891,13 @@ def _bazaar_open_cleaning_unit_indices(tenant_id):
 
 
 def _task_status_counts_for_tenant(tenant_id):
-    """Live counts from property_tasks for Maya status answers (excludes archived — matches GET /api/tasks)."""
+    """Christos dashboard scope — pending / in_progress / done from DB (matches GET /api/tasks)."""
     if not SessionLocal or not PropertyTaskModel:
         return None
     session = SessionLocal()
     try:
-        q = _property_tasks_query_for_tenant(session, tenant_id)
-        if q is None:
-            return None
-        q = q.filter(
-            or_(
-                PropertyTaskModel.status.is_(None),
-                func.lower(PropertyTaskModel.status) != "archived",
-            )
-        )
-        rows = q.all()
-        total = len(rows)
+        q = _christos_dashboard_tasks_query(session, tenant_id)
+        rows = q.all() if q is not None else []
         pending = in_progress = done = 0
         for r in rows:
             cat = _norm_task_status_category(getattr(r, "status", None))
@@ -4174,7 +4907,14 @@ def _task_status_counts_for_tenant(tenant_id):
                 in_progress += 1
             else:
                 pending += 1
-        return {"total": total, "pending": pending, "in_progress": in_progress, "done": done}
+        open_count = pending + in_progress
+        return {
+            "total": len(rows),
+            "open": open_count,
+            "pending": pending,
+            "in_progress": in_progress,
+            "done": done,
+        }
     finally:
         session.close()
 
@@ -4232,7 +4972,8 @@ def _maya_live_facts_system_block(tenant_id, user_id, stats_snapshot=None, user_
     _task_status_counts_for_tenant query so the LLM sees one consistent set of numbers instead of two
     potentially-drifted counts from queries taken microseconds apart.
     """
-    m = _maya_bazaar_61_room_metrics(tenant_id, user_id)
+    use_bazaar_grid = False
+    m = _maya_bazaar_61_room_metrics(tenant_id, user_id) if use_bazaar_grid else None
     # Use snapshot counts when available — prevents the LLM seeing two different task totals
     _snap_open = None
     if isinstance(stats_snapshot, dict) and stats_snapshot.get("total_tasks") is not None:
@@ -4245,6 +4986,13 @@ def _maya_live_facts_system_block(tenant_id, user_id, stats_snapshot=None, user_
         "SEARCH_TOOL — you must treat the following lines as query results from property_tasks + room grid + portfolio context. "
         "Do not invent workers, rooms, or counts beyond what appears here and in STATS_JSON in the user prompt."
     )
+    if not use_bazaar_grid and isinstance(stats_snapshot, dict):
+        tp = int(stats_snapshot.get("total_properties") or 0)
+        if tp:
+            lines.append(
+                f"Christos Corfu pilot scope: {tp} active properties in live DB "
+                f"(NOT the legacy 61-unit Bazaar grid — never quote 22 or 61 properties unless STATS_JSON says so)."
+            )
     if m:
         lines.append(
             f"61-unit grid: occupied={m['occupied']}, total_units={m['total']}, "
@@ -6281,137 +7029,7 @@ _BAZAAR_VARIETY_100_RESET_DONE = False  # set False to regenerate VIP mix on nex
 
 
 def reset_bazaar_jaffa_variety_100(tenant_id=DEFAULT_TENANT_ID):
-    """
-    One-shot per process: remove all Hotel Bazaar Jaffa tasks (replaces Check-in–heavy loops),
-    insert 100 varied tasks — 50% Cleaning, 30% Maintenance, 20% VIP Guest.
-    Sets 10 to In_Progress (בטיפול / orange) and 5 to Done (בוצע / green).
-    """
-    global _BAZAAR_VARIETY_100_RESET_DONE
-    if _BAZAAR_VARIETY_100_RESET_DONE:
-        return
-    if not SessionLocal or not PropertyTaskModel:
-        return
-    pid = "bazaar-jaffa-hotel"
-    pname = "Hotel Bazaar Jaffa"
-    batch = str(uuid.uuid4())[:10]
-
-    cleaning_tpl = [
-        "ניקיון יחידה {u}/10 — סבב בוקר ואיסוף פסולת",
-        "ניקיון יחידה {u}/10 — החלפת מצעים ומגבות",
-        "ניקיון יחידה {u}/10 — ניקוי מקלחת וכיור",
-        "ניקיון יחידה {u}/10 — שואב אבק ורצפות",
-        "ניקיון יחידה {u}/10 — מסדרון ודלתות",
-        "ניקיון לובי — זכוכיות כניסה ושטיח הכניסה",
-        "ניקיון מדרגות חירום — מעקה ומעבר",
-        "ניקיון חדר כושר — מגבות ומכשירים",
-        "ניקיון חדר ישיבות קטן — לוח וכיסאות",
-        "ניקיון מטבחון עובדים — משטח ומקרר",
-    ]
-    maint_tpl = [
-        "תחזוקה חדר {r} — בדיקת מזגן ורעש",
-        "תחזוקה חדר {r} — נורה ומפסק תאורה",
-        "תחזוקה — ברז מטבחון קומה {f}, בדיקת דליפה",
-        "תחזוקה — סיפון מקלחת חדר {r}",
-        "תחזוקה — דלת חדר {r}, צירים וריחוף",
-        "תחזוקה — מעלית אזור {f}, תאורת קומה",
-        "תחזוקה — משאבת מים בגג, בדיקת לחץ",
-        "תחזוקה — חניה B1, תאורה וסימון",
-        "תחזוקה — מערכת מיני-בר חדר {r}",
-        "תחזוקה — חיבורי חשמל בלובי, בדיקת לוח",
-    ]
-    vip_tpl = [
-        "אורח VIP — יחידה {u}/10: קבלת פנים ופירות יחיד",
-        "אורח VIP — יחידה {u}/10: late checkout מתואם",
-        "אורח VIP — יחידה {u}/10: מסעדה — הזמנת שולחן",
-        "אורח VIP — יחידה {u}/10: העברה מהשדה",
-        "אורח VIP — יחידה {u}/10: ערכת קפה משודרגת",
-        "אורח VIP — יחידה {u}/10: מגבות וחלוק פרימיום",
-        "אורח VIP — יחידה {u}/10: חניה ואבטחה אישית",
-        "אורח VIP — יחידה {u}/10: ספא — תור עדיפות",
-        "אורח VIP — יחידה {u}/10: בר גג — הזמנה מיוחדת",
-        "אורח VIP — יחידה {u}/10: מזוודות — קבלה מהירה",
-    ]
-
-    types_order = [TASK_TYPE_CLEANING_HE] * 50 + [TASK_TYPE_MAINTENANCE_HE] * 30 + [TASK_TYPE_VIP_HE] * 20
-    random.shuffle(types_order)
-
-    session = SessionLocal()
-    try:
-        qdel = session.query(PropertyTaskModel).filter(
-            PropertyTaskModel.property_id == pid,
-            PropertyTaskModel.tenant_id == tenant_id,
-        )
-        deleted = qdel.delete(synchronize_session=False)
-        now = now_iso()
-        ci = 0
-        mi = 0
-        si = 0
-        ids_batch = []
-        for i, ttype in enumerate(types_order):
-            tid = f"bazaar-v100-{batch}-{i:03d}"
-            ids_batch.append(tid)
-            if ttype == TASK_TYPE_CLEANING_HE:
-                tpl = cleaning_tpl[ci % len(cleaning_tpl)]
-                u = (ci % 10) + 1
-                ci += 1
-                desc = tpl.format(u=u)
-            elif ttype == TASK_TYPE_MAINTENANCE_HE:
-                tpl = maint_tpl[mi % len(maint_tpl)]
-                mi += 1
-                r = 201 + (mi % 32)
-                f = (mi % 8) + 1
-                desc = tpl.format(r=r, f=f)
-            else:
-                tpl = vip_tpl[si % len(vip_tpl)]
-                u = (si % 10) + 1
-                si += 1
-                desc = tpl.format(u=u)
-            session.add(
-                PropertyTaskModel(
-                    id=tid,
-                    property_id=pid,
-                    staff_id="",
-                    assigned_to="",
-                    description=desc,
-                    status="Pending",
-                    created_at=now,
-                    property_name=pname,
-                    staff_name="",
-                    staff_phone="",
-                    task_type=ttype,
-                    priority="normal",
-                    tenant_id=tenant_id,
-                )
-            )
-        session.commit()
-
-        # 10 × בטיפול (orange), 5 × בוצע (green) — stable slice by id order
-        for tid in ids_batch[:10]:
-            row = session.query(PropertyTaskModel).filter_by(id=tid).first()
-            if row:
-                row.status = "In_Progress"
-                row.started_at = now
-        for tid in ids_batch[10:15]:
-            row = session.query(PropertyTaskModel).filter_by(id=tid).first()
-            if row:
-                row.status = "Done"
-                row.started_at = now
-                row.completed_at = now
-        session.commit()
-
-        _BAZAAR_VARIETY_100_RESET_DONE = True
-        _bump_tasks_version()
-        _invalidate_owner_dashboard_cache()
-        print(
-            f"[reset_bazaar_jaffa_variety_100] replaced Bazaar tasks (deleted={deleted}); "
-            f"inserted 100 (10 In_Progress, 5 Done) batch={batch}",
-            flush=True,
-        )
-    except Exception as e:
-        session.rollback()
-        print(f"[reset_bazaar_jaffa_variety_100] {e}", flush=True)
-    finally:
-        session.close()
+    return
 
 
 def make_emergency_call(to_number=None, message_he=None):
@@ -7120,7 +7738,7 @@ def build_airbnb_image_url(property_id=None, photo_id=None):
     return "https://images.unsplash.com/photo-1613977257363-707ba9348227?w=1200&auto=format&fit=crop"
 
 
-def create_manual_room(tenant_id, name, description=None, photo_url=None, room_id=None, status="active", amenities=None, owner_id=None, max_guests=None, bedrooms=None, beds=None, bathrooms=None):
+def create_manual_room(tenant_id, name, description=None, photo_url=None, room_id=None, status="active", amenities=None, owner_id=None, max_guests=None, bedrooms=None, beds=None, bathrooms=None, price_per_night=None, currency=None):
     if not SessionLocal or not ManualRoomModel:
         return None
     tenant_id = _coerce_demo_tenant_id(tenant_id)
@@ -7146,6 +7764,8 @@ def create_manual_room(tenant_id, name, description=None, photo_url=None, room_i
                 bedrooms=bedrooms if bedrooms is not None else 1,
                 beds=beds if beds is not None else 1,
                 bathrooms=bathrooms if bathrooms is not None else 1,
+                price_per_night=price_per_night,
+                currency=(currency or "USD"),
             )
             session.add(room)
             session.commit()
@@ -7154,14 +7774,8 @@ def create_manual_room(tenant_id, name, description=None, photo_url=None, room_i
             _dm, _gal = _split_description_gallery(description or "")
             _purl = (photo_url or "").strip()
             _pictures = [g for g in _gal if g] or ([_purl] if _purl else [])
-            return {
-                "id": rid, "name": name, "description": _dm, "photo_url": _purl,
-                "image_url": _purl, "pictures": _pictures,
-                "mainImage": (_pictures[0] if _pictures else _purl) or "",
-                "amenities": list(amenities) if amenities else [], "status": status, "created_at": created,
-                "last_checkout_at": None, "last_checkin_at": None,
-                "max_guests": room.max_guests or 2, "bedrooms": room.bedrooms or 1, "beds": room.beds or 1, "bathrooms": room.bathrooms or 1,
-            }
+            base = _finalize_property_images(_manual_room_api_dict(room, tenant_id, _dm, _pictures, _purl))
+            return base
         except Exception as e:
             session.rollback()
             err_s = str(e).lower()
@@ -7250,7 +7864,7 @@ def upsert_property_db(tenant_id, payload):
 BOUTIQUE_HOTEL_PLACEHOLDER = (
     "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800&auto=format&fit=crop&q=85"
 )
-# Hotel Bazaar Jaffa — room-type heroes (marketing site categories)
+# Legacy room-type heroes (unused in Christos pilot)
 BAZAAR_IMG_STANDARD = (
     "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1200&auto=format&fit=crop&q=85"
 )
@@ -7298,31 +7912,101 @@ def _default_photo_url_for_property(name, pid):
 
 
 def _normalize_external_photo_url(url, name=None, pid=None):
-    """Prefer HTTPS Unsplash; missing or brittle relative /assets paths → boutique placeholder."""
+    """Absolutize stored URLs only — never inject demo/Unsplash fallbacks."""
     u = (url or "").strip()
     if not u:
-        return _default_photo_url_for_property(name, pid)
-    if u.startswith("data:"):
-        return u  # inline base64 image — already render-safe
+        return ""
+    if u.startswith("data:") or u.startswith("http://") or u.startswith("https://"):
+        return u
     if u.startswith("/assets/"):
-        return BOUTIQUE_HOTEL_PLACEHOLDER
-    if u.startswith("/uploads/") or (u.startswith("/") and not u.startswith("//")):
-        base = (API_BASE_URL or "").rstrip("/")
-        if base and "/uploads" in u:
-            return f"{base}{u}"
-        return _default_photo_url_for_property(name, pid)
+        return u
+    base = (API_BASE_URL or "").rstrip("/")
+    path = u.lstrip("/")
+    if path.startswith("uploads/") and base:
+        return f"{base}/{path}"
+    if u.startswith("/") and base:
+        return f"{base}{u}"
+    if base:
+        return f"{base}/uploads/{path}"
     return u
 
 
-def _ensure_room_image_urls(room_dict):
-    """Guarantee non-empty photo_url / image_url on property payloads."""
+def _image_list_log_summary(urls):
+    """Safe log summary — never emit base64/data-URI bodies."""
+    if not isinstance(urls, list):
+        return {"count": 0, "kinds": []}
+    kinds = []
+    for u in urls:
+        s = str(u or "").strip()
+        if not s:
+            continue
+        if s.startswith("data:image/"):
+            kinds.append("data-uri")
+        elif s.startswith("http://") or s.startswith("https://"):
+            kinds.append("url")
+        elif s.startswith("/"):
+            kinds.append("path")
+        else:
+            kinds.append("other")
+    return {"count": len(urls), "kinds": kinds[:5]}
+
+
+def _finalize_property_images(room_dict):
+    """Align image fields from saved gallery data — no demo/fallback injection."""
     if not isinstance(room_dict, dict):
         return room_dict
-    p = (room_dict.get("photo_url") or room_dict.get("image_url") or "").strip()
-    d = _normalize_external_photo_url(p, room_dict.get("name"), room_dict.get("id"))
-    room_dict["photo_url"] = d
-    room_dict["image_url"] = d
+    tenant_id = room_dict.get("tenant_id") or DEFAULT_TENANT_ID
+    before = room_dict.get("pictures") if isinstance(room_dict.get("pictures"), list) else []
+    pid = room_dict.get("id")
+    print(
+        f"[PropertyNormalize] before images id={pid} {_image_list_log_summary(before)}",
+        flush=True,
+    )
+
+    pics = []
+    if isinstance(room_dict.get("pictures"), list):
+        pics = list(room_dict.get("pictures") or [])
+    elif isinstance(room_dict.get("images"), list):
+        pics = list(room_dict.get("images") or [])
+    elif isinstance(room_dict.get("gallery"), list):
+        pics = list(room_dict.get("gallery") or [])
+
+    normalized = []
+    seen = set()
+    for u in pics:
+        s = _absolutize_property_image_url(str(u or "").strip(), tenant_id)
+        if s and s not in seen:
+            seen.add(s)
+            normalized.append(s)
+
+    if not normalized and not isinstance(room_dict.get("pictures"), list):
+        for key in ("photo_url", "image_url", "cover_image", "mainImage"):
+            s = _absolutize_property_image_url(str(room_dict.get(key) or "").strip(), tenant_id)
+            if s and s not in seen:
+                seen.add(s)
+                normalized.append(s)
+
+    cover = normalized[0] if normalized else ""
+    room_dict["pictures"] = normalized
+    room_dict["images"] = normalized
+    room_dict["gallery"] = normalized
+    room_dict["photo_url"] = cover
+    room_dict["image_url"] = cover
+    room_dict["mainImage"] = cover
+    room_dict["cover_image"] = cover
+
+    print(
+        f"[PropertyNormalize] after images id={pid} {_image_list_log_summary(normalized)}",
+        flush=True,
+    )
+    if not normalized:
+        print(f"[PropertyImages] no auto fallback applied id={pid}", flush=True)
     return room_dict
+
+
+def _ensure_room_image_urls(room_dict):
+    """Deprecated alias — finalize without injecting fallback images."""
+    return _finalize_property_images(room_dict)
 
 
 _EH_GALLERY_MARKER = "\n__EH_GALLERY__:"
@@ -7343,7 +8027,7 @@ def _split_description_gallery(description: str):
     return t, []
 
 
-def _merge_description_gallery(main_text: str, urls: list) -> str:
+def _merge_description_gallery(main_text: str, urls: list, *, allow_empty_marker: bool = False) -> str:
     """Persist ordered gallery URLs in description (manual_rooms has single photo_url column)."""
     main = (main_text or "").rstrip()
     u = []
@@ -7354,8 +8038,89 @@ def _merge_description_gallery(main_text: str, urls: list) -> str:
             seen.add(s)
             u.append(s)
     if not u:
+        if allow_empty_marker:
+            return f"{main}{_EH_GALLERY_MARKER}[]"
         return main
     return f"{main}{_EH_GALLERY_MARKER}{json.dumps(u, ensure_ascii=False)}"
+
+
+def _description_has_explicit_empty_gallery(description: str) -> bool:
+    """True when description stores an intentional empty gallery (user cleared all images)."""
+    t = description or ""
+    if _EH_GALLERY_MARKER not in t:
+        return False
+    _, gallery_urls = _split_description_gallery(t)
+    return gallery_urls == []
+
+
+def _parse_price_per_night_from_description(description: str):
+    """Legacy price embedded in description text."""
+    desc = description or ""
+    if not desc.strip():
+        return None
+    for pat in (
+        r"Price per night:\s*\$?(\d+(?:\.\d+)?)",
+        r"מחיר\s*ללילה[:\s]*₪?(\d+(?:\.\d+)?)",
+        r"₪(\d+(?:\.\d+)?)",
+    ):
+        m = re.search(pat, desc, re.I)
+        if m:
+            try:
+                return float(m.group(1))
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _price_fields_for_room_row(r, desc_main: str = ""):
+    """Resolved price/currency for API payloads."""
+    raw = getattr(r, "price_per_night", None)
+    price = None
+    if raw is not None and raw != "":
+        try:
+            price = float(raw)
+        except (TypeError, ValueError):
+            price = None
+    if price is None:
+        price = _parse_price_per_night_from_description(desc_main or getattr(r, "description", "") or "")
+    currency = (getattr(r, "currency", None) or "USD").strip() or "USD"
+    return {
+        "price_per_night": price,
+        "nightly_price": price,
+        "price": price,
+        "currency": currency,
+    }
+
+
+def _manual_room_api_dict(r, tenant_id, desc_main, pictures, purl):
+    """Standard property payload from a ManualRoomModel row."""
+    price_fields = _price_fields_for_room_row(r, desc_main)
+    cover = pictures[0] if pictures else (purl or "")
+    return {
+        "id": r.id,
+        "name": r.name,
+        "description": desc_main,
+        "photo_url": cover,
+        "image_url": cover,
+        "pictures": pictures,
+        "images": pictures,
+        "gallery": pictures,
+        "mainImage": cover,
+        "cover_image": cover,
+        "amenities": json.loads(r.amenities) if r.amenities else [],
+        "status": r.status or "active",
+        "created_at": r.created_at,
+        "last_checkout_at": r.last_checkout_at,
+        "last_checkin_at": r.last_checkin_at,
+        "ai_automation_enabled": bool(getattr(r, "ai_automation_enabled", 0)),
+        "max_guests": getattr(r, "max_guests", None) or 2,
+        "bedrooms": getattr(r, "bedrooms", None) or 1,
+        "beds": getattr(r, "beds", None) or 1,
+        "bathrooms": getattr(r, "bathrooms", None) or 1,
+        "occupancy_rate": getattr(r, "occupancy_rate", None) if getattr(r, "occupancy_rate", None) is not None else 80.0,
+        "tenant_id": getattr(r, "tenant_id", None) or tenant_id,
+        **price_fields,
+    }
 
 
 def _absolutize_property_image_url(purl: str, tenant_id: str) -> str:
@@ -7373,6 +8138,30 @@ def _absolutize_property_image_url(purl: str, tenant_id: str) -> str:
         else:
             purl = f"{API_BASE_URL}/uploads/{path}"
     return purl
+
+
+def _db_manual_room_count(tenant_id=DEFAULT_TENANT_ID):
+    """Direct manual_rooms row count — same table GET /api/properties reads."""
+    if not SessionLocal or not ManualRoomModel:
+        return 0
+    tid = _coerce_demo_tenant_id(tenant_id)
+    session = SessionLocal()
+    try:
+        return session.query(ManualRoomModel).filter_by(tenant_id=tid).count()
+    finally:
+        session.close()
+
+
+def _db_manual_room_ids(tenant_id=DEFAULT_TENANT_ID):
+    """Direct manual_rooms ids — authoritative persistence check."""
+    if not SessionLocal or not ManualRoomModel:
+        return []
+    tid = _coerce_demo_tenant_id(tenant_id)
+    session = SessionLocal()
+    try:
+        return [str(r[0]) for r in session.query(ManualRoomModel.id).filter_by(tenant_id=tid).all() if r[0]]
+    finally:
+        session.close()
 
 
 def list_manual_rooms(tenant_id, owner_id=None):
@@ -7402,191 +8191,37 @@ def list_manual_rooms(tenant_id, owner_id=None):
             except Exception:
                 am = []
             purl = (r.photo_url or "").strip()
-            if purl.startswith("data:"):
-                # Inline data URI — render-safe as-is, skip URL rewriting/normalisation.
-                pass
-            else:
-                if purl.startswith("/assets/"):
-                    purl = ""
-                if purl and not purl.startswith("http"):
-                    path = purl.lstrip("/")
-                    if path.startswith("uploads/"):
-                        purl = f"{API_BASE_URL}/{path}"
-                    else:
-                        purl = f"{API_BASE_URL}/uploads/{path}"
-                purl = _normalize_external_photo_url(purl, r.name, r.id)
+            explicit_empty_gallery = _description_has_explicit_empty_gallery(r.description or "")
             desc_main, gallery_urls = _split_description_gallery(r.description or "")
             pictures = []
             for gu in gallery_urls:
                 au = _absolutize_property_image_url(gu, tenant_id)
-                au = _normalize_external_photo_url(au, r.name, r.id)
                 if au and au not in pictures:
                     pictures.append(au)
-            if not pictures and purl:
-                pictures = [purl]
-            occ = getattr(r, "occupancy_rate", None)
-            if occ is None:
-                occ = 80.0
-            try:
-                occ = float(occ)
-            except Exception:
-                occ = 80.0
-            out.append({
-                "id": r.id,
-                "name": r.name,
-                "description": desc_main,
-                "photo_url": purl,
-                "image_url": purl,
-                "pictures": pictures,
-                "mainImage": pictures[0] if pictures else purl,
-                "amenities": am,
-                "status": r.status or "active",
-                "created_at": r.created_at,
-                "last_checkout_at": r.last_checkout_at,
-                "last_checkin_at": r.last_checkin_at,
-                "ai_automation_enabled": bool(getattr(r, "ai_automation_enabled", 0)),
-                "max_guests": getattr(r, "max_guests", None) or 2,
-                "bedrooms": getattr(r, "bedrooms", None) or 1,
-                "beds": getattr(r, "beds", None) or 1,
-                "bathrooms": getattr(r, "bathrooms", None) or 1,
-                "occupancy_rate": occ,
-                "tenant_id": getattr(r, "tenant_id", None) or tenant_id,
-            })
-        return out
+            if not pictures and purl and not explicit_empty_gallery:
+                ap = _absolutize_property_image_url(purl, tenant_id)
+                if ap:
+                    pictures.append(ap)
+            cover_purl = pictures[0] if pictures else ""
+            out.append(_finalize_property_images(_manual_room_api_dict(r, tenant_id, desc_main, pictures, cover_purl)))
+        return _scope_live_pilot_rooms(out, tenant_id, owner_id)
     finally:
         session.close()
 
 
+def _scope_live_pilot_rooms(rooms, tenant_id, owner_id=None):
+    """Drop demo/junk rows; keep Christos seeds plus user-created properties."""
+    if not rooms:
+        return []
+    scoped = [r for r in rooms if isinstance(r, dict) and not _is_junk_mock_property(r)]
+    if _christos_pilot_is_active(tenant_id, owner_id, scoped):
+        return _christos_pilot_room_rows(tenant_id, owner_id, scoped)
+    return scoped
+
+
 def _default_portfolio_seed_rooms():
-    """15 pins: Bazaar (Standard Queen / Deluxe Gallery / Jaffa Suite) + 14× ROOMS. ~80% occupancy."""
-    now = datetime.now(timezone.utc).isoformat()
-    bazaar_img = BAZAAR_IMG_DELUXE
-    _rooms_images = PROPERTY_PORTFOLIO_IMAGES[1:15]
-    rooms_rows = [
-        ("rooms-branch-sky-tower", "ROOMS Sky Tower", "תל אביב", "sky-tower"),
-        ("rooms-branch-acro-tlv", "ROOMS Acro", "תל אביב", "acro-tlv"),
-        ("rooms-branch-beit-rubinstein", "ROOMS Beit Rubinstein", "תל אביב", "beit-rubinstein"),
-        ("rooms-branch-neve-tzedek", "ROOMS Neve Tzedek", "תל אביב", "neve-tzedek"),
-        ("rooms-branch-bbc", "ROOMS BBC", "בני ברק", "bbc-bnei-brak"),
-        ("rooms-branch-acro-raanana", "ROOMS Acro Ra'anana", "רעננה", "acro-raanana"),
-        ("rooms-branch-millennium-raanana", "ROOMS Millennium", "רעננה", "millennium-raanana"),
-        ("rooms-branch-modiin", "ROOMS Modi'in", "מודיעין", "modiin"),
-        ("rooms-branch-bsr-city", "ROOMS BSR City", "פתח תקווה", "bsr-city"),
-        ("rooms-branch-herzliya", "ROOMS Herzliya", "הרצליה", "herzliya"),
-        ("rooms-branch-haifa", "ROOMS Haifa", "חיפה", "haifa"),
-        ("rooms-branch-jerusalem", "ROOMS Jerusalem", "ירושלים", "jerusalem"),
-        ("rooms-branch-beer-sheva", "ROOMS Beersheva", "באר שבע", "beer-sheva"),
-        ("rooms-branch-eilat", "ROOMS Eilat", "אילת", "eilat"),
-    ]
-    city_tower_img = "https://images.unsplash.com/photo-1496417263034-38ec4f0b665a?w=800&auto=format&fit=crop"
-    rows = [
-        {
-            "id": "bazaar-jaffa-hotel",
-            "name": "Hotel Bazaar Jaffa",
-            "description": (
-                "Hotel Bazaar Jaffa — Room types: Standard Queen, Deluxe Gallery, Jaffa Suite · "
-                "10 guest keys · portfolio 61 rooms total @ ~80% occupancy. Jaffa Flea Market, boutique."
-            ),
-            "photo_url": bazaar_img,
-            "image_url": bazaar_img,
-            "amenities": ["Standard Queen", "Deluxe Gallery", "Jaffa Suite", "10 Rooms", "Hotel", "Boutique"],
-            "status": "Active",
-            "occupancy_rate": 80,
-            "created_at": now,
-            "branch_slug": "bazaar-jaffa-hotel",
-            "max_guests": 2,
-            "bedrooms": 1,
-            "beds": 1,
-            "bathrooms": 1,
-            "ai_automation_enabled": False,
-        },
-        {
-            "id": "leonardo-city-tower-ramat-gan",
-            "name": "Leonardo Plaza City Tower",
-            "description": (
-                "Urban, business, elegant — Ramat Gan (Diamond Exchange / בורסה). 17 floors. "
-                "Share Spa; rooftop pool (seasonal); Business Lounge; kosher certification Ramat Gan Rabbinate. "
-                "Room types: Deluxe (14m²), Deluxe Grand, Executive, Club (floors 16–17), Junior Suite, Jacuzzi Suite. "
-                "Check-in/out 15:00 / 11:00."
-            ),
-            "photo_url": city_tower_img,
-            "image_url": city_tower_img,
-            "amenities": ["Spa", "Pool", "Business Lounge", "Kosher", "Hotel", "רמת גן"],
-            "status": "Active",
-            "occupancy_rate": 80,
-            "created_at": now,
-            "branch_slug": "leonardo-city-tower-ramat-gan",
-            "max_guests": 2,
-            "bedrooms": 1,
-            "beds": 1,
-            "bathrooms": 1,
-            "ai_automation_enabled": False,
-        },
-    ]
-    for i, (wid, wname, city_he, slug) in enumerate(rooms_rows):
-        img = _rooms_images[i]
-        rows.append({
-            "id": wid,
-            "name": wname,
-            "description": (
-                f"ROOMS / WeWork-style — {city_he} · {wname}. "
-                f"Inventory: Private Office · Meeting Rooms · hot desk. ~80% occupied (cowork ops)."
-            ),
-            "photo_url": img,
-            "image_url": img,
-            "amenities": ["Private Office", "Meeting Room", "ROOMS", "WeWork", "Coworking", city_he],
-            "status": "Active",
-            "occupancy_rate": 80,
-            "created_at": now,
-            "branch_slug": slug,
-            "max_guests": 1,
-            "bedrooms": 0,
-            "beds": 0,
-            "bathrooms": 0,
-            "ai_automation_enabled": False,
-        })
-    wework_img = "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80"
-    wework_rows = [
-        ("wework-tlv-london-ministore", "WeWork London Ministore", "תל אביב", "wework-tlv-london-ministore"),
-        ("wework-tlv-toha",             "WeWork ToHA",             "תל אביב", "wework-tlv-toha"),
-        ("wework-tlv-azrieli-town",     "WeWork Azrieli Town",     "תל אביב", "wework-tlv-azrieli-town"),
-        ("wework-tlv-shaul-hamelech",   "WeWork Shaul HaMelech 35","תל אביב", "wework-tlv-shaul-hamelech"),
-        ("wework-tlv-midtown",          "WeWork Midtown",           "תל אביב", "wework-tlv-midtown"),
-        ("wework-tlv-sarona",           "WeWork Sarona",            "תל אביב", "wework-tlv-sarona"),
-        ("wework-tlv-hazerem",          "WeWork HaZerem 10",        "תל אביב", "wework-tlv-hazerem"),
-        ("wework-tlv-schocken",         "WeWork Schocken 23",       "תל אביב", "wework-tlv-schocken"),
-        ("wework-tlv-dubnov",           "WeWork Dubnov 7",          "תל אביב", "wework-tlv-dubnov"),
-        ("wework-rg-sapir",             "WeWork Sapir Tower",       "רמת גן",  "wework-rg-sapir"),
-        ("wework-haifa-atzmaut",        "WeWork Haifa Atzmaut 45",  "חיפה",    "wework-haifa-atzmaut"),
-        ("wework-herzliya-shenkar",     "WeWork Herzliya Shenkar 1","הרצליה",  "wework-herzliya-shenkar"),
-        ("wework-jlm-king-george",      "WeWork Jerusalem King George 20","ירושלים","wework-jlm-king-george"),
-        ("wework-b7-halutz",            "WeWork Beersheba Halutz 16","באר שבע","wework-b7-halutz"),
-    ]
-    for wid, wname, city_he, slug in wework_rows:
-        rows.append({
-            "id": wid,
-            "name": wname,
-            "description": (
-                f"WeWork {city_he} — {wname}. מחירי בסיס זמניים: ₪0 לכל סוגי ההשכרה. "
-                f"אפשרויות: גישה יומית · חדרי ישיבות · עמדה קבועה · משרד פרטי."
-            ),
-            "photo_url": wework_img,
-            "image_url": wework_img,
-            "amenities": ["WeWork", "Workspace", "Coworking", city_he],
-            "status": "Active",
-            "occupancy_rate": 80,
-            "created_at": now,
-            "branch_slug": slug,
-            "max_guests": 1,
-            "bedrooms": 0,
-            "beds": 0,
-            "bathrooms": 0,
-            "ai_automation_enabled": False,
-        })
-    for row in rows:
-        if isinstance(row, dict):
-            row.setdefault("tenant_id", DEFAULT_TENANT_ID)
-    return rows
+    """Greece pilot — 3 Corfu properties only."""
+    return _christos_corfu_portfolio_seed()
 
 
 def _grid_dirty_slots_from_occ(occ_pct, n_total=61):
@@ -7605,98 +8240,44 @@ def _grid_dirty_slots_from_occ(occ_pct, n_total=61):
 
 
 def _room_status_grid_payload(tenant_id, user_id):
-    """
-    61 room units across 15 properties (Bazaar 10 + 14×ROOMS with 3–4 units each).
-    Status mix: ~80% occupied (red), ~10% ready (green), ~10% cleaning/dirty (yellow).
-    Heavy seed/assign runs on startup + Maya autonomous loop — omitted here for <500ms cached loads.
-    """
+    """Live room status grid — Christos pilot (3 properties); no demo portfolio padding."""
     props = list_manual_rooms(tenant_id, owner_id=user_id)
     if not props:
-        props = _ensure_demo_portfolio_properties(
-            [_ensure_room_image_urls(dict(x)) for x in _default_portfolio_seed_rooms()]
-        )
-    prop_by_id = {p.get("id"): p for p in props if p.get("id")}
-    if len(prop_by_id) < 15:
-        for row in _default_portfolio_seed_rooms():
-            if isinstance(row, dict) and row.get("id"):
-                prop_by_id.setdefault(row["id"], _ensure_room_image_urls(dict(row)))
-    bazaar_id = "bazaar-jaffa-hotel"
-    non_bazaar = sorted([pid for pid in prop_by_id.keys() if pid != bazaar_id])
-    counts_tail = [4] * 9 + [3] * 5
-    room_counts = [(bazaar_id, 10)] + list(zip(non_bazaar[:14], counts_tail))
-    rooms_out = []
-    room_idx = 0
-    n_total = 61
+        return {"rooms": [], "summary": {"ready": 0, "occupied": 0, "dirty": 0, "total": 0}}
+    if _christos_pilot_is_active(tenant_id, user_id, props):
+        props = _christos_pilot_room_rows(tenant_id, user_id, props)
     occ_pct = float(get_daily_stats()["occupancy_pct"])
-    p_bazaar = prop_by_id.get(bazaar_id) or {}
-    st_b = str(p_bazaar.get("status") or "")
-    m_gd = re.search(r"grid_dirty=(\d+)", st_b, re.I)
+    n_total = max(1, len(props))
     n_dirty, n_occ, _rem = _grid_dirty_slots_from_occ(occ_pct, n_total)
-    if m_gd:
-        try:
-            n_dirty = max(0, min(_rem, int(m_gd.group(1))))
-        except Exception:
-            pass
-    # ready = remainder after occupied + dirty
-    acro_id = "rooms-branch-acro-tlv"
-    for pid, n in room_counts:
-        p = prop_by_id.get(pid) or {}
+    rooms_out = []
+    for i, p in enumerate(props):
+        pid = p.get("id")
         pname = p.get("name") or pid
+        room_idx = i + 1
+        if room_idx <= n_occ:
+            status = "occupied"
+        elif room_idx <= n_occ + n_dirty:
+            status = "dirty"
+        else:
+            status = "ready"
         photo = _normalize_external_photo_url(
             (p.get("photo_url") or p.get("image_url") or "").strip(),
-            p.get("name"),
-            p.get("id"),
+            pname,
+            pid,
         )
-        for j in range(n):
-            room_idx += 1
-            if room_idx <= n_occ:
-                status = "occupied"
-            elif room_idx <= n_occ + n_dirty:
-                status = "dirty"
-            else:
-                status = "ready"
-            if pid == bazaar_id:
-                if j < 4:
-                    label = f"Bazaar · Standard Queen {j + 1:02d}"
-                    photo = BAZAAR_IMG_STANDARD
-                elif j < 8:
-                    label = f"Bazaar · Deluxe Gallery {j - 3:02d}"
-                    photo = BAZAAR_IMG_DELUXE
-                else:
-                    label = f"Bazaar · Jaffa Suite {j - 7:02d}"
-                    photo = BAZAAR_IMG_JAFFA_SUITE
-            elif pid == acro_id:
-                label = f"ROOMS Acro TLV · Office/Meeting {j + 1}"
-            else:
-                label = f"{pname} · Unit {j + 1}"
-            guest = "Demo Guest" if status == "occupied" else None
-            rooms_out.append(
-                {
-                    "id": f"{pid}-u{j + 1}",
-                    "name": label,
-                    "property_id": pid,
-                    "property_name": pname,
-                    "status": status,
-                    "beds": 1 if int(p.get("bedrooms") or 1) == 0 else 2,
-                    "bedrooms": max(1, int(p.get("bedrooms") or 1)),
-                    "photo_url": photo,
-                    "guest": guest,
-                }
-            )
-    # Live link: open Cleaning tasks for Bazaar → unit goes yellow (dirty / בניקיון)
-    dirty_units = _bazaar_open_cleaning_unit_indices(tenant_id)
-    if dirty_units:
-        for r in rooms_out:
-            if r.get("property_id") != bazaar_id:
-                continue
-            rid = str(r.get("id") or "")
-            mu = re.search(r"-u(\d+)$", rid)
-            if not mu:
-                continue
-            u = int(mu.group(1))
-            if u in dirty_units:
-                r["status"] = "dirty"
-                r["guest"] = None
+        rooms_out.append(
+            {
+                "id": f"{pid}-u1",
+                "name": pname,
+                "property_id": pid,
+                "property_name": pname,
+                "status": status,
+                "beds": int(p.get("beds") or 1),
+                "bedrooms": int(p.get("bedrooms") or 1),
+                "photo_url": photo,
+                "guest": "Guest" if status == "occupied" else None,
+            }
+        )
     summary = {"ready": 0, "occupied": 0, "dirty": 0, "total": len(rooms_out)}
     for r in rooms_out:
         st = r.get("status")
@@ -7751,10 +8332,8 @@ def _upcoming_bookings_payload(tenant_id, user_id):
     if len(out) >= 3:
         return {"bookings": out}
     props = list_manual_rooms(tenant_id, owner_id=user_id)
-    if not props:
-        props = _ensure_demo_portfolio_properties(
-            [_ensure_room_image_urls(dict(x)) for x in _default_portfolio_seed_rooms()]
-        )
+    if _christos_pilot_is_active(tenant_id, user_id, props):
+        props = _christos_pilot_room_rows(tenant_id, user_id, props)
     for i, p in enumerate(props[:15]):
         cid = (today + timedelta(days=(i % 7) + 1)).isoformat()
         cod = (today + timedelta(days=(i % 7) + 4)).isoformat()
@@ -7763,7 +8342,7 @@ def _upcoming_bookings_payload(tenant_id, user_id):
                 "id": f"synth-up-{p.get('id')}-{i}",
                 "property_id": p.get("id"),
                 "property_name": p.get("name") or "Property",
-                "guest_name": f"Guest {i + 1}",
+                "guest_name": f"אורח {i + 1}",
                 "guest_phone": "",
                 "check_in": cid,
                 "check_out": cod,
@@ -7804,8 +8383,9 @@ def _build_maya_room_inventory_text(tenant_id, user_id):
         )
 
     parts = [
-        _lines_for("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa"),
-        _lines_for("rooms-branch-acro-tlv", "ROOMS Acro TLV"),
+        _lines_for("christos-thaleri-villa-corfu", "Corfu Luxury Villa"),
+        _lines_for("christos-manto-beach-apartment-barbati", "Manto Apartments"),
+        _lines_for("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite"),
     ]
     result = " ".join(p for p in parts if p)
     _ROOM_INVENTORY_TEXT_CACHE[_ck] = {"text": result, "ts": _now}
@@ -7818,57 +8398,35 @@ def initial_tasks():
 
 
 def _default_property_tasks_seed():
-    """Sample property_tasks when DB is empty or GET fails — JSON shape matches /api/property-tasks."""
-    now = datetime.now(timezone.utc).isoformat()
-    # 20 unique demo tasks — mix of housekeeping + checkout prep (ניקיון / צ'ק-אאוט).
-    samples = [
-        ("seed-pt-bazaar-1", "bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "ניקיון חדר אחרי צ'ק-אאוט — 201", "Pending", "עלמה"),
-        ("seed-pt-wework-1", "wework-tlv-london-ministore", "WeWork London Ministore", "ניקיון Hot Desks — אחרי אירוע חברה", "Pending", "מנהל קהילה"),
-        ("seed-pt-rooms-1", "rooms-branch-sky-tower", "ROOMS Sky Tower", "ניקיון אזור Hot Desks אחרי אירוע", "Pending", "מנהל קהילה"),
-        ("seed-pt-wework-2", "wework-tlv-toha", "WeWork ToHA", "בדיקת מערכת אוורור לפני פגישות", "Pending", "קובי"),
-        ("seed-pt-wework-3", "wework-tlv-azrieli-town", "WeWork Azrieli Town", "ניקיון מטבחון משותף — קומה 12", "Pending", "עלמה"),
-        ("seed-pt-rooms-2", "rooms-branch-acro-tlv", "ROOMS Acro", "ניקיון חדר ישיבות לפני צ'ק-אאוט אורח", "Pending", "מנהל קהילה"),
-        ("seed-pt-wework-4", "wework-tlv-shaul-hamelech", "WeWork Shaul HaMelech 35", "תחזוקת תאורה — אזור לובי WeWork", "Pending", "קובי"),
-        ("seed-pt-rooms-3", "rooms-branch-beit-rubinstein", "ROOMS Beit Rubinstein", "צ'ק-אאוט סוויטה — בדיקת מלאי", "Pending", "מנהל קהילה"),
-        ("seed-pt-wework-5", "wework-tlv-midtown", "WeWork Midtown", "ניקיון חדר ישיבות — הכנה ללקוח", "Pending", "עלמה"),
-        ("seed-pt-rooms-4", "rooms-branch-neve-tzedek", "ROOMS Neve Tzedek", "ניקיון מטבחון ומקרר משותף", "Pending", "מנהל קהילה"),
-        ("seed-pt-bazaar-2", "bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "מגבות ומצעים — ריענון לפני כניסה", "Pending", "עלמה"),
-        ("seed-pt-wework-6", "wework-tlv-sarona", "WeWork Sarona", "סבב ניקיון ערב — קומת קוורקינג", "Pending", "מנהל קהילה"),
-        ("seed-pt-rooms-5", "rooms-branch-bbc", "ROOMS BBC", "ניקיון מסדרון אחרי צ'ק-אאוט חברה", "Pending", "עלמה"),
-        ("seed-pt-wework-7", "wework-tlv-hazerem", "WeWork HaZerem 10", "בדיקת ברזים ושסתומים — מטבחון", "Pending", "קובי"),
-        ("seed-pt-rooms-6", "rooms-branch-acro-raanana", "ROOMS Acro Ra'anana", "ניקיון אחרי אירוע קהילה + צ'ק-אאוט", "Pending", "מנהל קהילה"),
-        ("seed-pt-bazaar-3", "bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "ניקיון לובי — הכנה לקבוצת צ'ק-אאוט", "Pending", "עלמה"),
-        ("seed-pt-wework-8", "wework-tlv-schocken", "WeWork Schocken 23", "תחזוקת דלתות זכוכית — קומת WeWork", "Pending", "קובי"),
-        ("seed-pt-bazaar-4", "bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "ניקיון חדר — חולצ' צ'ק-אאוט 11:00", "Pending", "עלמה"),
-        ("seed-pt-water-leak-kobi", "rooms-branch-haifa", "ROOMS Haifa", "Water Leak — reported by Kobi (נזילת מים בצינור)", "Pending", "קובי"),
-        ("seed-pt-rooms-16", "rooms-branch-acro-tlv", "ROOMS Acro", "סבב ניקיון ערב — הכנת חלל לאירוח", "Pending", "מנהל קהילה"),
-    ]
+    """Christos pilot tasks only when DB is empty."""
     tasks = []
-    for tid, pid, pname, desc, status, staff in samples:
-        room_label = pname
-        ctx = "2 Guests, 1 Bedroom, 1 Bed"
+    for t in _christos_active_worker_task_rows():
+        if not isinstance(t, dict):
+            continue
+        desc = (t.get("description") or "Task").strip()
+        pname = (t.get("property_name") or "").strip()
         tasks.append({
-            "id": tid,
-            "property_id": pid,
-            "property_name": room_label,
+            "id": t.get("id"),
+            "property_id": t.get("property_id"),
+            "property_name": pname,
             "title": desc,
-            "room_id": pid,
-            "room": room_label,
-            "room_number": room_label,
-            "task_type": desc,
+            "room_id": t.get("property_id"),
+            "room": pname,
+            "room_number": pname,
+            "task_type": t.get("task_type") or TASK_TYPE_SERVICE_HE,
             "assigned_to": "",
             "description": desc,
-            "status": status,
-            "created_at": now,
-            "started_at": None,
-            "completed_at": None,
-            "duration_minutes": None,
-            "staff_name": staff,
-            "worker_name": staff,
+            "status": t.get("status") or "Pending",
+            "created_at": t.get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "staff_name": t.get("staff_name") or "worker",
             "staff_phone": "",
-            "property_context": ctx,
+            "property_context": t.get("property_context") or "",
             "photo_url": "",
-            "actions": [{"label": "ראיתי ✅", "value": "seen"}, {"label": "בוצע 🏁", "value": "done"}],
+            "source": TASK_SOURCE_SYSTEM,
+            "actions": [
+                {"label": "ראיתי ✅", "value": "seen"},
+                {"label": "בוצע 🏁", "value": "done"},
+            ],
         })
     return tasks
 
@@ -7883,18 +8441,20 @@ def _emergency_task_types_for_index(i):
 
 
 def _emergency_task_rows_for_db():
-    """PropertyTaskModel-ready rows: 20 tasks with explicit task_type + priority."""
-    base = _default_property_tasks_seed()
-    out = []
-    for i, t in enumerate(base):
-        if not isinstance(t, dict):
-            continue
-        tt, pr = _emergency_task_types_for_index(i)
-        d = dict(t)
-        d["task_type"] = tt
-        d["priority"] = pr
-        out.append(d)
-    return out
+    """Christos pilot emergency task templates only."""
+    rows = []
+    for t in _christos_active_worker_task_rows():
+        rows.append({
+            "id": t.get("id"),
+            "property_id": t.get("property_id"),
+            "property_name": t.get("property_name") or "",
+            "description": t.get("description") or "Task",
+            "status": t.get("status") or "Pending",
+            "task_type": t.get("task_type") or TASK_TYPE_SERVICE_HE,
+            "staff_name": t.get("staff_name") or "worker",
+            "created_at": t.get("created_at") or now_iso(),
+        })
+    return rows
 
 
 def _maya_try_start_task_from_natural_command(tenant_id, user_id, command):
@@ -8038,9 +8598,14 @@ def _maya_mark_property_task_done(tenant_id, task_id, user_id=None):
             task = session.query(PropertyTaskModel).filter_by(id=tid).first()
         if not task:
             return False, "not_found"
-        task.status = "Done"
+        st = (task.status or "").strip().lower()
+        if st in ("done", "completed"):
+            return True, None
+        task.status = "completed"
         if hasattr(task, "completed_at"):
             task.completed_at = now_iso()
+        if hasattr(task, "completed_by") and user_id:
+            task.completed_by = str(user_id).strip()
         session.commit()
         _bump_tasks_version()
         try:
@@ -8192,11 +8757,9 @@ def _escalate_stale_red_tasks(tenant_id=DEFAULT_TENANT_ID):
 
 
 _AUTOGEN_SAMPLES = [
-    ("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "חדר 204 — בקשת מגבות", TASK_TYPE_SERVICE_HE),
-    ("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "לובי — תור קבלה ומזוודות", TASK_TYPE_SERVICE_HE),
-    ("rooms-branch-acro-tlv", "ROOMS Acro", "ריענון Hot Desks אחרי צ'ק-אאוטים", TASK_TYPE_CLEANING_HE),
-    ("rooms-branch-sky-tower", "ROOMS Sky Tower", "מסדרון VIP — מלאי", TASK_TYPE_CLEANING_HE),
-    ("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa", "סוויטה — מילוי מיני בר", TASK_TYPE_SERVICE_HE),
+    ("christos-thaleri-villa-corfu", "Corfu Luxury Villa", "ניקיון וילה — סבב בוקר", TASK_TYPE_CLEANING_HE),
+    ("christos-manto-beach-apartment-barbati", "Manto Apartments", "החלפת מצעים — דירת חוף", TASK_TYPE_CLEANING_HE),
+    ("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite", "בקשת מגבות — סוויטת חוף", TASK_TYPE_SERVICE_HE),
 ]
 
 
@@ -8273,11 +8836,9 @@ def _insert_random_maintenance_task(tenant_id=DEFAULT_TENANT_ID):
     desc = _r.choice(_MAINT_AUTOGEN_LINES)
     pid, pname = _r.choice(
         [
-            ("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa"),
-            ("wework-tlv-london-ministore", "WeWork London Ministore"),
-            ("wework-tlv-toha", "WeWork ToHA"),
-            ("wework-tlv-azrieli-town", "WeWork Azrieli Town"),
-            ("wework-tlv-midtown", "WeWork Midtown"),
+            ("christos-thaleri-villa-corfu", "Corfu Luxury Villa"),
+            ("christos-manto-beach-apartment-barbati", "Manto Apartments"),
+            ("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite"),
         ]
     )
     task_id = str(uuid.uuid4())
@@ -8358,7 +8919,7 @@ def _live_ops_engine_loop():
                 if now - _MAYA_AUTONOMOUS_LAST["seed"] >= 600:
                     _MAYA_AUTONOMOUS_LAST["seed"] = now
                     try:
-                        ensure_emergency_portfolio_and_tasks(tid)
+                        seed_active_properties(tid)
                     except Exception:
                         pass
             if LIVE_AUTOGEN_TASKS:
@@ -8373,44 +8934,55 @@ def _live_ops_engine_loop():
             print(f"[LiveOpsEngine] {e}", flush=True)
 
 
+def purge_all_property_tasks(tenant_id=DEFAULT_TENANT_ID, reseed_christos=True):
+    """Hard reset: wipe all tasks + properties for tenant, reseed Greece pilot (3+3)."""
+    global _DEMO_PROPERTY_TASKS_MEMORY
+    tasks_deleted = props_deleted = 0
+    if SessionLocal:
+        session = SessionLocal()
+        try:
+            if PropertyTaskModel:
+                tasks_deleted = (
+                    session.query(PropertyTaskModel)
+                    .filter(
+                        or_(
+                            PropertyTaskModel.tenant_id == tenant_id,
+                            PropertyTaskModel.tenant_id.is_(None),
+                        )
+                    )
+                    .delete(synchronize_session=False)
+                )
+            if ManualRoomModel:
+                props_deleted = (
+                    session.query(ManualRoomModel)
+                    .filter_by(tenant_id=tenant_id)
+                    .delete(synchronize_session=False)
+                )
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"[purge_all_property_tasks] {e}", flush=True)
+        finally:
+            session.close()
+    _DEMO_PROPERTY_TASKS_MEMORY.clear()
+    reseeded = {"properties": 0, "tasks": 0}
+    if reseed_christos:
+        reseeded = seed_active_properties(tenant_id)
+    print(
+        f"[purge_all_property_tasks] tasks_deleted={tasks_deleted} "
+        f"props_deleted={props_deleted} reseed={reseeded}",
+        flush=True,
+    )
+    return {
+        "deleted_tasks": tasks_deleted,
+        "deleted_properties": props_deleted,
+        "reseeded": reseeded,
+    }
+
+
 def purge_synthetic_property_tasks(tenant_id=DEFAULT_TENANT_ID):
-    """Remove demo / smart / seeded property_tasks rows; keeps manual_rooms portfolio."""
-    if not SessionLocal or not PropertyTaskModel:
-        return {"deleted": 0}
-    from sqlalchemy import or_ as _or
-    session = SessionLocal()
-    try:
-        q = session.query(PropertyTaskModel).filter_by(tenant_id=tenant_id).filter(
-            _or(
-                PropertyTaskModel.id.like("seed-%"),
-                PropertyTaskModel.id.like("seed-pt-%"),
-                PropertyTaskModel.id.like("bazaar-v100-%"),
-                PropertyTaskModel.id.like("live-emergency-%"),
-                PropertyTaskModel.description.like("Automated Welcome%"),
-                PropertyTaskModel.description.like("Smart Task%"),
-                PropertyTaskModel.description.like("%משימת אופרציה%"),
-                PropertyTaskModel.description.like("ניקיון לובי — סבב ערב%"),
-                PropertyTaskModel.description.like("דחוף — עומס בקבלה%"),
-                PropertyTaskModel.description.like("דחוף — מסדרון סוויטות%"),
-            )
-        )
-        n = q.delete(synchronize_session=False)
-        session.commit()
-        if n:
-            _bump_tasks_version()
-            try:
-                _invalidate_owner_dashboard_cache()
-            except Exception:
-                pass
-        if n:
-            print(f"[purge_synthetic_property_tasks] deleted {n} rows (tenant={tenant_id})", flush=True)
-        return {"deleted": n}
-    except Exception as e:
-        session.rollback()
-        print(f"[purge_synthetic_property_tasks] {e}", flush=True)
-        return {"deleted": 0, "error": str(e)}
-    finally:
-        session.close()
+    """Alias — full wipe + Christos reseed."""
+    return purge_all_property_tasks(tenant_id, reseed_christos=True)
 
 
 # ── Per-tenant background seed dedup ─────────────────────────────────────────
@@ -8435,30 +9007,8 @@ def _is_demo_seed_tenant(tenant_id) -> bool:
 
 
 def _kick_background_seed(tenant_id: str) -> None:
-    """Start ensure_emergency_portfolio_and_tasks in a daemon thread.
-
-    Safe to call on every request — will no-op if a seed is already running or
-    has completed for this tenant within the current process lifetime.
-    Demo seeding never touches real registered tenants (see _is_demo_seed_tenant).
-    """
-    if not _is_demo_seed_tenant(tenant_id):
-        return
-    if tenant_id in _PORTFOLIO_SEED_DONE or tenant_id in _PORTFOLIO_SEED_RUNNING:
-        return
-    _PORTFOLIO_SEED_RUNNING.add(tenant_id)
-
-    import threading as _bg_thr
-
-    def _run() -> None:
-        try:
-            ensure_emergency_portfolio_and_tasks(tenant_id)
-            _PORTFOLIO_SEED_DONE.add(tenant_id)
-        except Exception as _bg_err:
-            print(f"[background_seed] {tenant_id}: {_bg_err}", flush=True)
-        finally:
-            _PORTFOLIO_SEED_RUNNING.discard(tenant_id)
-
-    _bg_thr.Thread(target=_run, daemon=True).start()
+    """Disabled — Christos pilot only; no background demo portfolio seed."""
+    return
 
 
 def _demo_seed_allowed(tenant_id=DEFAULT_TENANT_ID):
@@ -8484,228 +9034,12 @@ def _demo_seed_allowed(tenant_id=DEFAULT_TENANT_ID):
 
 
 def ensure_emergency_portfolio_and_tasks(tenant_id=DEFAULT_TENANT_ID):
-    """
-    Scale-ready seed: persist 15 properties (Bazaar + 14 ROOMS) with fixed Unsplash URLs + 80% occupancy,
-    then ≥20 property_tasks (Cleaning / Maintenance / VIP Guest). Idempotent.
-
-    Disabled unless SEED_DEMO_DATA=true AND the tenant has zero properties — so it
-    never re-creates properties the user has manually deleted.
-    """
-    if not _demo_seed_allowed(tenant_id):
-        print(f"[ensure_emergency_portfolio_and_tasks] Skipped — demo seeding disabled or tenant '{tenant_id}' not empty", flush=True)
-        return
-    if not SessionLocal or not ManualRoomModel:
-        return
-    seed_props = _default_portfolio_seed_rooms()
-    session = SessionLocal()
-    try:
-        existing = {
-            r[0]
-            for r in session.query(ManualRoomModel.id).filter_by(tenant_id=tenant_id).all()
-        }
-        for row in seed_props:
-            if not isinstance(row, dict):
-                continue
-            rid = row.get("id")
-            if not rid:
-                continue
-            photo = (row.get("photo_url") or row.get("image_url") or "").strip()
-            desc = row.get("description") or ""
-            am_json = json.dumps(row.get("amenities") or [])
-            if rid not in existing:
-                session.add(
-                    ManualRoomModel(
-                        id=rid,
-                        tenant_id=tenant_id,
-                        owner_id=None,
-                        name=row["name"],
-                        description=desc,
-                        photo_url=photo,
-                        amenities=am_json,
-                        status=str(row.get("status", "active")).lower(),
-                        created_at=row.get("created_at") or now_iso(),
-                        max_guests=int(row.get("max_guests") or 2),
-                        bedrooms=int(row.get("bedrooms") or 1),
-                        beds=int(row.get("beds") or 1),
-                        bathrooms=int(row.get("bathrooms") or 1),
-                        occupancy_rate=80.0,
-                    )
-                )
-                existing.add(rid)
-            else:
-                ob = session.query(ManualRoomModel).filter_by(id=rid, tenant_id=tenant_id).first()
-                if ob:
-                    # Only update name if unchanged from the seed default (preserve user edits).
-                    seed_name = row.get("name") or ""
-                    if seed_name and (not ob.name or ob.name == seed_name):
-                        ob.name = seed_name
-                    # Never overwrite description if the user has already added a gallery
-                    # (gallery lines are embedded in description by _merge_description_gallery).
-                    _ob_dm, _ob_gal = _split_description_gallery(ob.description or "")
-                    if not _ob_gal:
-                        # No gallery yet — safe to refresh the seed description.
-                        ob.description = desc
-                    # Preserve a custom photo_url (uploaded by user); only reset if still
-                    # pointing to the original seed URL or if no URL exists yet.
-                    if not ob.photo_url or ob.photo_url.strip() == photo:
-                        if photo:
-                            ob.photo_url = photo
-                    ob.amenities = am_json
-                    try:
-                        ob.occupancy_rate = 80.0
-                        ob.max_guests = int(row.get("max_guests") or ob.max_guests or 2)
-                        ob.bedrooms = int(row.get("bedrooms") or ob.bedrooms or 1)
-                        ob.beds = int(row.get("beds") or ob.beds or 1)
-                        ob.bathrooms = int(row.get("bathrooms") or ob.bathrooms or 1)
-                    except Exception:
-                        pass
-        try:
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            for row in seed_props:
-                if not isinstance(row, dict):
-                    continue
-                rid = row.get("id")
-                if not rid:
-                    continue
-                ob = session.query(ManualRoomModel).filter_by(id=rid, tenant_id=tenant_id).first()
-                if ob:
-                    _ob_dm2, _ob_gal2 = _split_description_gallery(ob.description or "")
-                    if not _ob_gal2:
-                        ob.description = row.get("description") or ob.description
-                    ob.amenities = json.dumps(row.get("amenities") or [])
-                    try:
-                        ob.occupancy_rate = 80.0
-                    except Exception:
-                        pass
-                    ph = (row.get("photo_url") or row.get("image_url") or "").strip()
-                    if ph and (not ob.photo_url or ob.photo_url.strip() == ph):
-                        ob.photo_url = ph
-            try:
-                session.commit()
-            except Exception as e2:
-                session.rollback()
-                print(f"[ensure_emergency_portfolio] upsert retry failed: {e2}", flush=True)
-        print(
-            f"[ensure_emergency_portfolio] portfolio pins synced "
-            f"({session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).count()} total rooms)",
-            flush=True,
-        )
-    except Exception as e:
-        session.rollback()
-        print(f"[ensure_emergency_portfolio] properties: {e}", flush=True)
-    finally:
-        session.close()
-
-    ensure_minimal_staff_for_portfolio(tenant_id)
-    ensure_kobi_maintenance_on_portfolio(tenant_id)
-
-    if not PropertyTaskModel:
-        return
-    if not SKIP_EMERGENCY_TASK_SEED:
-        session = SessionLocal()
-        try:
-            tc = session.query(PropertyTaskModel).filter_by(tenant_id=tenant_id).count()
-            if tc < 20:
-                want = _emergency_task_rows_for_db()
-                have = {r[0] for r in session.query(PropertyTaskModel.id).filter_by(tenant_id=tenant_id).all()}
-                for t in want:
-                    tid = t.get("id")
-                    if not tid or tid in have:
-                        continue
-                    desc = (t.get("description") or t.get("title") or "Task").strip()
-                    session.add(
-                        PropertyTaskModel(
-                            id=tid,
-                            property_id=t.get("property_id") or "",
-                            staff_id="",
-                            assigned_to="",
-                            description=desc,
-                            status=str(t.get("status") or "Pending"),
-                            created_at=t.get("created_at") or now_iso(),
-                            property_name=t.get("property_name") or "",
-                            staff_name=t.get("staff_name") or "",
-                            staff_phone="",
-                            task_type=t.get("task_type") or TASK_TYPE_CLEANING_HE,
-                            priority=t.get("priority") or "normal",
-                            tenant_id=tenant_id,
-                        )
-                    )
-                session.commit()
-                print(f"[ensure_emergency_portfolio] property_tasks count={session.query(PropertyTaskModel).filter_by(tenant_id=tenant_id).count()}", flush=True)
-        except Exception as e:
-            session.rollback()
-            print(f"[ensure_emergency_portfolio] tasks: {e}", flush=True)
-        finally:
-            session.close()
-    assign_stuck_property_tasks(tenant_id)
-    if not SKIP_EMERGENCY_TASK_SEED:
-        ensure_kobi_water_leak_task(tenant_id)
-        ensure_bazaar_emergency_live_tasks(tenant_id)
+    """Christos Corfu pilot only — insert missing seeds; never delete user-created rows."""
+    return seed_active_properties(tenant_id)
 
 
 def ensure_bazaar_emergency_live_tasks(tenant_id=DEFAULT_TENANT_ID):
-    """Two high-priority Emergency rows for Hotel Bazaar Jaffa — proves live task pipeline + UI sync."""
-    if not SessionLocal or not PropertyTaskModel:
-        return
-    ids = ("live-emergency-bazaar-1", "live-emergency-bazaar-2")
-    rows_def = [
-        (
-            "live-emergency-bazaar-1",
-            "דחוף — עומס בקבלה ותור הגעה; גיבוי דלפק קבלה (מלון בזאר יפו)",
-        ),
-        (
-            "live-emergency-bazaar-2",
-            "דחוף — מסדרון סוויטות: רעש מזגן + בדיקת לחץ מים לפני צ'ק-אין (מלון בזאר יפו)",
-        ),
-    ]
-    session = SessionLocal()
-    added = 0
-    try:
-        n_bazaar = (
-            session.query(PropertyTaskModel)
-            .filter_by(tenant_id=tenant_id, property_id="bazaar-jaffa-hotel")
-            .count()
-        )
-        if n_bazaar >= 100:
-            return
-        have = {
-            r[0]
-            for r in session.query(PropertyTaskModel.id).filter(PropertyTaskModel.id.in_(ids)).all()
-        }
-        now = now_iso()
-        for tid, desc in rows_def:
-            if tid in have:
-                continue
-            session.add(
-                PropertyTaskModel(
-                    id=tid,
-                    property_id="bazaar-jaffa-hotel",
-                    staff_id="",
-                    assigned_to="",
-                    description=desc,
-                    status="Pending",
-                    created_at=now,
-                    property_name="Hotel Bazaar Jaffa",
-                    staff_name="",
-                    staff_phone="",
-                    task_type=TASK_TYPE_SERVICE_HE,
-                    priority="high",
-                    tenant_id=tenant_id,
-                )
-            )
-            added += 1
-        if added:
-            session.commit()
-            _bump_tasks_version()
-            _invalidate_owner_dashboard_cache()
-            print(f"[ensure_bazaar_emergency_live_tasks] inserted {added} emergency Bazaar task(s)", flush=True)
-    except Exception as e:
-        session.rollback()
-        print(f"[ensure_bazaar_emergency_live_tasks] {e}", flush=True)
-    finally:
-        session.close()
+    return
 
 
 def ensure_min_property_tasks_volume(tenant_id=DEFAULT_TENANT_ID, minimum=100):
@@ -8719,10 +9053,9 @@ def ensure_min_property_tasks_volume(tenant_id=DEFAULT_TENANT_ID, minimum=100):
             return
         need = minimum - n
         props = [
-            ("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa"),
-            ("wework-tlv-london-ministore", "WeWork London Ministore"),
-            ("wework-tlv-toha", "WeWork ToHA"),
-            ("wework-tlv-azrieli-town", "WeWork Azrieli Town"),
+            ("christos-thaleri-villa-corfu", "Corfu Luxury Villa"),
+            ("christos-manto-beach-apartment-barbati", "Manto Apartments"),
+            ("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite"),
         ]
         now = now_iso()
         for i in range(need):
@@ -9373,371 +9706,17 @@ def ensure_admin_from_env():
         session.close()
 
 
-def seed_dashboard_data():
-    """Seed properties (Alma, Chandler), 3 staff, and 5 sample tasks for Task Calendar."""
-    if not all([SessionLocal, ManualRoomModel, PropertyStaffModel, PropertyTaskModel]):
-        return
-    session = SessionLocal()
-    try:
-        prop_alma = session.query(ManualRoomModel).filter_by(tenant_id=DEFAULT_TENANT_ID, name="Alma").first()
-        if not prop_alma:
-            prop_alma_id = str(uuid.uuid4())
-            session.add(ManualRoomModel(
-                id=prop_alma_id,
-                tenant_id=DEFAULT_TENANT_ID,
-                owner_id=None,
-                name="Alma",
-                description="Villa Alma",
-                status="active",
-                created_at=now_iso(),
-                max_guests=2,
-                bedrooms=1,
-                beds=1,
-                bathrooms=1,
-            ))
-            session.commit()
-            print("[seed_dashboard_data] Created property Alma")
-        else:
-            prop_alma_id = prop_alma.id
-
-        prop_chandler = session.query(ManualRoomModel).filter_by(tenant_id=DEFAULT_TENANT_ID, name="Chandler").first()
-        if not prop_chandler:
-            prop_chandler_id = str(uuid.uuid4())
-            session.add(ManualRoomModel(
-                id=prop_chandler_id,
-                tenant_id=DEFAULT_TENANT_ID,
-                owner_id=None,
-                name="Chandler",
-                description="Chandler Suite",
-                status="active",
-                created_at=now_iso(),
-                max_guests=4,
-                bedrooms=2,
-                beds=2,
-                bathrooms=1,
-            ))
-            session.commit()
-            print("[seed_dashboard_data] Created property Chandler")
-        else:
-            prop_chandler_id = prop_chandler.id
-
-        staff_data = [
-            (prop_alma_id, "Alma", "Cleaning", "0501234567"),
-            (prop_alma_id, "Kobi", "Maintenance", "0529876543"),
-            (prop_alma_id, "Avi", "Electrician", "050-2223334"),
-            (prop_chandler_id, "Goni", "Check-in", "050-1112223"),
-        ]
-        staff_ids = {}
-        for prop_id, name, role, phone in staff_data:
-            existing_staff = session.query(PropertyStaffModel).filter_by(property_id=prop_id, name=name).first()
-            if not existing_staff:
-                sid = str(uuid.uuid4())
-                session.add(PropertyStaffModel(
-                    id=sid,
-                    property_id=prop_id,
-                    name=name,
-                    role=role,
-                    phone_number=phone,
-                ))
-                staff_ids[f"{prop_id}:{name}"] = (sid, prop_id)
-            else:
-                staff_ids[f"{prop_id}:{name}"] = (existing_staff.id, prop_id)
-        session.commit()
-        print("[seed_dashboard_data] Staff ready: Alma, Kobi, Goni")
-
-        def get_staff(prop_id, name):
-            key = f"{prop_id}:{name}"
-            if key in staff_ids:
-                return staff_ids[key][0]
-            for s in session.query(PropertyStaffModel).filter_by(property_id=prop_id).all():
-                if s.name == name:
-                    return s.id
-            return None
-
-        task_count = session.query(PropertyTaskModel).count()
-        if task_count == 0:
-            prop_names = {prop_alma_id: "Alma", prop_chandler_id: "Chandler"}
-            tasks_data = [
-                ("Cleaning for Suite 201", "Alma", prop_alma_id, "Pending"),
-                ("Fix AC in Lobby", "Kobi", prop_alma_id, "Pending"),
-                ("Welcome Pack Setup", "Alma", prop_alma_id, "Done"),
-                ("Prepare Chandler for check-in", "Goni", prop_chandler_id, "Pending"),
-                ("Deep clean Alma villa", "Alma", prop_alma_id, "Pending"),
-            ]
-            for desc, staff_name, prop_id, status in tasks_data:
-                sid = get_staff(prop_id, staff_name)
-                staff_rec = session.query(PropertyStaffModel).filter_by(id=sid).first() if sid else None
-                prop_name = prop_names.get(prop_id, "Property")
-                session.add(PropertyTaskModel(
-                    id=str(uuid.uuid4()),
-                    property_id=prop_id,
-                    staff_id=sid or "",
-                    assigned_to=sid or "",
-                    description=desc,
-                    status=status,
-                    created_at=now_iso(),
-                    property_name=prop_name,
-                    staff_name=staff_rec.name if staff_rec else staff_name,
-                    staff_phone=staff_rec.phone_number if staff_rec else "",
-                ))
-            session.commit()
-            print("[seed_dashboard_data] Created 5 sample tasks for Task Calendar")
-        force_seed_sample_tasks(session)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        print("[seed_dashboard_data] Error:", e)
-    finally:
-        session.close()
-
-
-def force_seed_sample_tasks(session=None):
-    """One-time: Add 3 sample tasks (Clean Ocean Suite, Fix Sink, Guest Check-in) if not present."""
-    if not SessionLocal or not PropertyTaskModel or not PropertyStaffModel or not ManualRoomModel:
-        return
-    sess = session or SessionLocal()
-    try:
-        existing_desc = set()
-        try:
-            for r in sess.query(PropertyTaskModel.description).filter(
-                PropertyTaskModel.description.in_(["Clean Ocean Suite", "Fix Sink", "Guest Check-in"])
-            ).all():
-                desc = r[0] if hasattr(r, "__getitem__") else getattr(r, "description", None)
-                if desc:
-                    existing_desc.add(desc)
-        except Exception:
-            pass
-        if len(existing_desc) >= 3:
-            return
-        rooms = sess.query(ManualRoomModel).filter_by(tenant_id=DEFAULT_TENANT_ID).all()
-        if not rooms:
-            return
-        prop = rooms[0]
-        prop_id = prop.id
-        prop_name = prop.name or "Property"
-        staff_by_name = {}
-        for s in sess.query(PropertyStaffModel).filter_by(property_id=prop_id).all():
-            staff_by_name[s.name] = s
-        tasks_to_add = [
-            ("Clean Ocean Suite", "Alma"),
-            ("Fix Sink", "Kobi"),
-            ("Guest Check-in", "Goni"),
-        ]
-        for desc, staff_name in tasks_to_add:
-            if desc in existing_desc:
-                continue
-            staff = staff_by_name.get(staff_name)
-            sid = staff.id if staff else ""
-            staff_n = staff.name if staff else staff_name
-            staff_p = staff.phone_number if staff else ""
-            sess.add(PropertyTaskModel(
-                id=str(uuid.uuid4()),
-                property_id=prop_id,
-                staff_id=sid,
-                assigned_to=sid,
-                description=desc,
-                status="Pending",
-                created_at=now_iso(),
-                property_name=prop_name,
-                staff_name=staff_n,
-                staff_phone=staff_p,
-            ))
-        if not session:
-            sess.commit()
-            print("[force_seed_sample_tasks] Added 3 sample tasks: Clean Ocean Suite, Fix Sink, Guest Check-in")
-    except Exception as e:
-        if not session:
-            sess.rollback()
-        print("[force_seed_sample_tasks] Note:", e)
-    finally:
-        if not session:
-            sess.close()
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  PILOT DEMO — Seed, Simulation, Mock Staff
 # ══════════════════════════════════════════════════════════════════════════════
 
 def seed_pilot_demo():
-    """Create 10 demo properties (5 John / 5 Sarah), demo owner accounts, and mock staff.
-
-    Robust: each insert is wrapped in its own try/except so a single failure
-    (e.g. missing column) does not abort the entire seed run.
-
-    Disabled unless SEED_DEMO_DATA=true AND the properties table is empty — this
-    stops the 10 demo properties from reappearing after a Railway restart/redeploy
-    once the operator has deleted them.
-    """
-    if not _demo_seed_allowed(DEFAULT_TENANT_ID):
-        print("[seed_pilot_demo] Skipped — demo seeding disabled or DB not empty", flush=True)
-        return
-    if not SessionLocal or not ManualRoomModel:
-        print("[seed_pilot_demo] Skipped — DB models not available")
-        return
-    session = SessionLocal()
+    """Disabled — purge legacy pilot rows; Christos Corfu only via seed_active_properties."""
     try:
-        # ── Quick check: if all 10 properties already exist, nothing to do ────
-        existing_count = session.query(ManualRoomModel).filter(
-            ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
-        ).count()
-        if existing_count >= 10:
-            print(f"[seed_pilot_demo] ✅ Already seeded ({existing_count}/10 properties found)")
-            return
-
-        # ── Demo owner user accounts ──────────────────────────────────────────
-        owner_map = {}
-        if UserModel:
-            for email, name in [("john@easyhost.demo", "John"), ("sarah@easyhost.demo", "Sarah")]:
-                try:
-                    existing = session.query(UserModel).filter_by(email=email).first()
-                    if not existing:
-                        uid = str(uuid.uuid4())
-                        session.add(UserModel(
-                            id=uid, tenant_id=DEFAULT_TENANT_ID, email=email,
-                            password_hash=generate_password_hash("demo123", method="pbkdf2:sha256"),
-                            role="host", created_at=now_iso(),
-                        ))
-                        session.commit()
-                        owner_map[name] = uid
-                    else:
-                        owner_map[name] = existing.id
-                except Exception as _ue:
-                    session.rollback()
-                    print(f"[seed_pilot_demo] Demo user {email} skipped: {_ue}")
-
-        # ── 10 pilot properties (one commit per row to survive partial failures) ─
-        pilot_defs = [
-            ("John",  "John's Beach House",       "Beachfront 3BR villa",              6, 250),
-            ("John",  "John's Downtown Loft",     "Modern loft in the city centre",    2, 150),
-            ("John",  "John's Mountain Cabin",    "Cozy mountain retreat",             4, 180),
-            ("John",  "John's City Studio",       "Compact studio, business district", 2,  90),
-            ("John",  "John's Rooftop Penthouse", "Luxury penthouse, panoramic views", 8, 400),
-            ("Sarah", "Sarah's Poolside Villa",   "5-star villa with private pool",    8, 350),
-            ("Sarah", "Sarah's Garden Suite",     "Tranquil garden apartment",         3, 120),
-            ("Sarah", "Sarah's Harbor View",      "Waterfront apartment, harbour views", 4, 200),
-            ("Sarah", "Sarah's Cozy Cottage",     "Charming countryside cottage",      4, 140),
-            ("Sarah", "Sarah's Modern Flat",      "Sleek flat near airport",           2, 110),
-        ]
-        seeded = 0
-        for owner_name, pname, desc, guests, _price in pilot_defs:
-            try:
-                if session.query(ManualRoomModel).filter_by(
-                    tenant_id=DEFAULT_TENANT_ID, name=pname
-                ).first():
-                    continue
-                new_prop = ManualRoomModel(
-                    id=str(uuid.uuid4()),
-                    tenant_id=DEFAULT_TENANT_ID,
-                    name=pname,
-                    description=desc,
-                    status="active",
-                    created_at=now_iso(),
-                    max_guests=guests,
-                    bedrooms=max(1, guests // 2),
-                    beds=max(1, guests // 2),
-                    bathrooms=max(1, guests // 3),
-                )
-                # owner_id is optional — only set if column exists on model
-                if hasattr(new_prop, "owner_id"):
-                    new_prop.owner_id = owner_map.get(owner_name)
-                session.add(new_prop)
-                session.commit()
-                seeded += 1
-            except Exception as _pe:
-                session.rollback()
-                print(f"[seed_pilot_demo] Property '{pname}' skipped: {_pe}")
-
-        # ── Mock staff for every pilot property ───────────────────────────────
-        staff_added = 0
-        if PropertyStaffModel:
-            for pname in DEMO_PILOT_PROPERTY_NAMES:
-                try:
-                    prop = session.query(ManualRoomModel).filter_by(
-                        tenant_id=DEFAULT_TENANT_ID, name=pname
-                    ).first()
-                    if not prop:
-                        continue
-                    for ms in MOCK_STAFF:
-                        if not session.query(PropertyStaffModel).filter_by(
-                            property_id=prop.id, name=ms["name"]
-                        ).first():
-                            session.add(PropertyStaffModel(
-                                id=str(uuid.uuid4()), property_id=prop.id,
-                                name=ms["name"], role=ms["role"], phone_number=ms["phone"],
-                            ))
-                            staff_added += 1
-                    session.commit()
-                except Exception as _se:
-                    session.rollback()
-                    print(f"[seed_pilot_demo] Staff for '{pname}' skipped: {_se}")
-
-        # ── Sample bookings (last 30 days) to populate Revenue dashboard ─────
-        bookings_added = 0
-        if BookingModel:
-            try:
-                existing_bookings = session.query(BookingModel).filter_by(
-                    tenant_id=DEFAULT_TENANT_ID
-                ).count()
-            except Exception:
-                existing_bookings = 0
-
-            if existing_bookings == 0:
-                # Re-fetch the pilot properties so we can link bookings to real IDs
-                pilot_props = session.query(ManualRoomModel).filter(
-                    ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
-                ).all()
-
-                _booking_defs = [
-                    # (guest_name, nights, total_price, days_ago)
-                    ("James Mitchell",   3,  1800, 2),
-                    ("Laura Bennett",    5,  2500, 5),
-                    ("Carlos Rivera",    2,   900, 7),
-                    ("Sophie Turner",    4,  1400, 10),
-                    ("Daniel Kim",       1,   550, 12),
-                    ("Emily Hartman",    6,  2100, 15),
-                    ("Michael Johnson",  3,  1250, 18),
-                    ("Olivia Nguyen",    2,   780, 21),
-                    ("Ethan Clarke",     7,  2450, 25),
-                    ("Ava Martins",      4,  1600, 29),
-                ]
-                for guest_name, nights, total_price, days_ago in _booking_defs:
-                    try:
-                        prop = random.choice(pilot_props) if pilot_props else None
-                        check_in_dt  = datetime.now(timezone.utc) - timedelta(days=days_ago + nights)
-                        check_out_dt = check_in_dt + timedelta(days=nights)
-                        session.add(BookingModel(
-                            id=str(uuid.uuid4()),
-                            tenant_id=DEFAULT_TENANT_ID,
-                            property_id=prop.id if prop else None,
-                            property_name=prop.name if prop else "Demo Property",
-                            guest_name=guest_name,
-                            guest_phone="",
-                            check_in=check_in_dt.strftime("%Y-%m-%d"),
-                            check_out=check_out_dt.strftime("%Y-%m-%d"),
-                            nights=nights,
-                            total_price=total_price,
-                            status="completed",
-                            created_at=now_iso(),
-                        ))
-                        bookings_added += 1
-                    except Exception as _be:
-                        session.rollback()
-                        print(f"[seed_pilot_demo] Booking for '{guest_name}' skipped: {_be}")
-                try:
-                    session.commit()
-                except Exception as _bce:
-                    session.rollback()
-                    print(f"[seed_pilot_demo] Bookings commit failed: {_bce}")
-
-        total = session.query(ManualRoomModel).filter(
-            ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
-        ).count()
-        print(f"[seed_pilot_demo] ✅ Done — {seeded} new properties, {staff_added} staff, {bookings_added} bookings added ({total}/10 total)")
+        _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
     except Exception as e:
-        session.rollback()
-        print(f"[seed_pilot_demo] Fatal error: {e}")
-    finally:
-        session.close()
+        print(f"[seed_pilot_demo] wipe note: {e}", flush=True)
+    return {"ok": True, "christos_only": True}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -9753,24 +9732,6 @@ _DEMO_ENGINE_SCHED_STARTED = False
 _CHECKOUT_REMINDER_LOCK = threading.Lock()
 _CHECKOUT_REMINDER_LAST_DATE = None
 
-# Hotel Bazaar Jaffa + 14× WeWork — matches client emergency seed (15 cards)
-_DEMO_15_WEWORK = [
-    ("wework-tlv-london-ministore", "WeWork London Ministore", "תל אביב"),
-    ("wework-tlv-toha", "WeWork ToHA", "תל אביב"),
-    ("wework-tlv-azrieli-town", "WeWork Azrieli Town", "תל אביב"),
-    ("wework-tlv-shaul-hamelech", "WeWork Shaul HaMelech 35", "תל אביב"),
-    ("wework-tlv-midtown", "WeWork Midtown", "תל אביב"),
-    ("wework-tlv-sarona", "WeWork Sarona", "תל אביב"),
-    ("wework-tlv-hazerem", "WeWork HaZerem 10", "תל אביב"),
-    ("wework-tlv-schocken", "WeWork Schocken 23", "תל אביב"),
-    ("wework-tlv-dubnov", "WeWork Dubnov 7", "תל אביב"),
-    ("wework-rg-sapir", "WeWork Sapir Tower", "רמת גן"),
-    ("wework-haifa-atzmaut", "WeWork Haifa — Derech Ha'atzmaut 45", "חיפה"),
-    ("wework-herzliya-shenkar", "WeWork Herzliya — Aryeh Shenkar 1", "הרצליה"),
-    ("wework-jlm-king-george", "WeWork Jerusalem — King George 20", "ירושלים"),
-    ("wework-b7-halutz", "WeWork Beersheba — Halutziei HaOr 16", "באר שבע"),
-]
-
 _DEMO_GUEST_FIRST_NAMES = (
     "Noam", "Yael", "David", "Sarah", "Daniel", "Maya", "Ron", "Tamar", "Alex", "Jordan",
     "Emma", "Liam", "Olivia", "Ethan", "Sophia", "James", "Chen", "Lin", "Marco", "Elena",
@@ -9782,206 +9743,15 @@ _DEMO_GUEST_LAST_NAMES = (
 )
 
 
-def _demo_portfolio_15_rows():
-    """(id, name, description, photo_url, max_guests) for Bazaar + 14 WeWork."""
-    bazaar_img = "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80"
-    ww_img = "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80"
-    rows = [
-        (
-            "bazaar-jaffa-hotel",
-            "Hotel Bazaar Jaffa",
-            "Bohemian Jaffa — demo portfolio row.",
-            bazaar_img,
-            2,
-        ),
-    ]
-    for wid, wname, city_he in _DEMO_15_WEWORK:
-        rows.append(
-            (
-                wid,
-                wname,
-                f"WeWork {city_he} — demo portfolio row.",
-                ww_img,
-                1,
-            )
-        )
-    return rows
-
-
 def initialize_demo_data():
-    """
-    Idempotent simulation: ensure 15 canonical properties exist, ~80% Occupied,
-    100+ guest bookings, housekeeping workers, automation toggles ON, sample tasks.
-    """
-    global DEMO_AUTOMATION_SETTINGS
-    if not SessionLocal or not ManualRoomModel:
-        print("[initialize_demo_data] Skipped — DB unavailable")
-        return {"ok": False, "error": "no_db"}
-
-    tenant_id = DEFAULT_TENANT_ID
-    portfolio = _demo_portfolio_15_rows()
-    n = len(portfolio)
-    occupied_n = max(1, int(round(0.80 * n)))
-
-    session = SessionLocal()
-    stats = {"properties_upserted": 0, "bookings_added": 0, "staff_added": 0, "tasks_added": 0}
+    """Christos Corfu pilot only — no 15-property demo simulation."""
     try:
-        for i, (pid, pname, pdesc, pimg, max_g) in enumerate(portfolio):
-            row = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
-            occ = "Occupied" if i < occupied_n else "Vacant"
-            if not row:
-                session.add(ManualRoomModel(
-                    id=pid,
-                    tenant_id=tenant_id,
-                    owner_id=None,
-                    name=pname,
-                    description=pdesc,
-                    photo_url=pimg,
-                    amenities="[]",
-                    status=occ,
-                    created_at=now_iso(),
-                    ai_automation_enabled=1,
-                    max_guests=max_g,
-                    bedrooms=1 if max_g > 1 else 0,
-                    beds=1 if max_g > 1 else 0,
-                    bathrooms=1 if max_g > 1 else 0,
-                ))
-                stats["properties_upserted"] += 1
-            else:
-                row.status = occ
-                row.ai_automation_enabled = 1
-                if not (row.photo_url or "").strip():
-                    row.photo_url = pimg
-
-        session.commit()
-
-        # Housekeeping "Worker" per property for towel / service tasks
-        for pid, pname, _, _, _ in portfolio:
-            exists = session.query(PropertyStaffModel).filter_by(
-                property_id=pid, name="עובד",
-            ).first() if PropertyStaffModel else None
-            if not exists and PropertyStaffModel:
-                session.add(PropertyStaffModel(
-                    id=str(uuid.uuid4()),
-                    property_id=pid,
-                    name="עובד",
-                    role="Housekeeping",
-                    department="Operations",
-                    phone_number="0500000001",
-                    branch_slug="",
-                ))
-                stats["staff_added"] += 1
-        session.commit()
-
-        # 100+ bookings with names and stay dates
-        if BookingModel:
-            cur_ct = session.query(BookingModel).filter_by(tenant_id=tenant_id).count()
-            target_total = 110
-            need = max(0, target_total - cur_ct)
-            pid_list = [p[0] for p in portfolio]
-            for _ in range(need):
-                prop_id = random.choice(pid_list)
-                pname = next((x[1] for x in portfolio if x[0] == prop_id), "Property")
-                gn = f"{random.choice(_DEMO_GUEST_FIRST_NAMES)} {random.choice(_DEMO_GUEST_LAST_NAMES)}"
-                phone = f"05{random.randint(2000000, 9999999)}"
-                base = datetime.now(timezone.utc).date()
-                start = base - timedelta(days=random.randint(0, 75))
-                nights = random.randint(1, 10)
-                end = start + timedelta(days=nights)
-                st = random.choice(["confirmed", "confirmed", "completed"])
-                session.add(BookingModel(
-                    id=str(uuid.uuid4()),
-                    tenant_id=tenant_id,
-                    property_id=prop_id,
-                    property_name=pname,
-                    guest_name=gn,
-                    guest_phone=phone,
-                    check_in=start.isoformat(),
-                    check_out=end.isoformat(),
-                    nights=nights,
-                    total_price=random.randint(400, 4800),
-                    status=st,
-                    created_at=now_iso(),
-                ))
-                stats["bookings_added"] += 1
-
-            # Active stays with checkout today — feeds Maya 11:00 reminders
-            today_iso = datetime.now(timezone.utc).date().isoformat()
-            existing_today_out = session.query(BookingModel).filter_by(
-                tenant_id=tenant_id, check_out=today_iso,
-            ).count()
-            if existing_today_out < 8:
-                for _ in range(8 - existing_today_out):
-                    prop_id = random.choice(pid_list)
-                    pname = next((x[1] for x in portfolio if x[0] == prop_id), "Property")
-                    gn = f"{random.choice(_DEMO_GUEST_FIRST_NAMES)} {random.choice(_DEMO_GUEST_LAST_NAMES)}"
-                    phone = f"05{random.randint(2000000, 9999999)}"
-                    cin = (
-                        datetime.now(timezone.utc).date()
-                        - timedelta(days=random.randint(1, 5))
-                    ).isoformat()
-                    session.add(BookingModel(
-                        id=str(uuid.uuid4()),
-                        tenant_id=tenant_id,
-                        property_id=prop_id,
-                        property_name=pname,
-                        guest_name=gn,
-                        guest_phone=phone,
-                        check_in=cin,
-                        check_out=today_iso,
-                        nights=random.randint(1, 5),
-                        total_price=random.randint(400, 2200),
-                        status="confirmed",
-                        created_at=now_iso(),
-                    ))
-                    stats["bookings_added"] += 1
-            session.commit()
-
-        # Sample operational tasks (welcome / cleaning pipeline) — off by default for live ops
-        if PropertyTaskModel and not SKIP_INIT_DEMO_TASKS:
-            demo_descs = [
-                "Automated Welcome — בדיקת הגעה",
-                "Smart Task — הכנת חדר לצ'ק-אין",
-                "ניקיון לובי — סבב ערב",
-            ]
-            try:
-                for pid, pname, _, _, _ in random.sample(portfolio, min(8, len(portfolio))):
-                    for desc in random.sample(demo_descs, 1):
-                        session.add(PropertyTaskModel(
-                            id=str(uuid.uuid4()),
-                            property_id=pid,
-                            staff_id="",
-                            assigned_to="",
-                            description=desc,
-                            status="Pending",
-                            created_at=now_iso(),
-                            property_name=pname,
-                            staff_name="עובד",
-                            staff_phone="0500000001",
-                            task_type="Service",
-                        ))
-                        stats["tasks_added"] += 1
-                session.commit()
-            except Exception as _te:
-                session.rollback()
-                print(f"[initialize_demo_data] sample tasks skipped: {_te}", flush=True)
-
-        DEMO_AUTOMATION_SETTINGS["automated_welcome_enabled"] = True
-        DEMO_AUTOMATION_SETTINGS["smart_task_assignment_enabled"] = True
-
-        print(
-            f"[initialize_demo_data] ✅ {stats} — {occupied_n}/{n} Occupied, automation ON",
-            flush=True,
-        )
-        return {"ok": True, **stats, "occupied_slots": occupied_n, "total_properties": n}
+        _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
+        out = seed_active_properties(DEFAULT_TENANT_ID)
+        return {"ok": True, **(out if isinstance(out, dict) else {})}
     except Exception as e:
-        session.rollback()
-        print(f"[initialize_demo_data] Error: {e}", flush=True)
-        import traceback as _tb_id
-        _tb_id.print_exc()
+        print(f"[initialize_demo_data] {e}", flush=True)
         return {"ok": False, "error": str(e)}
-    finally:
-        session.close()
 
 
 def run_maya_checkout_reminders_for_today():
@@ -10310,15 +10080,15 @@ def runPilotSimulation() -> dict:
         except Exception as e:
             result["schema_error"] = str(e)
 
-    # 2 — seed
+    # 2 — Christos pilot seed only
     try:
-        seed_pilot_demo()
-        # Count how many pilot properties exist after seeding
+        _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
+        seed_active_properties(DEFAULT_TENANT_ID)
         if SessionLocal and ManualRoomModel:
             s = SessionLocal()
             try:
-                result["properties_seeded"] = s.query(ManualRoomModel).filter(
-                    ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+                result["properties_seeded"] = s.query(ManualRoomModel).filter_by(
+                    tenant_id=DEFAULT_TENANT_ID
                 ).count()
             finally:
                 s.close()
@@ -10713,19 +10483,20 @@ def init_db_browser():
     except Exception as e:
         log(f"[init-db] ⚠️  Admin seed warning: {e}")
 
-    # ── 2. Seed 10 pilot properties ──────────────────────────────────────────
+    # ── 2. Christos Corfu pilot (3 properties) ───────────────────────────────
     prop_count = 0
     try:
-        seed_pilot_demo()
+        _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
+        seed_active_properties(DEFAULT_TENANT_ID)
         if SessionLocal and ManualRoomModel:
             s = SessionLocal()
             try:
-                prop_count = s.query(ManualRoomModel).filter(
-                    ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
+                prop_count = s.query(ManualRoomModel).filter_by(
+                    tenant_id=DEFAULT_TENANT_ID
                 ).count()
             finally:
                 s.close()
-        log(f"[init-db] ✅ {prop_count} pilot properties in database")
+        log(f"[init-db] ✅ {prop_count} properties in database")
     except Exception as e:
         log(f"[init-db] ⚠️  Seed warning: {e}")
 
@@ -11414,6 +11185,130 @@ def _ical_uid_tag(uid):
     return s or "noid"
 
 
+def _booking_ref_tag(booking_id):
+    s = re.sub(r"[^a-zA-Z0-9_.:@-]", "", str(booking_id or "")[:80])
+    return s or uuid.uuid4().hex[:12]
+
+
+def _property_task_is_open(row):
+    st = (getattr(row, "status", None) or "").strip().lower()
+    return st not in ("done", "completed", "archived", "cancelled", "closed")
+
+
+def _property_task_is_booking_prep(row):
+    """Open booking-derived check-in prep task (persisted source or legacy markers)."""
+    if not row:
+        return False
+    bid = str(getattr(row, "booking_id", None) or "").strip()
+    rid = str(getattr(row, "reservation_id", None) or "").strip()
+    if bid or rid:
+        return True
+    src = _effective_task_source(row)
+    if src == TASK_SOURCE_BOOKING:
+        return True
+    desc = (getattr(row, "description", None) or "").lower()
+    if "[booking_ref:" in desc or "[ical_uid:" in desc:
+        return True
+    if "הכנה לצ" in desc or "check-in prep" in desc or "prep check" in desc:
+        return True
+    return False
+
+
+def _ensure_booking_prep_tasks_for_upcoming(session, tenant_id, bookings):
+    """Idempotent: create missing open prep tasks for upcoming stays (source=booking)."""
+    if not session or not PropertyTaskModel or not bookings:
+        return 0
+    created = 0
+    today = datetime.now(timezone.utc).date()
+    for b in bookings:
+        if not isinstance(b, dict):
+            continue
+        bid = str(b.get("id") or "").strip()
+        pid = str(b.get("property_id") or "").strip()
+        ci = str(b.get("check_in") or "")[:10]
+        co = str(b.get("check_out") or ci)[:10]
+        if not bid or not pid or not ci:
+            continue
+        try:
+            ci_d = datetime.strptime(ci, "%Y-%m-%d").date()
+            co_d = datetime.strptime(co, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if ci_d < today - timedelta(days=1):
+            continue
+        tag = f"[booking_ref:{_booking_ref_tag(bid)}]"
+        q = _property_tasks_query_for_tenant(session, tenant_id)
+        exists = None
+        if q is not None:
+            exists = q.filter(
+                or_(
+                    PropertyTaskModel.booking_id == bid,
+                    PropertyTaskModel.description.like(f"%{tag}%"),
+                )
+            ).first()
+        if exists:
+            if not _property_task_is_open(exists):
+                continue
+            if (getattr(exists, "source", None) or "").strip().lower() != TASK_SOURCE_BOOKING:
+                exists.source = TASK_SOURCE_BOOKING
+            if not (getattr(exists, "booking_id", None) or "").strip():
+                exists.booking_id = bid
+            continue
+        prop_name = (b.get("property_name") or "").strip()
+        if not prop_name and ManualRoomModel:
+            room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
+            if room:
+                prop_name = (room.name or "") or ""
+        staff_name, staff_phone, staff_id = _pick_prep_staff_for_property(session, pid)
+        effective_status = "Assigned" if staff_name else "Pending"
+        guest = _guest_display_name_he(b.get("guest_name") or "אורח")
+        room_label = _christos_property_display_he(pid, prop_name or "יחידה")
+        ci_fmt = _format_date_he(ci_d)
+        co_fmt = _format_date_he(co_d)
+        desc = (
+            f"הכנה לצ'ק-אין · {room_label} · אורח: {guest} · "
+            f"כניסה {ci_fmt} · יציאה {co_fmt} {tag}"
+        )
+        due_at = f"{ci}T06:00:00+00:00"
+        try:
+            ci_dt = datetime(ci_d.year, ci_d.month, ci_d.day, tzinfo=timezone.utc)
+            hours_to_ci = (ci_dt - datetime.now(timezone.utc)).total_seconds() / 3600.0
+        except Exception:
+            hours_to_ci = 999
+        priority = "high" if 0 <= hours_to_ci <= 24 else "normal"
+        session.add(
+            PropertyTaskModel(
+                id=str(uuid.uuid4()),
+                property_id=pid,
+                staff_id=staff_id,
+                assigned_to=staff_id,
+                description=desc,
+                status=effective_status,
+                created_at=now_iso(),
+                property_name=prop_name or room_label or pid,
+                staff_name=staff_name,
+                staff_phone=staff_phone or "",
+                photo_url="",
+                task_type=TASK_TYPE_CLEANING_HE,
+                priority=priority,
+                tenant_id=tenant_id,
+                due_at=due_at,
+                source=TASK_SOURCE_BOOKING,
+                booking_id=bid,
+            )
+        )
+        created += 1
+    if created:
+        try:
+            session.commit()
+            assign_stuck_property_tasks(tenant_id)
+        except Exception as ce:
+            session.rollback()
+            print(f"[_ensure_booking_prep_tasks] commit failed: {ce}", flush=True)
+            return 0
+    return created
+
+
 def _pick_prep_staff_for_property(session, property_id):
     """Prefer cleaning/housekeeping names for check-in prep tasks."""
     if not property_id or not PropertyStaffModel:
@@ -11519,10 +11414,15 @@ def sync_ical_prep_checkin_tasks(tenant_id, ical_url, property_id=None):
                     out["skipped"] += 1
                     continue
 
-            guest = res.get("guest_name") or "אורח"
-            room_label = res.get("room_name") or prop_name or "יחידה"
+            guest = _guest_display_name_he(res.get("guest_name") or "אורח")
+            room_label = _christos_property_display_he(
+                pid, res.get("room_name") or prop_name or "יחידה"
+            )
+            ci_fmt = _format_date_he(ci)
+            co_fmt = _format_date_he(co_d)
             desc = (
-                f"הכנה לצ'ק-אין — {room_label} — אורח: {guest} — צ'ק-אין {ci} · צ'ק-אאוט {co_d.isoformat()} {tag}"
+                f"הכנה לצ'ק-אין · {room_label} · אורח: {guest} · "
+                f"כניסה {ci_fmt} · יציאה {co_fmt} {tag}"
             )
             due_at = f"{str(ci)[:10]}T06:00:00+00:00"
             try:
@@ -11551,6 +11451,8 @@ def sync_ical_prep_checkin_tasks(tenant_id, ical_url, property_id=None):
                 priority=priority,
                 tenant_id=tenant_id,
                 due_at=due_at,
+                source=TASK_SOURCE_BOOKING,
+                reservation_id=_ical_uid_tag(uid) if uid else "",
             )
             session.add(task)
             out["created"] += 1
@@ -12124,16 +12026,11 @@ def create_property():
                 rooms = []
             if rooms is None or not isinstance(rooms, list):
                 rooms = []
+            rooms = [r for r in rooms if isinstance(r, dict) and not _is_junk_mock_property(r)]
+            if _christos_pilot_is_active(tenant_id, user_id, rooms):
+                rooms = _christos_pilot_room_rows(tenant_id, user_id, rooms)
             portfolio_fallback = False
-            if not rooms and _is_demo_seed_tenant(tenant_id):
-                # Demo tenant only: Bazaar + City Tower + ROOMS + 12× WeWork (15) — never empty body.
-                # Real registered tenants get a clean empty list (frontend shows onboarding).
-                initial_properties = _default_portfolio_seed_rooms()
-                rooms = [{**r, "tenant_id": tenant_id} for r in initial_properties if isinstance(r, dict)]
-                portfolio_fallback = True
-            rooms = [_ensure_room_image_urls(r) for r in rooms if isinstance(r, dict)]
-            if _is_demo_seed_tenant(tenant_id):
-                rooms = _ensure_demo_portfolio_properties(rooms)
+            rooms = [_finalize_property_images(r) for r in rooms if isinstance(r, dict)]
             try:
                 plimit = request.args.get("limit")
                 poffset_raw = request.args.get("offset", "0") or "0"
@@ -12142,6 +12039,11 @@ def create_property():
             except (TypeError, ValueError):
                 prop_limit, prop_offset = None, 0
             prop_total = len(rooms)
+            prop_ids = [str(r.get("id")) for r in rooms if isinstance(r, dict)]
+            prop_images = {
+                str(r.get("id")): len(r.get("pictures") or [])
+                for r in rooms if isinstance(r, dict)
+            }
             if prop_limit is not None:
                 rooms = rooms[prop_offset : prop_offset + prop_limit]
             resp = _no_cache_json(jsonify(rooms))
@@ -12155,19 +12057,22 @@ def create_property():
             resp.headers["X-DB-Status"] = "fallback" if portfolio_fallback else "ok"
             if portfolio_fallback:
                 resp.headers["X-Portfolio-Fallback"] = "1"
+            print(f"[Properties API] GET ids/images {prop_images}", flush=True)
+            print(f"[Properties API] GET count={prop_total} ids={prop_ids}", flush=True)
             return resp, 200
         except Exception as _prop_err:
             print(f"[create_property] GET list failed: {_prop_err!r}", flush=True)
             import traceback as _tb_prop
             _tb_prop.print_exc()
-            # Error recovery: demo tenants get the seed portfolio; real tenants get [].
-            if _is_demo_seed_tenant(tenant_id):
-                initial_properties = _default_portfolio_seed_rooms()
-                rooms = _ensure_demo_portfolio_properties(
-                    [_ensure_room_image_urls({**r, "tenant_id": tenant_id}) for r in initial_properties if isinstance(r, dict)]
-                )
-            else:
+            # Error recovery: never inject demo portfolio — return empty or Christos-scoped live rows.
+            try:
+                rooms = list_manual_rooms(tenant_id, owner_id=getattr(request, "user_id", None))
+            except Exception:
                 rooms = []
+            rooms = [r for r in (rooms or []) if isinstance(r, dict) and not _is_junk_mock_property(r)]
+            if _christos_pilot_is_active(tenant_id, getattr(request, "user_id", None), rooms):
+                rooms = _christos_pilot_room_rows(tenant_id, getattr(request, "user_id", None), rooms)
+            rooms = [_finalize_property_images(r) for r in rooms if isinstance(r, dict)]
             try:
                 plimit = request.args.get("limit")
                 poffset_raw = request.args.get("offset", "0") or "0"
@@ -12265,6 +12170,7 @@ def create_property():
             except Exception:
                 amenities_list = []
         owner_id = getattr(request, "user_id", None) or f"demo-{tenant_id}"
+        room_id = (data.get("id") or data.get("room_id") or "").strip() or None
         def _int_or_none(val):
             if val is None or val == "":
                 return None
@@ -12276,26 +12182,78 @@ def create_property():
         bedrooms = _int_or_none(data.get("bedrooms"))
         beds = _int_or_none(data.get("beds"))
         bathrooms = _int_or_none(data.get("bathrooms"))
+        price_per_night = None
+        for pkey in ("price_per_night", "nightly_price", "price"):
+            if data.get(pkey) is not None and data.get(pkey) != "":
+                try:
+                    price_per_night = float(data.get(pkey))
+                except (TypeError, ValueError):
+                    price_per_night = None
+                break
+        currency = (data.get("currency") or "USD").strip().upper() or "USD"
+        status = (data.get("status") or "active").strip() or "active"
+        prop_type = (data.get("type") or data.get("property_type") or "hotel").strip() or "hotel"
+        city = (data.get("city") or data.get("location") or "").strip()
+        country = (data.get("country") or "").strip()
+        print(
+            f"[PropertyCreate] POST payload name={name!r} status={status!r} "
+            f"type={prop_type!r} city={city!r} country={country!r} tenant={tenant_id!r}",
+            flush=True,
+        )
         room = create_manual_room(
             tenant_id,
             name,
             description=description or None,
             photo_url=photo_url or None,
+            room_id=room_id,
             amenities=amenities_list if amenities_list else None,
             owner_id=owner_id,
             max_guests=max_guests,
             bedrooms=bedrooms,
             beds=beds,
             bathrooms=bathrooms,
+            price_per_night=price_per_night,
+            currency=currency,
+            status=status,
         )
         if not room:
             return jsonify({"error": "Failed to create property"}), 500
+        if city or country or (data.get("type") or data.get("property_type")):
+            full_desc = description or room.get("description") or ""
+            desc_main, gal = _split_description_gallery(full_desc)
+            meta_bits = []
+            if prop_type and (data.get("type") or data.get("property_type")):
+                meta_bits.append(f"Type: {prop_type}")
+            if city:
+                meta_bits.append(f"City: {city}")
+            if country:
+                meta_bits.append(f"Country: {country}")
+            if meta_bits:
+                desc_main = f"{desc_main} | {' · '.join(meta_bits)}".strip(" |")
+            if _description_has_explicit_empty_gallery(full_desc):
+                new_desc = _merge_description_gallery(desc_main, [], allow_empty_marker=True)
+            elif gal:
+                new_desc = _merge_description_gallery(desc_main, gal)
+            else:
+                new_desc = desc_main
+            upsert_property_db(tenant_id, {"id": room.get("id"), "name": name, "description": new_desc})
+            refreshed = list_manual_rooms(tenant_id, owner_id=None)
+            for rr in refreshed:
+                if str(rr.get("id")) == str(room.get("id")):
+                    room = rr
+                    break
         try:
             _STATUS_GRID_CACHE["ts"] = 0.0
             _STATUS_GRID_CACHE["payload"] = None
             _STATUS_GRID_CACHE["key"] = None
         except Exception:
             pass
+        print(f"[PropertyCreate] POST response id={room.get('id')!r} name={room.get('name')!r}", flush=True)
+        count_after = _db_manual_room_count(tenant_id)
+        ids_after = _db_manual_room_ids(tenant_id)
+        pics_n = len(room.get("pictures") or []) if isinstance(room.get("pictures"), list) else 0
+        print(f"[Properties API] POST saved id={room.get('id')} images_count={pics_n}", flush=True)
+        print(f"[Properties API] POST count_after={count_after} ids={ids_after}", flush=True)
         return jsonify({"ok": True, "property": room}), 201
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
@@ -12366,28 +12324,49 @@ def update_property(property_id):
             if data.get("name"):
                 room.name = (data.get("name") or "").strip() or room.name
             old_main, old_gal = _split_description_gallery(room.description or "")
-            pics_in = []
-            for key in ("pictures", "images"):
-                if isinstance(data.get(key), list):
-                    for x in data[key]:
-                        s = str(x).strip() if x is not None else ""
-                        if s and s not in pics_in:
-                            pics_in.append(s)
-            # ── Convert base64 data URIs to real files (mobile fallback) ──────
-            pics_in = [_save_base64_image(u, tenant_id) for u in pics_in]
-            if pics_in:
-                room.photo_url = pics_in[0]
+            gallery_list = None
+            if isinstance(data.get("pictures"), list):
+                gallery_list = data.get("pictures")
+            elif isinstance(data.get("images"), list):
+                gallery_list = data.get("images")
+            elif isinstance(data.get("gallery"), list):
+                gallery_list = data.get("gallery")
+            if gallery_list is not None:
+                pics_in = []
+                for x in gallery_list:
+                    s = str(x).strip() if x is not None else ""
+                    if s and s not in pics_in:
+                        pics_in.append(s)
+                pics_in = [_save_base64_image(u, tenant_id) for u in pics_in]
                 base_main = (data["description"] if "description" in data else old_main) or ""
                 bm, _ = _split_description_gallery(base_main)
-                merged_pics = list(dict.fromkeys(pics_in + [g for g in old_gal if g not in pics_in]))
-                room.description = _merge_description_gallery(bm, merged_pics)
+                if pics_in:
+                    room.photo_url = pics_in[0]
+                    room.description = _merge_description_gallery(bm, pics_in)
+                else:
+                    room.photo_url = ""
+                    room.description = _merge_description_gallery(bm, [], allow_empty_marker=True)
             else:
-                if "description" in data:
-                    inc_main, _ = _split_description_gallery(data.get("description") or "")
-                    room.description = _merge_description_gallery(inc_main, old_gal)
-                if "photo_url" in data:
-                    raw_pu = data.get("photo_url") or ""
-                    room.photo_url = _save_base64_image(raw_pu, tenant_id) if raw_pu else ""
+                pics_in = []
+                for key in ("pictures", "images"):
+                    if isinstance(data.get(key), list):
+                        for x in data[key]:
+                            s = str(x).strip() if x is not None else ""
+                            if s and s not in pics_in:
+                                pics_in.append(s)
+                if pics_in:
+                    pics_in = [_save_base64_image(u, tenant_id) for u in pics_in]
+                    room.photo_url = pics_in[0]
+                    base_main = (data["description"] if "description" in data else old_main) or ""
+                    bm, _ = _split_description_gallery(base_main)
+                    room.description = _merge_description_gallery(bm, pics_in)
+                else:
+                    if "description" in data:
+                        inc_main, _ = _split_description_gallery(data.get("description") or "")
+                        room.description = _merge_description_gallery(inc_main, old_gal)
+                    if "photo_url" in data:
+                        raw_pu = data.get("photo_url") or ""
+                        room.photo_url = _save_base64_image(raw_pu, tenant_id) if raw_pu else ""
             if "amenities" in data:
                 room.amenities = json.dumps(data.get("amenities") or [])
             if "status" in data:
@@ -12406,6 +12385,15 @@ def update_property(property_id):
             _upd_int("bedrooms", "bedrooms", 1)
             _upd_int("beds", "beds", 1)
             _upd_int("bathrooms", "bathrooms", 1)
+            for pkey in ("price_per_night", "nightly_price", "price"):
+                if pkey in data and data.get(pkey) is not None and data.get(pkey) != "":
+                    try:
+                        room.price_per_night = float(data.get(pkey))
+                    except (TypeError, ValueError):
+                        pass
+                    break
+            if "currency" in data and data.get("currency"):
+                room.currency = str(data.get("currency")).strip().upper() or "USD"
             session.commit()
             try:
                 _STATUS_GRID_CACHE["ts"] = 0.0
@@ -12422,24 +12410,8 @@ def update_property(property_id):
                 path = purl.lstrip("/") if purl.startswith("/") else purl
                 purl = f"{API_BASE_URL}/uploads/{path}"
             dm, gal = _split_description_gallery(room.description or "")
-            return jsonify({
-                "ok": True,
-                "property": {
-                    "id": room.id,
-                    "name": room.name,
-                    "description": dm,
-                    "photo_url": purl,
-                    "pictures": gal or ([purl] if purl else []),
-                    "mainImage": (gal[0] if gal else purl) or "",
-                    "amenities": json.loads(room.amenities) if room.amenities else [],
-                    "status": room.status or "active",
-                    "ai_automation_enabled": bool(getattr(room, "ai_automation_enabled", 0)),
-                    "max_guests": getattr(room, "max_guests", 2),
-                    "bedrooms": getattr(room, "bedrooms", 1),
-                    "beds": getattr(room, "beds", 1),
-                    "bathrooms": getattr(room, "bathrooms", 1),
-                },
-            }), 200
+            pictures = gal or ([purl] if purl else [])
+            return jsonify({"ok": True, "property": _finalize_property_images(_manual_room_api_dict(room, tenant_id, dm, pictures, purl))}), 200
         finally:
             session.close()
     except Exception as e:
@@ -12488,26 +12460,32 @@ def delete_property(property_id):
         if not room:
             return jsonify({"error": "Property not found", "id": pid}), 404
 
+        room_tenant = getattr(room, "tenant_id", None) or tenant_id
+
         # ── Cascade: remove child records first to avoid FK constraint errors ──
         deleted_tasks = 0
         deleted_staff = 0
         if PropertyTaskModel:
             try:
                 deleted_tasks = session.query(PropertyTaskModel).filter(
-                    PropertyTaskModel.property_id == pid
+                    PropertyTaskModel.property_id == pid,
                 ).delete(synchronize_session=False)
             except Exception as _te:
                 print(f"[delete_property] task cascade warning: {_te}", flush=True)
         if PropertyStaffModel:
             try:
                 deleted_staff = session.query(PropertyStaffModel).filter(
-                    PropertyStaffModel.property_id == pid
+                    PropertyStaffModel.property_id == pid,
                 ).delete(synchronize_session=False)
             except Exception as _se:
                 print(f"[delete_property] staff cascade warning: {_se}", flush=True)
 
         session.delete(room)
         session.commit()
+        try:
+            _bump_tasks_version()
+        except Exception:
+            pass
         print(
             f"[delete_property] deleted property {pid} "
             f"(cascaded {deleted_tasks} tasks, {deleted_staff} staff)",
@@ -12528,6 +12506,225 @@ def delete_property(property_id):
         session.close()
 
 
+def _reset_maya_demo_caches(tenant_id):
+    """Clear stale Maya counters, activity feeds, and maya_context.json for tenant."""
+    try:
+        _invalidate_maya_rooms_staff_cache(tenant_id)
+    except Exception:
+        pass
+    try:
+        _MAYA_BAZAAR_METRICS_CACHE.pop(tenant_id or "_", None)
+        _MAYA_BAZAAR_METRICS_CACHE.pop("_", None)
+    except Exception:
+        pass
+    try:
+        stale = [k for k in _MAYA_STATS_CACHE if k.startswith(f"{tenant_id}:")]
+        for k in stale:
+            _MAYA_STATS_CACHE.pop(k, None)
+    except Exception:
+        pass
+    try:
+        _invalidate_status_grid_cache()
+        _OWNER_DASHBOARD_CACHE["ts"] = 0.0
+        _OWNER_DASHBOARD_CACHE["payload"] = None
+        _OWNER_DASHBOARD_CACHE["key"] = None
+    except Exception:
+        pass
+    try:
+        _ACTIVITY_LOG.clear()
+        _SIM_LOG.clear()
+    except Exception:
+        pass
+    try:
+        pending_drop = [k for k in _MAYA_ROOM_CONFIRM_PENDING if str(k).startswith(f"{tenant_id}::")]
+        for k in pending_drop:
+            _MAYA_ROOM_CONFIRM_PENDING.pop(k, None)
+        task_pending_drop = [k for k in _MAYA_TASK_CREATE_PENDING if str(k).startswith(f"{tenant_id}::")]
+        for k in task_pending_drop:
+            _MAYA_TASK_CREATE_PENDING.pop(k, None)
+    except Exception:
+        pass
+    try:
+        with _MAYA_TASK_CONTEXT_LOCK:
+            root = _maya_load_maya_context_root_unlocked()
+            root.setdefault("by_tenant", {})
+            root["by_tenant"][tenant_id] = {
+                "updated_at": time.time(),
+                "total_open": 0,
+                "active_tasks": [],
+                "christos_property_ids": sorted(CHRISTOS_PROPERTY_IDS),
+            }
+            _maya_persist_maya_context_root(root)
+    except Exception as e:
+        print(f"[_reset_maya_demo_caches] maya_context: {e}", flush=True)
+
+
+def _reset_maya_chat_memory_files(tenant_id):
+    """Wipe Maya/guest JSON memory — Christos 3-property pilot scope only."""
+    seed_msg = (
+        "Christos Corfu pilot: 3 active properties only "
+        "(Thaleri Villa + 2 Manto Barbati). Task/property counts come from live DB + STATS_JSON — "
+        "never cite 22, 61, or legacy Bazaar totals. Report 0 open tasks when the board is empty."
+    )
+    if _maya_memory:
+        try:
+            mp = _maya_memory._memory_path(tenant_id)
+            _maya_memory._save_file(mp, {
+                "tenant_id": tenant_id,
+                "turns": [{
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "role": "system",
+                    "content": seed_msg,
+                    "meta": {"christos_demo_reset": True},
+                }],
+            })
+        except Exception as e:
+            print(f"[_reset_maya_chat_memory_files] maya_memory: {e}", flush=True)
+    try:
+        import guest_memory as _gm
+        gp = _gm._path(tenant_id)
+        os.makedirs(os.path.dirname(gp), exist_ok=True)
+        with open(gp, "w", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "role": "system",
+                "content": seed_msg,
+                "meta": {"christos_demo_reset": True},
+            }, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"[_reset_maya_chat_memory_files] guest_memory: {e}", flush=True)
+
+
+def _purge_orphan_demo_tasks(session, tenant_id, valid_property_ids):
+    """Delete tasks/logs tied to deleted or unknown properties + SIM synthetic rows."""
+    valid = set(valid_property_ids or [])
+    deleted_orphan_tasks = 0
+    deleted_sim_tasks = 0
+    deleted_audit = 0
+    deleted_legacy = 0
+    if PropertyTaskModel:
+        rows = session.query(PropertyTaskModel).filter_by(tenant_id=tenant_id).all()
+        keep_task_ids = set()
+        for t in rows:
+            pid = getattr(t, "property_id", None)
+            pname = (getattr(t, "property_name", None) or "").strip()
+            desc = (getattr(t, "description", None) or "").strip()
+            is_sim = desc.startswith("[SIM-ENGINE]") or "[SIM-ENGINE]" in desc
+            src = _effective_task_source(t)
+            if src in (TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL, TASK_SOURCE_BOOKING):
+                keep_task_ids.add(t.id)
+                continue
+            if t.id in CHRISTOS_WORKER_TASK_IDS or (str(t.id or "").startswith("seed-") and src == TASK_SOURCE_SYSTEM):
+                keep_task_ids.add(t.id)
+                continue
+            is_orphan = (not pid) or (pid not in valid)
+            is_junk_name = pname and _is_junk_mock_property({"id": pid or "", "name": pname, "description": desc})
+            if is_sim or is_orphan or is_junk_name:
+                session.delete(t)
+                if is_sim:
+                    deleted_sim_tasks += 1
+                else:
+                    deleted_orphan_tasks += 1
+            else:
+                keep_task_ids.add(t.id)
+        if TaskAuditLogModel:
+            for aud in session.query(TaskAuditLogModel).filter_by(tenant_id=tenant_id).all():
+                if aud.task_id not in keep_task_ids:
+                    session.delete(aud)
+                    deleted_audit += 1
+    if TaskModel:
+        try:
+            deleted_legacy = session.query(TaskModel).filter(
+                or_(TaskModel.tenant_id == tenant_id, TaskModel.tenant_id.is_(None))
+            ).delete(synchronize_session=False)
+        except Exception as _le:
+            print(f"[_purge_orphan_demo_tasks] legacy tasks: {_le}", flush=True)
+    return {
+        "orphan_tasks": deleted_orphan_tasks,
+        "sim_tasks": deleted_sim_tasks,
+        "audit_logs": deleted_audit,
+        "legacy_tasks": deleted_legacy,
+    }
+
+
+def _run_christos_demo_integrity_wipe(tenant_id, wipe_all=False):
+    """
+    Demo wipe: keep Christos Corfu properties only, cascade tasks/staff,
+    purge orphans + Maya caches/memory.
+    """
+    if not SessionLocal or not ManualRoomModel:
+        return {"ok": False, "error": "Database unavailable"}
+    session = SessionLocal()
+    deleted_props = deleted_tasks = deleted_staff = 0
+    try:
+        if wipe_all:
+            prop_rows = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).all()
+        else:
+            prop_rows = [
+                r for r in session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).all()
+                if _is_junk_mock_property(r)
+            ]
+        for r in prop_rows:
+            pid = r.id
+            if PropertyTaskModel:
+                try:
+                    deleted_tasks += session.query(PropertyTaskModel).filter(
+                        PropertyTaskModel.property_id == pid,
+                    ).delete(synchronize_session=False)
+                except Exception as _te:
+                    print(f"[wipe-demo] task cascade warning {pid}: {_te}", flush=True)
+            if PropertyStaffModel:
+                try:
+                    deleted_staff += session.query(PropertyStaffModel).filter(
+                        PropertyStaffModel.property_id == pid,
+                    ).delete(synchronize_session=False)
+                except Exception as _se:
+                    print(f"[wipe-demo] staff cascade warning {pid}: {_se}", flush=True)
+            session.delete(r)
+            deleted_props += 1
+        valid_ids = [
+            r.id for r in session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).all()
+        ]
+        orphan_stats = _purge_orphan_demo_tasks(session, tenant_id, valid_ids)
+        session.commit()
+        remaining = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).count()
+        _reset_maya_demo_caches(tenant_id)
+        _reset_maya_chat_memory_files(tenant_id)
+        try:
+            _maya_refresh_task_context_cache(tenant_id)
+        except Exception as _mrc:
+            print(f"[wipe-demo] maya context refresh: {_mrc}", flush=True)
+        try:
+            _bump_tasks_version()
+        except Exception:
+            pass
+        print(
+            f"[wipe-demo] tenant={tenant_id} scope={'all' if wipe_all else 'christos-demo'} "
+            f"deleted_props={deleted_props} cascaded_tasks={deleted_tasks} "
+            f"orphans={orphan_stats} remaining={remaining}",
+            flush=True,
+        )
+        return {
+            "ok": True,
+            "tenant_id": tenant_id,
+            "scope": "all" if wipe_all else "christos-demo",
+            "deleted_properties": deleted_props,
+            "cascaded_tasks": deleted_tasks,
+            "cascaded_staff": deleted_staff,
+            "orphan_cleanup": orphan_stats,
+            "synthetic_purged": 0,
+            "remaining_properties": remaining,
+            "christos_property_ids": sorted(CHRISTOS_PROPERTY_IDS),
+            "hint": None if wipe_all else "Christos-only demo — junk + non-Corfu properties removed.",
+        }
+    except Exception as e:
+        session.rollback()
+        print(f"[wipe-demo] error: {e}", flush=True)
+        return {"ok": False, "error": str(e)}
+    finally:
+        session.close()
+
+
 @app.route("/api/admin/wipe-demo-properties", methods=["GET", "POST", "OPTIONS"])
 def admin_wipe_demo_properties():
     """
@@ -12536,13 +12733,11 @@ def admin_wipe_demo_properties():
     GET so it can be fired straight from the browser address bar.
 
     Scope:
-      • default     → removes ONLY the known demo/seed properties
-                      (DEMO_PILOT_PROPERTY_NAMES + the default portfolio seed names).
-      • ?all=true   → removes EVERY property for the tenant (full 100% clean slate).
+      • default     → removes junk/non-Christos properties; keeps Christos Corfu pilot (4).
+      • ?all=true   → removes EVERY property for the tenant (full clean slate).
 
-    Always cascades the child property_tasks + property_staff rows first to avoid
-    FK errors (same pattern as delete_property). POST is auth-gated
-    (admin/manager/operation); GET honors an optional DEBLOAT_KEY env guard.
+    Cascades property_tasks + property_staff, purges orphan/SIM tasks,
+    resets Maya context/memory caches. POST is auth-gated; GET honors DEBLOAT_KEY.
     """
     if request.method == "OPTIONS":
         return Response(status=204)
@@ -12571,70 +12766,10 @@ def admin_wipe_demo_properties():
         tenant_id = DEFAULT_TENANT_ID
 
     wipe_all = request.args.get("all", "").strip().lower() in ("1", "true", "yes", "on")
-
-    # Build the set of known demo/seed property names.
-    demo_names = set(DEMO_PILOT_PROPERTY_NAMES or [])
-    try:
-        for r in _default_portfolio_seed_rooms():
-            if isinstance(r, dict) and r.get("name"):
-                demo_names.add(r["name"])
-    except Exception:
-        pass
-
-    session = SessionLocal()
-    deleted_props = deleted_tasks = deleted_staff = 0
-    try:
-        q = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id)
-        if not wipe_all:
-            q = q.filter(ManualRoomModel.name.in_(list(demo_names)))
-        rows = q.all()
-        for r in rows:
-            pid = r.id
-            if PropertyTaskModel:
-                try:
-                    deleted_tasks += session.query(PropertyTaskModel).filter(
-                        PropertyTaskModel.property_id == pid
-                    ).delete(synchronize_session=False)
-                except Exception as _te:
-                    print(f"[wipe-demo] task cascade warning {pid}: {_te}", flush=True)
-            if PropertyStaffModel:
-                try:
-                    deleted_staff += session.query(PropertyStaffModel).filter(
-                        PropertyStaffModel.property_id == pid
-                    ).delete(synchronize_session=False)
-                except Exception as _se:
-                    print(f"[wipe-demo] staff cascade warning {pid}: {_se}", flush=True)
-            session.delete(r)
-            deleted_props += 1
-        session.commit()
-        remaining = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id).count()
-        try:
-            _STATUS_GRID_CACHE["ts"] = 0.0
-            _STATUS_GRID_CACHE["payload"] = None
-            _STATUS_GRID_CACHE["key"] = None
-        except Exception:
-            pass
-        print(
-            f"[wipe-demo] tenant={tenant_id} scope={'all' if wipe_all else 'demo-only'} "
-            f"deleted_props={deleted_props} tasks={deleted_tasks} staff={deleted_staff} remaining={remaining}",
-            flush=True,
-        )
-        return jsonify({
-            "ok": True,
-            "tenant_id": tenant_id,
-            "scope": "all" if wipe_all else "demo-only",
-            "deleted_properties": deleted_props,
-            "cascaded_tasks": deleted_tasks,
-            "cascaded_staff": deleted_staff,
-            "remaining_properties": remaining,
-            "hint": None if wipe_all else "Append ?all=true to wipe ALL properties for a 100% clean slate.",
-        }), 200
-    except Exception as e:
-        session.rollback()
-        print(f"[wipe-demo] error: {e}", flush=True)
-        return jsonify({"error": str(e)}), 500
-    finally:
-        session.close()
+    result = _run_christos_demo_integrity_wipe(tenant_id, wipe_all=wipe_all)
+    if not result.get("ok"):
+        return jsonify(result), 500
+    return jsonify(result), 200
 
 
 @app.route("/api/admin/debloat-images", methods=["GET", "POST", "OPTIONS"])
@@ -12987,13 +13122,13 @@ def ai_property_context():
     if ENGINE and ManualRoomModel:
         _kick_background_seed(tenant_id)
     rooms = list_manual_rooms(tenant_id, owner_id=user_id)
-    if not rooms:
-        seed = [_ensure_room_image_urls(dict(x)) for x in _default_portfolio_seed_rooms()]
-        rooms = _ensure_demo_portfolio_properties(seed)
-    room_inv = _build_maya_room_inventory_text(tenant_id, user_id)
+    if _christos_pilot_is_active(tenant_id, user_id, rooms):
+        rooms = _christos_pilot_room_rows(tenant_id, user_id, rooms)
+    _christos_scope = _christos_pilot_is_active(tenant_id, user_id, rooms)
+    room_inv = "" if _christos_scope else _build_maya_room_inventory_text(tenant_id, user_id)
     if not SessionLocal or not PropertyStaffModel:
         base = _build_property_summary_for_ai(rooms, {})
-        summary = f"{base} | Room inventory (61 units): {room_inv}" if room_inv else base
+        summary = base
         return jsonify({
             "properties": rooms,
             "staff_by_property": {},
@@ -13020,7 +13155,7 @@ def ai_property_context():
                 for s in staff_records
             ]
         base = _build_property_summary_for_ai(rooms, staff_by_property)
-        summary = f"{base} | Room inventory (61 units): {room_inv}" if room_inv else base
+        summary = base
         return jsonify({
             "properties": rooms,
             "staff_by_property": staff_by_property,
@@ -13088,7 +13223,7 @@ def api_bookings_upcoming():
 @app.route("/api/health/bookings-tasks-sync", methods=["GET", "OPTIONS"])
 @cross_origin(origins="*", allow_headers=["Content-Type", "Authorization", "X-Tenant-Id"], methods=["GET", "OPTIONS"])
 def api_health_bookings_tasks_sync():
-    """Background validation: upcoming bookings vs open prep-style tasks (drift heuristic)."""
+    """Background validation: upcoming bookings vs open booking prep tasks (idempotent sync + count)."""
     if request.method == "OPTIONS":
         return Response(status=204)
     tenant_id = DEFAULT_TENANT_ID
@@ -13104,40 +13239,57 @@ def api_health_bookings_tasks_sync():
     bookings = upcoming.get("bookings") or []
     n_upcoming = len(bookings)
     prep_like = 0
+    booking_open = 0
+    non_booking_open = 0
     open_tasks = 0
+    prep_created = 0
     if SessionLocal and PropertyTaskModel:
         session = SessionLocal()
         try:
+            prep_created = _ensure_booking_prep_tasks_for_upcoming(session, tenant_id, bookings)
+            if prep_created:
+                _bump_tasks_version()
             q = _property_tasks_query_for_tenant(session, tenant_id)
             if q is not None:
-                q_open = q.filter(
-                    or_(
-                        PropertyTaskModel.status.is_(None),
-                        func.lower(PropertyTaskModel.status).notin_(("done", "completed", "archived")),
-                    )
-                )
-                open_tasks = int(q_open.count() or 0)
-                for row in q_open.order_by(PropertyTaskModel.created_at.desc()).limit(800).all():
-                    d = ((getattr(row, "description", None) or "") + " " + (getattr(row, "task_type", None) or "")).lower()
-                    if any(
-                        x in d
-                        for x in (
-                            "check-in",
-                            "checkin",
-                            "צ'ק",
-                            "הכנה",
-                            "prep",
-                            "room ready",
-                            "אורח",
-                        )
+                rows = q.order_by(PropertyTaskModel.created_at.desc()).limit(800).all()
+                for row in rows:
+                    if not _property_task_is_open(row):
+                        continue
+                    open_tasks += 1
+                    if _property_task_is_booking_prep(row):
+                        booking_open += 1
+                        d = (
+                            (getattr(row, "description", None) or "")
+                            + " "
+                            + (getattr(row, "task_type", None) or "")
+                        ).lower()
+                        if any(
+                            x in d
+                            for x in (
+                                "check-in",
+                                "checkin",
+                                "צ'ק",
+                                "הכנה",
+                                "prep",
+                                "room ready",
+                                "[ical_uid:",
+                                "[booking_ref:",
+                            )
+                        ):
+                            prep_like += 1
+                    elif _effective_task_source(row) in (
+                        TASK_SOURCE_MAYA,
+                        TASK_SOURCE_MANUAL,
+                        TASK_SOURCE_SYSTEM,
                     ):
-                        prep_like += 1
+                        non_booking_open += 1
         except Exception as _e:
             print(f"[bookings-tasks-sync] {_e}", flush=True)
         finally:
             session.close()
-    drift = max(0, n_upcoming - prep_like)
-    aligned = n_upcoming == 0 or prep_like >= min(n_upcoming, 1) or drift <= max(2, n_upcoming // 4)
+    booking_coverage = booking_open
+    drift = max(0, n_upcoming - booking_coverage)
+    aligned = n_upcoming == 0 or booking_coverage >= n_upcoming
     return _no_cache_json(
         jsonify({
             "ok": True,
@@ -13145,7 +13297,10 @@ def api_health_bookings_tasks_sync():
             "upcoming_bookings": n_upcoming,
             "open_tasks_non_terminal": open_tasks,
             "prep_like_open_tasks": prep_like,
+            "booking_open_tasks": booking_open,
+            "non_booking_open_tasks": non_booking_open,
             "drift_bookings_minus_prep_tasks": drift,
+            "prep_tasks_created": prep_created,
             "aligned": aligned,
             "checked_at": datetime.now(timezone.utc).isoformat(),
         })
@@ -13568,7 +13723,8 @@ def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_prope
     if not SessionLocal or not PropertyTaskModel or not PropertyStaffModel:
         return None, "Tasks unavailable"
     staff_name = (task_obj.get("staffName") or "").strip() or "Staff"
-    content = (task_obj.get("content") or "").strip() or "Task from Maya"
+    content = _maya_resolve_task_user_text(task_obj.get("content"), command) or "Task from Maya"
+    print(f"[MayaTask] parsed user text={content!r}", flush=True)
     prop_name = (task_obj.get("property_name") or task_obj.get("propertyName") or "").strip()
 
     # ── Strict validation: reject unknown/placeholder property names ───────
@@ -13577,9 +13733,11 @@ def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_prope
         if len(rooms) == 1:
             prop_name = rooms[0].get("name", "")
         elif rooms and not prop_name:
-            # No property given at all but multiple exist → ask for clarification
-            clarify_msg = "באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."
-            return None, clarify_msg
+            pick = rooms[0]
+            prop_name = (pick.get("name") or "").strip()
+            if not prop_name:
+                clarify_msg = "באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."
+                return None, clarify_msg
         elif _is_unknown_property(prop_name) and rooms:
             # Explicit "Unknown" sent → refuse to create, return clarification message
             clarify_msg = "באיזה חדר/נכס מדובר? אני צריכה פרטים מדויקים כדי לפתוח את המשימה."
@@ -13622,6 +13780,7 @@ def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_prope
         "staffName": staff_name,
         "priority": task_obj.get("priority") or "normal",
         "task_type": task_obj.get("task_type") or (TASK_TYPE_CLEANING_HE if suggested == "alma" else TASK_TYPE_MAINTENANCE_HE if suggested in ("kobi", "avi") else TASK_TYPE_SERVICE_HE),
+        "raw_user_request": command or "",
     }
     return _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_property)
 
@@ -13631,7 +13790,10 @@ def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_
     if not SessionLocal or not PropertyTaskModel or not PropertyStaffModel:
         return None, "Tasks unavailable"
     intent = (gemini_result.get("intent") or "").lower()
-    desc = (gemini_result.get("content") or gemini_result.get("description") or "").strip() or "Task from Maya"
+    desc = _maya_resolve_task_user_text(
+        (gemini_result.get("content") or gemini_result.get("description") or "").strip(),
+        gemini_result.get("raw_user_request") or "",
+    ) or "Task from Maya"
     prop_name = (gemini_result.get("property_name") or "").strip()
     suggested = (gemini_result.get("suggested_staff") or "").strip().lower()
     staff_name_parsed = (gemini_result.get("staffName") or "").strip()
@@ -13703,6 +13865,7 @@ def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_
                 "property_name": getattr(dup, "property_name", ""),
                 "staff_name": getattr(dup, "staff_name", ""),
                 "staff_phone": getattr(dup, "staff_phone", ""),
+                "source": _effective_task_source(dup),
                 "actions": [{"label": "ראיתי ✅", "value": "seen"}, {"label": "בוצע 🏁", "value": "done"}],
                 "duplicate": True,
             }, None
@@ -13733,9 +13896,10 @@ def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_
         print(f"DEBUG: Maya decided to CREATE task for room {room_log}")
         task_id = str(uuid.uuid4())
         created = now_iso()
+        raw_cmd = (gemini_result.get("raw_user_request") or "").strip()
         full_desc = f"{urgent_prefix}{desc}"
-        if prop_ctx:
-            full_desc = f"{full_desc} | נכס: {prop_ctx}" if full_desc else f"נכס: {prop_ctx}"
+        display_desc = _task_primary_display_text(full_desc, task_type_pre)
+        print(f"[MayaTask] POST payload title/description={display_desc!r}", flush=True)
         has_worker = bool((staff_name or "").strip() or (staff_id or "").strip())
         _init_status = "In_Progress" if has_worker else "Pending"
         now_ts = datetime.now(timezone.utc).isoformat()
@@ -13756,23 +13920,35 @@ def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_
             new_pt.priority = priority_val
         if hasattr(new_pt, "task_type"):
             new_pt.task_type = task_type_val
+        if hasattr(new_pt, "source"):
+            new_pt.source = TASK_SOURCE_MAYA
+        if raw_cmd and hasattr(new_pt, "worker_notes"):
+            new_pt.worker_notes = raw_cmd[:500]
         if has_worker and hasattr(new_pt, "started_at"):
             new_pt.started_at = now_ts
         session.add(new_pt)
         session.commit()
+        print(f"[Tasks API] saved title/description={display_desc!r} id={task_id}", flush=True)
         print(f"SUCCESS: Task created for room {room_log} — id={task_id} staff={staff_name} priority={priority_val}")
+        room_num = _task_room_number_from_text(full_desc, raw_cmd)
+        room_display = f"חדר {room_num}" if room_num else prop_display
         return {
             "id": task_id,
             "property_id": prop_id,
             "assigned_to": staff_id,
-            "description": full_desc,
+            "description": display_desc,
+            "title": display_desc,
+            "content": display_desc,
             "status": _init_status,
             "priority": priority_val,
             "task_type": task_type_val,
             "created_at": created,
             "property_name": prop_display,
+            "room": room_display,
+            "room_number": room_num or room_display,
             "staff_name": staff_name,
             "staff_phone": staff_phone,
+            "source": TASK_SOURCE_MAYA,
             "actions": [{"label": "ראיתי ✅", "value": "seen"}, {"label": "בוצע 🏁", "value": "done"}],
         }, None
     except Exception as e:
@@ -13799,7 +13975,7 @@ def _daily_action_plan_for_tenant(tenant_id, user_id):
     if SessionLocal and PropertyTaskModel:
         session = SessionLocal()
         try:
-            q = _property_tasks_query_for_tenant(session, tenant_id)
+            q = _property_tasks_query_for_maya(session, tenant_id)
             if q is not None:
                 rows = q.order_by(PropertyTaskModel.created_at.desc()).limit(60).all()
                 for r in rows:
@@ -13863,7 +14039,7 @@ def _morning_brief_for_tenant(tenant_id, user_id):
     if SessionLocal and PropertyTaskModel:
         session = SessionLocal()
         try:
-            q = _property_tasks_query_for_tenant(session, tenant_id)
+            q = _property_tasks_query_for_maya(session, tenant_id)
             if q is not None:
                 rows = q.order_by(PropertyTaskModel.created_at.desc()).limit(60).all()
                 for r in rows:
@@ -13979,6 +14155,20 @@ def api_morning_brief():
         tenant_id, user_id = DEFAULT_TENANT_ID, f"demo-{DEFAULT_TENANT_ID}"
     text = _morning_brief_for_tenant(tenant_id, user_id)
     return jsonify({"success": True, "message": text, "displayMessage": text, "morningBrief": True}), 200
+
+
+@app.route("/api/maya/invalidate-cache", methods=["POST", "OPTIONS"])
+@cross_origin(origins="*", allow_headers=["Content-Type", "Authorization", "X-Tenant-Id"], methods=["POST", "OPTIONS"])
+def api_maya_invalidate_cache():
+    """POST — drop in-process Maya stats/rooms caches so the next chat turn reads live DB counts."""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    try:
+        tenant_id, _user_id = get_auth_context_from_request()
+    except Exception:
+        tenant_id = DEFAULT_TENANT_ID
+    _maya_invalidate_stale_caches(tenant_id)
+    return jsonify({"ok": True, "invalidated": True}), 200
 
 
 @app.route("/api/maya/chat-history", methods=["GET", "OPTIONS"], strict_slashes=False)
@@ -14141,7 +14331,7 @@ def _maya_build_json_response_from_llm_output(
             "action": "add_task",
             "task": {
                 "staffName": staff,
-                "content": (command or "תקלה/בקשה")[:200],
+                "content": _maya_resolve_task_user_text((command or "תקלה/בקשה")[:200], command) or (command or "תקלה/בקשה")[:200],
                 "propertyName": "Chandler",
                 "status": "Pending",
             },
@@ -14160,21 +14350,6 @@ def _maya_build_json_response_from_llm_output(
         })
 
     if parsed.get("action") == "mark_task_done":
-        if _open_task_count == 0:
-            nope = (
-                "לפי property_tasks יש 0 משימות בבסיס — לא ניתן לסמן 'בוצע'. "
-                "כשהלוח יציג משימות, אפשר יהיה לסגור לפי מזהה מה-STATS_JSON.recent_open_tasks."
-            )
-            _maya_memory_log_turn(tenant_id, command or "", nope)
-            return _truth_out({
-                "success": True,
-                "message": nope,
-                "displayMessage": nope,
-                "taskCreated": False,
-                "taskCompleted": False,
-                "liveTaskCount": 0,
-                "parsed": parsed,
-            })
         task_id = (parsed.get("task_id") or parsed.get("id") or "").strip()
         if not task_id:
             hint = (parsed.get("match_description") or parsed.get("content") or "").strip()
@@ -14456,6 +14631,48 @@ def _maya_build_json_response_from_llm_output(
     })
 
 
+def _maya_apply_ui_task_board_sync(snapshot, payload):
+    """Override STATS_JSON task counts with live TaskCalendar counters from the client."""
+    if not isinstance(snapshot, dict) or not isinstance(payload, dict):
+        return snapshot
+    try:
+        raw = payload.get("current_visible_tasks_count")
+        pc = payload.get("current_visible_properties_count")
+        if raw is None and pc is None:
+            return snapshot
+        out = dict(snapshot)
+        if raw is not None:
+            visible = int(raw)
+            out["total_tasks"] = visible
+            out["total_active_tasks"] = visible
+            ip = payload.get("current_visible_in_progress_count")
+            pend = payload.get("current_visible_pending_count")
+            done = payload.get("current_visible_completed_count")
+            if ip is not None or pend is not None:
+                out["tasks_by_status"] = {
+                    "Pending": int(pend or 0),
+                    "In_Progress": int(ip or 0),
+                    "Done": int(done or 0),
+                }
+            out["tasks_digest"] = (
+                f"open_non_terminal_tasks_shown={visible}; "
+                f"total_open_board_count={visible}; "
+                f"ui_synced_from_task_board=true"
+            )
+        pf = payload.get("current_property_filter")
+        if pf:
+            out["current_property_filter"] = str(pf)
+        port = payload.get("current_portfolio_filter")
+        if port:
+            out["current_portfolio_filter"] = str(port)
+        if pc is not None:
+            out["total_properties"] = int(pc)
+        out["ui_synced_from_client"] = True
+        return out
+    except Exception:
+        return snapshot
+
+
 @app.route("/api/chat", methods=["POST", "OPTIONS"])
 @app.route("/api/ai/maya-command", methods=["POST", "OPTIONS"])
 @cross_origin(origins="*", allow_headers=["Content-Type", "Authorization", "X-Tenant-Id"], methods=["GET", "POST", "OPTIONS"])
@@ -14501,17 +14718,21 @@ def ai_maya_command():
         nonlocal maya_stats_snapshot, _total_property_task_rows, _open_task_count
         if maya_stats_snapshot is not None:
             return
-        # Include the scope hint in the cache key so a scoped ("bazaar") query
-        # doesn't serve stale all-properties data to an unscoped ("כמה משימות?") query.
         _scope = _maya_detect_site_scope_hint(command or "")
         _cache_key = f"{tenant_id}:{_scope}"
         _now = time.time()
-        _hit = _MAYA_STATS_CACHE.get(_cache_key)
-        if _hit and (_now - _hit["ts"]) < _MAYA_STATS_CACHE_TTL:
-            maya_stats_snapshot = _hit["data"]
-        else:
+        _ui_visible = data.get("current_visible_tasks_count")
+        _ui_props = data.get("current_visible_properties_count")
+        if _ui_visible is not None or _ui_props is not None:
             maya_stats_snapshot = _build_maya_chat_stats_payload(tenant_id, user_id, command)
-            _MAYA_STATS_CACHE[_cache_key] = {"data": maya_stats_snapshot, "ts": _now}
+            maya_stats_snapshot = _maya_apply_ui_task_board_sync(maya_stats_snapshot, data)
+        else:
+            _hit = _MAYA_STATS_CACHE.get(_cache_key)
+            if _hit and (_now - _hit["ts"]) < _MAYA_STATS_CACHE_TTL:
+                maya_stats_snapshot = _hit["data"]
+            else:
+                maya_stats_snapshot = _build_maya_chat_stats_payload(tenant_id, user_id, command)
+                _MAYA_STATS_CACHE[_cache_key] = {"data": maya_stats_snapshot, "ts": _now}
         _total_property_task_rows = int(maya_stats_snapshot.get("total_property_tasks_all") or 0)
         _open_task_count = int(maya_stats_snapshot.get("total_tasks") or 0)
 
@@ -14546,6 +14767,11 @@ def ai_maya_command():
                 _maya_memory_log_turn(tenant_id, command, fail)
                 return jsonify({"success": True, "message": fail, "displayMessage": fail}), 200
 
+        _tcp = _maya_try_handle_task_create_pending(tenant_id, user_id, command)
+        if _tcp:
+            _maya_memory_log_turn(tenant_id, command, _tcp.get("message") or _tcp.get("displayMessage") or "")
+            return jsonify(_tcp), 200
+
         if _maya_is_last_cleaner_question(command):
             rd = _maya_extract_room_digits_for_maya(command)
             if rd:
@@ -14562,6 +14788,14 @@ def ai_maya_command():
 
     _cmd_l = (command or "").lower()
     if command:
+        _maya_room_detail = _maya_try_create_room_detail_task(tenant_id, user_id, command)
+        if _maya_room_detail:
+            _maya_memory_log_turn(tenant_id, command, _maya_room_detail.get("message") or _maya_room_detail.get("displayMessage") or "")
+            return jsonify(_maya_room_detail), 200
+        _maya_task_begin = _maya_try_begin_task_create_from_command(tenant_id, user_id, command)
+        if _maya_task_begin:
+            _maya_memory_log_turn(tenant_id, command, _maya_task_begin.get("message") or _maya_task_begin.get("displayMessage") or "")
+            return jsonify(_maya_task_begin), 200
         _maya_task_start = _maya_try_start_task_from_natural_command(tenant_id, user_id, command)
         if _maya_task_start:
             return jsonify(_maya_task_start), 200
@@ -14913,10 +15147,7 @@ def ai_maya_command():
         display = "מצב סימולציה פעיל. הכפתור עבר לימין והוואטסאפ ירוק." if TWILIO_SIMULATE else "מצב סימולציה לא פעיל. שים TWILIO_SIMULATE=1 ב-.env להפעלה."
         return jsonify({"success": True, "message": display, "displayMessage": display}), 200
 
-    # "לפתוח משימה" - ask for room and topic
-    if "לפתוח משימה" in (command or "") or "פתיחת משימה" in (command or ""):
-        display = "בשמחה, לאיזה חדר ובאיזה נושא?"
-        return jsonify({"success": True, "message": display, "displayMessage": display}), 200
+    # "לפתוח משימה" — handled by _maya_try_begin_task_create_from_command (pending room follow-up)
 
     # "לשלוח מנקה לחדר X" - direct task creation and staff notification (check first - most specific)
     _m = re.search(r"(?:לשלוח\s+)?מנקה\s+לחדר\s+(\d+)", command or "")
@@ -14979,8 +15210,17 @@ def ai_maya_command():
                 display = "משימה נוצרה בהצלחה לחדר " + room_num + " ✓"
                 return jsonify({"success": True, "message": display, "displayMessage": display, "taskCreated": True, "task": {"id": t.get("id")}}), 200
 
-    # 100+ clients infrastructure confirmation
-    if "100" in (command or "") or "מאה" in (command or "") or "100 clients" in ((command or "").lower()) or "100 לקוחות" in (command or ""):
+    # 100+ clients infrastructure confirmation (skip numeric-only room follow-up during pending task create)
+    if (
+        not _maya_has_active_task_create_pending(tenant_id, user_id)
+        and not _maya_is_numeric_only_reply(command)
+        and (
+            "100" in (command or "")
+            or "מאה" in (command or "")
+            or "100 clients" in ((command or "").lower())
+            or "100 לקוחות" in (command or "")
+        )
+    ):
         display = "התשתית ל-100 לקוחות מוכנה. הודעות יישלחו כעת בתור מסודר."
         return jsonify({"success": True, "message": display, "displayMessage": display}), 200
 
@@ -15063,7 +15303,7 @@ def ai_maya_command():
         pending = [t for t in (tasks_for_analysis or []) if (t.get("status") or "").lower() not in ("done", "completed")]
         if GEMINI_MODEL and (tasks_for_analysis or []):
             try:
-                mgmt_prompt = f"""You are Maya, Operations Manager at Hotel Bazaar Jaffa — sharp, brief, Israeli professional tone. Analyze these tasks and write ONE short management message in Hebrew.
+                mgmt_prompt = f"""You are Maya, Operations Manager for the Christos Corfu pilot — sharp, brief, Israeli professional tone. Analyze these tasks and write ONE short management message in Hebrew.
 
 Tasks: {json.dumps(pending[:15], ensure_ascii=False)}
 
@@ -15112,7 +15352,7 @@ Be concise, 2-3 sentences."""
         all_tasks = done_today + pending_list
         if GEMINI_MODEL and all_tasks:
             try:
-                report_prompt = f"""You are Maya, Operations Manager at Hotel Bazaar Jaffa. Generate a text summary of ALL tasks currently on the board.
+                report_prompt = f"""You are Maya, Operations Manager for the Christos Corfu pilot. Generate a text summary of ALL tasks currently on the board.
 
 Done today ({len(done_today)}): {json.dumps(done_today[:10], ensure_ascii=False)}
 Pending ({len(pending_list)}): {json.dumps(pending_list[:10], ensure_ascii=False)}
@@ -15135,11 +15375,19 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
     summary = _build_property_summary_for_ai(rooms, staff_by_property)
     _chat_scope = _maya_detect_site_scope_hint(command or "")
     summary = _maya_filter_summary_for_scope(summary, _chat_scope, rooms)
-    room_inv_text = (
-        _build_maya_room_inventory_text_scoped(tenant_id, user_id, _chat_scope)
-        if _chat_scope
-        else _build_maya_room_inventory_text(tenant_id, user_id)
+    _christos_chat_scope = bool(
+        (maya_stats_snapshot or {}).get("christos_pilot_scope")
+        or _christos_pilot_is_active(tenant_id, user_id, rooms)
     )
+    if _christos_chat_scope:
+        room_inv_text = (
+            f"Christos Corfu pilot: {len(rooms)} active properties — "
+            "use STATS_JSON.total_properties and total_tasks only (ignore legacy 61-unit Bazaar grid)."
+        )
+    elif _chat_scope:
+        room_inv_text = _build_maya_room_inventory_text_scoped(tenant_id, user_id, _chat_scope)
+    else:
+        room_inv_text = _build_maya_room_inventory_text(tenant_id, user_id)
 
     # Fallback when Gemini not configured: still create tasks for repair/maintenance phrases
     cmd_lower = (command or "").lower().strip()
@@ -15211,12 +15459,7 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
 
     # Build property list for AI context (name + id for matching); always include pinned pilot hotels
     _prop_names = [r.get("name", "") for r in rooms if r.get("name")]
-    _existing_lower = {str(n).strip().lower() for n in _prop_names if n}
-    for _pl in MAYA_PINNED_PROPERTY_LABELS:
-        if _pl.strip().lower() not in _existing_lower:
-            _prop_names.append(_pl)
-            _existing_lower.add(_pl.strip().lower())
-    _prop_list_str = ", ".join(_prop_names) if _prop_names else ", ".join(MAYA_PINNED_PROPERTY_LABELS)
+    _prop_list_str = ", ".join(_prop_names) if _prop_names else "אין לי נתונים עדכניים כרגע"
 
     _maya_mem_block = ""
     _maya_recall_block = ""
@@ -15230,6 +15473,16 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
     _stats_json = json.dumps(maya_stats_snapshot, ensure_ascii=False)
     _recent_ops = [e.get("text") for e in list(_ACTIVITY_LOG)[-6:] if (e.get("text") or "").strip()]
     _recent_ops_json = json.dumps(_recent_ops, ensure_ascii=False)
+    _tp_live = int((maya_stats_snapshot or {}).get("total_properties") or len(rooms) or 0)
+    _room_inv_header = (
+        f"Christos Corfu pilot ({_tp_live} properties) — occupancy/grid from STATS_JSON only;"
+        " never cite legacy portfolio counts unless STATS_JSON says so:"
+    )
+    _portfolio_remember = (
+        f"Remember: active scope is Christos Corfu pilot with {_tp_live} properties "
+        f"(STATS_JSON.total_properties). Never invent property or task counts from memory or old demos. "
+        "If counts are missing, say exactly: אין לי נתונים עדכניים כרגע."
+    )
     prompt = f"""LUXURY HOSPITALITY + OPS — You are Maya (GM-level). First infer intent: (A) service request → tasks; (B) question about operations → search STATS_JSON + system SEARCH_TOOL only, reply as "info"; (C) small talk / empathy → "info", warm and brief, no task.
 ANALYST MODE — Authoritative snapshot (same data as GET /api/stats). Ground every factual claim in STATS_JSON and SEARCH_TOOL; never invent occupancy %, task counts, or staff names.
 STATS_JSON.recent_open_tasks: ONLY non-completed property_tasks (Pending / In_Progress / etc.) — capped for speed; use these ids for mark_task_done.
@@ -15252,8 +15505,8 @@ Available properties: [{_prop_list_str}]
 Live portfolio summary (staff + rooms):
 {summary}
 
-Room inventory (61 units, Bazaar + 14 ROOMS; Occupied / Ready / Dirty — use for room-status questions):
-{room_inv_text or "Sync portfolio seed if empty."}
+{_room_inv_header}
+{room_inv_text or "No live room grid for this scope."}
 
 {_maya_mem_block}
 
@@ -15263,9 +15516,9 @@ Room inventory (61 units, Bazaar + 14 ROOMS; Occupied / Ready / Dirty — use fo
 1. CALENDAR / AVAILABILITY: If LIVE_CALENDAR appears in TRUTH_LAYER_POLICY, cite it and NEVER say "לא בדקתי", "I haven't checked", or "אין לי גישה ללוח". If no LIVE_CALENDAR block is present, say "אין לי נתוני הזמנות זמינים כרגע — בדוק ישירות במערכת ההזמנות" — short, honest, not "I can't".
 2. STAFF: Use register_staff / send_whatsapp_onboarding actions when user requests staff operations. Never say "I can't add staff via chat" — execute the action.
 3. SHIFTS: Use create_work_shift when user requests scheduling. Execute the action.
-4. COUNTS: Never contradict the task count from STATS_JSON.total_tasks within the same response.
+4. COUNTS: Never contradict the task count from STATS_JSON.total_tasks within the same response. Property counts: use STATS_JSON.total_properties only — never 22/61/15 unless STATS_JSON says so. If missing, say: אין לי נתונים עדכניים כרגע.
 
-Remember: the portfolio has 61 room units across 15 properties. Hotel Bazaar Jaffa includes Standard Queen, Deluxe Gallery, and Jaffa Suite room types. Address Kobi only by name. Do not claim a task was completed unless you return mark_task_done with a valid task_id.
+{_portfolio_remember} Address Kobi only by name. Do not claim a task was completed unless you return mark_task_done with a valid task_id.
 
 Classify and return ONLY valid JSON (no extra text):
 
@@ -15304,7 +15557,7 @@ Rules:
 - task_type: ניקיון חדר=ניקיון/housekeeping | תחזוקה=תיקון/נזילה/תחזוקה | שירות=everything else | צ'ק-אין=הכנת חדר/כניסת אורח
 - priority: "high" if דחוף/בהול/urgent/asap/critical — else "normal"
 - staffName: Alma→ניקיון חדר | Kobi→תחזוקה | Avi→חשמל(מנורה/קצר)
-- propertyName: match to the exact property name from the list (Hotel Bazaar Jaffa OR Leonardo Plaza City Tower). Pool questions: Bazaar has no pool; City Tower has seasonal rooftop pool — reflect that in "info" messages.
+- propertyName: match to the exact property name from the live Christos Corfu list in the prompt.
 - NEVER invent a property name or use "Unknown" / "חדר לא ידוע".
 - STAFF REGISTRATION: Use register_staff ONLY when user provides a name AND explicitly asks to add/register. For bulk/complex HR changes, use action:"info" directing to Dashboard → Settings → Staff.
 - BOOKING / AVAILABILITY: When LIVE_CALENDAR appears in TRUTH_LAYER_POLICY, it means fetch_calendar_availability was executed and you MUST cite those exact results. NEVER say "לא בדקתי", "I haven't checked", or "אין לי גישה" when LIVE_CALENDAR is present — you have already checked. When LIVE_CALENDAR is absent, say "אין לי נתוני הזמנות מאומתים לתאריך זה — בדוק ישירות." and use action:"info".
@@ -15413,8 +15666,7 @@ Rules:
 def _build_property_summary_for_ai(rooms, staff_by_property):
     """Human-readable summary for AI to answer guest queries: 'This villa has 2 guests and 1 bedroom. Staff: Kobi (cleaner).'"""
     if not rooms:
-        seed = _ensure_demo_portfolio_properties([_ensure_room_image_urls(dict(x)) for x in _default_portfolio_seed_rooms()])
-        rooms = seed
+        return "אין לי נתונים עדכניים כרגע"
     parts = []
     for r in rooms:
         name = r.get("name") or "Property"
@@ -15443,65 +15695,34 @@ def _build_property_summary_for_ai(rooms, staff_by_property):
 
 
 # Master Access: Maya creates tasks and sends notifications without 401
-STAFF_ACTIONS = [{"label": "ראיתי ✅", "value": "seen"}, {"label": "בוצע 🏁", "value": "done"}]
+STAFF_ACTIONS = [{"value": "seen"}, {"value": "done"}]
 
 # When DB is down, POST /api/tasks still succeeds; GET merges these with initial_tasks().
 _DEMO_PROPERTY_TASKS_MEMORY = []
 
 
 def _ensure_maya_brain_mock_tasks():
-    """In-memory demo tasks (20+) for Maya + Task Board when DB is empty or for overlay."""
-    global _DEMO_PROPERTY_TASKS_MEMORY
-    if len(_DEMO_PROPERTY_TASKS_MEMORY) >= 22:
-        return
-    now = datetime.now(timezone.utc).isoformat()
-    portfolio_ids = ["bazaar-jaffa-hotel"] + [x[0] for x in _DEMO_15_WEWORK]
-    names = [
-        ("ניקיון לובי — קומה 2", TASK_TYPE_CLEANING_HE),
-        ("צ'ק-אאוט 11:00 — חדר 204", TASK_TYPE_CHECKIN_HE),
-        ("בקשת מגבות — חדר 118", TASK_TYPE_SERVICE_HE),
-        ("הכנת חדר — צ'ק-אין 15:00", TASK_TYPE_CLEANING_HE),
-        ("ניקיון חדר — אחרי אירוח", TASK_TYPE_CLEANING_HE),
-        ("תזכורת צ'ק-אאוט — אורח יוצא היום", TASK_TYPE_CHECKIN_HE),
-        ("תחזוקה — מזגן בלובי", TASK_TYPE_MAINTENANCE_HE),
-        ("אורח ביקש כריות נוספות", TASK_TYPE_SERVICE_HE),
-        ("ניקיון חדר ילדים — משפחה", TASK_TYPE_CLEANING_HE),
-        ("העברת מזוודות — קבלה", TASK_TYPE_SERVICE_HE),
-        ("צ'ק-אאוט מאוחר — אישור מנהל", TASK_TYPE_CHECKIN_HE),
-        ("ניקיון חדר רחצה — דחוף", TASK_TYPE_CLEANING_HE),
-        ("בקשת קפה — חדר 305", TASK_TYPE_SERVICE_HE),
-        ("סידור חדר — VIP", TASK_TYPE_CLEANING_HE),
-        ("ניקיון אחרי אירוע — אולם", TASK_TYPE_CLEANING_HE),
-        ("אורח דיווח על ריח — בדיקה", TASK_TYPE_SERVICE_HE),
-        ("הכנת חדר זוגי — יום הולדת", TASK_TYPE_CLEANING_HE),
-        ("צ'ק-אאוט — חדר 412", TASK_TYPE_CHECKIN_HE),
-        ("ניקיון מטבחון — סוויטה", TASK_TYPE_CLEANING_HE),
-        ("מגבות נוספות — דחוף", TASK_TYPE_SERVICE_HE),
-        ("ניקיון חדר — סטטוס מלוכלך", TASK_TYPE_CLEANING_HE),
-        ("בקשת חיבור Wi‑Fi — חדר 201", TASK_TYPE_SERVICE_HE),
-    ]
-    for i, (desc, kind) in enumerate(names):
-        pid = portfolio_ids[i % len(portfolio_ids)]
-        tid = f"mock-maya-brain-{i + 1}"
-        if any(isinstance(x, dict) and x.get("id") == tid for x in _DEMO_PROPERTY_TASKS_MEMORY):
-            continue
-        _DEMO_PROPERTY_TASKS_MEMORY.append({
-            "id": tid,
-            "property_id": pid,
-            "description": desc,
-            "title": desc,
-            "task_type": kind,
-            "property_name": pid,
-            "room": pid,
-            "room_number": pid,
-            "staff_name": "עובד",
-            "worker_name": "עובד",
-            "staff_phone": "",
-            "status": "Pending",
-            "created_at": now,
-            "actions": STAFF_ACTIONS,
-        })
-    print(f"[_ensure_maya_brain_mock_tasks] in-memory demo tasks: {len(_DEMO_PROPERTY_TASKS_MEMORY)}", flush=True)
+    return
+
+
+def _task_is_unassigned_for_worker(task_dict):
+    """Open pool tasks visible to any named worker filter."""
+    sn = (task_dict.get("staff_name") or "").strip().lower()
+    at = (task_dict.get("assigned_to") or "").strip().lower()
+    if not sn and not at:
+        return True
+    if sn in ("", "unknown", "worker", "staff") and not at:
+        return True
+    return False
+
+
+def _task_visible_to_worker_filter(task_dict, worker_filter):
+    wf = (worker_filter or "").strip().lower()
+    if not wf:
+        return True
+    if _worker_name_matches_filter(wf, task_dict.get("staff_name"), task_dict.get("assigned_to")):
+        return True
+    return _task_is_unassigned_for_worker(task_dict)
 
 
 def _worker_name_matches_filter(worker_filter, staff_name, assigned_to):
@@ -15518,6 +15739,131 @@ def _worker_name_matches_filter(worker_filter, staff_name, assigned_to):
     if wf in sn or wf in at or sn in wf or at in wf:
         return True
     return False
+
+
+_WORKER_OPEN_TASK_STATUSES = frozenset({
+    "pending", "in_progress", "in progress", "active", "waiting",
+    "assigned", "accepted", "seen", "started", "delayed", "queued",
+})
+
+
+def _normalize_task_row_status(raw_status):
+    raw = (raw_status or "Pending").strip()
+    if raw in ("Accepted", "accepted", "seen", "Seen", "confirmed", "started", "Started"):
+        return "In_Progress"
+    if raw in ("done", "Done", "completed", "Completed"):
+        return "completed"
+    if raw in ("assigned", "Assigned"):
+        return "In_Progress"
+    if raw in ("delayed", "Delayed"):
+        return "Delayed"
+    if raw in ("pending", "Pending", "queued", "Queued"):
+        return "Pending"
+    if raw in ("waiting", "Waiting"):
+        return "Waiting"
+    return raw
+
+
+def _is_worker_open_task_status(raw_status):
+    st = (raw_status or "Pending").strip().lower()
+    if st in ("done", "completed", "closed", "archived", "cancelled"):
+        return False
+    return st in _WORKER_OPEN_TASK_STATUSES or st not in ("done", "completed", "closed", "archived")
+
+
+def _query_worker_portal_tasks(session, tenant_id, worker_filter=None, active_only=False):
+    """Open tasks — Greece Corfu pilot scope (same property IDs as manager TaskCalendar)."""
+    valid_ids = set(CHRISTOS_PROPERTY_IDS)
+    rooms = list_manual_rooms(tenant_id, owner_id=f"demo-{tenant_id}")
+    room_map = {r.get("id"): r for r in rooms if isinstance(r, dict) and r.get("id")}
+    staff_cache = {}
+    if PropertyStaffModel:
+        for pid in valid_ids:
+            for s in session.query(PropertyStaffModel).filter_by(property_id=pid).all():
+                staff_cache[s.id] = {
+                    "name": s.name or "Staff",
+                    "phone": getattr(s, "phone_number", None) or "",
+                }
+
+    def build_property_context(prop):
+        if not prop:
+            return ""
+        g = prop.get("max_guests") or 2
+        br = prop.get("bedrooms") or 1
+        b = prop.get("beds") or 1
+        return f"{g} Guests, {br} Bedroom, {b} Bed"
+
+    q = _property_tasks_query_for_tenant(session, tenant_id)
+    rows = q.order_by(PropertyTaskModel.created_at.desc()).all() if q is not None else []
+    all_open = []
+    for r in rows:
+        raw_status = (getattr(r, "status", None) or "Pending").strip()
+        if active_only and not _is_worker_open_task_status(raw_status):
+            continue
+        if (raw_status or "").strip().lower() == "archived":
+            continue
+        pid = (getattr(r, "property_id", None) or "").strip()
+        if not pid or pid not in valid_ids:
+            continue
+        prop = room_map.get(pid) if pid else None
+        ctx = build_property_context(prop)
+        staff_name = getattr(r, "staff_name", None) or ""
+        staff_phone = getattr(r, "staff_phone", None) or ""
+        assigned_to = getattr(r, "assigned_to", None) or ""
+        if (not staff_name or not staff_phone) and assigned_to:
+            cached = staff_cache.get(assigned_to)
+            if cached:
+                staff_name = staff_name or cached["name"]
+                staff_phone = staff_phone or cached["phone"]
+        row_status = _normalize_task_row_status(raw_status)
+        raw_pname = (getattr(r, "property_name", None) or "").strip()
+        if raw_pname.startswith(I18N_TASK_PREFIX) or raw_pname.startswith("worker."):
+            pname = raw_pname
+        else:
+            i18n_ref = _christos_property_i18n_ref(pid)
+            pname = i18n_ref or raw_pname
+        room_label = pname or pid or ""
+        raw_desc = (getattr(r, "description", None) or "").strip()
+        desc_val = _sanitize_worker_facing_task_text(raw_desc)
+        if not desc_val:
+            ttype_raw = (getattr(r, "task_type", None) or "").strip()
+            desc_val = ttype_raw if ttype_raw else ""
+        ttype = (getattr(r, "task_type", None) or "").strip() or desc_val
+        esc, pri_f, wnotes = _task_escalation_fields(r)
+        all_open.append({
+            "id": r.id,
+            "property_id": pid,
+            "property_name": room_label,
+            "title": desc_val,
+            "room_id": pid,
+            "room": room_label,
+            "room_number": room_label,
+            "task_type": ttype,
+            "assigned_to": assigned_to,
+            "description": desc_val,
+            "status": row_status,
+            "delayed": False,
+            "created_at": getattr(r, "created_at", None),
+            "started_at": getattr(r, "started_at", None),
+            "completed_at": getattr(r, "completed_at", None),
+            "completed_by": getattr(r, "completed_by", None) or "",
+            "duration_minutes": getattr(r, "duration_minutes", None),
+            "staff_name": staff_name or "Unknown",
+            "worker_name": staff_name or "Unknown",
+            "staff_phone": staff_phone,
+            "property_context": ctx,
+            "photo_url": getattr(r, "photo_url", None) or "",
+            "priority": getattr(r, "priority", None) or pri_f,
+            "worker_notes": wnotes,
+            "escalated": esc,
+            "due_at": getattr(r, "due_at", None) or "",
+            "actions": STAFF_ACTIONS,
+        })
+
+    wf = (worker_filter or "").strip().lower()
+    if wf:
+        return [t for t in all_open if _task_visible_to_worker_filter(t, wf)]
+    return all_open
 
 
 def _task_dict_status_norm(t):
@@ -15599,22 +15945,10 @@ def _ensure_demo_tasks_min_20(tasks):
 
 
 def _ensure_demo_portfolio_properties(rooms):
-    """Demo: at least 15 properties; every row gets occupancy_rate 80."""
+    """Normalize occupancy on listed rows — never re-inject deleted seed portfolio pins."""
     if rooms is None:
         rooms = []
     out = [dict(r) if isinstance(r, dict) else r for r in rooms if isinstance(r, dict)]
-    if len(out) < 15:
-        seed = _default_portfolio_seed_rooms()
-        seen = {str(r.get("id")) for r in out if r.get("id")}
-        for r in seed:
-            if not isinstance(r, dict):
-                continue
-            rid = str(r.get("id"))
-            if rid not in seen:
-                seen.add(rid)
-                out.append(dict(r))
-            if len(out) >= 15:
-                break
     try:
         live_occ = float(get_daily_stats()["occupancy_pct"])
     except Exception:
@@ -15697,10 +16031,21 @@ def property_tasks_api():
             "status": "Pending",
             "created_at": created,
             "photo_url": photo_url,
+            "source": _task_source_from_payload(data),
             "actions": STAFF_ACTIONS,
         }
         _DEMO_PROPERTY_TASKS_MEMORY.append(task_payload)
+        print("\n=== DEBUG: NEW GUEST TASK CREATED ===", flush=True)
+        print(f"Task Type/Name: {data.get('type') or data.get('name') or description}", flush=True)
+        print(
+            f"Assigned Worker ID in DB: {staff_id or assigned_to or 'No worker_id property'}",
+            flush=True,
+        )
+        print(f"Property/Room ID: {property_id or 'No property_id'}", flush=True)
+        print(f"Source: {data.get('source')}", flush=True)
+        print("======================================\n", flush=True)
         print(f"[Tasks] POST demo-memory task id={task_id[:8]} property={property_id!r}", flush=True)
+        _emit_task_realtime(task_payload, action="created")
         return jsonify({"ok": True, "task": task_payload}), 201
 
     # Session per request — close in finally so connections return to the pool (avoids QueuePool exhaustion).
@@ -15708,6 +16053,8 @@ def property_tasks_api():
     try:
         if request.method == "GET":
             try:
+                seed_active_properties(tenant_id)
+                _repair_christos_seed_tasks(session, tenant_id)
                 # Optional ?worker=levikobi filter — used by WorkerView for server-side filtering
                 worker_filter = (
                     (request.args.get("worker") or request.args.get("worker_id") or "").strip().lower()
@@ -15737,7 +16084,11 @@ def property_tasks_api():
                 # Fetch tasks for this tenant — do NOT filter by room_ids because manual /test-task
                 # tasks use plain room numbers ("302") that are never in the UUID room_ids
                 # list, which caused them to be silently dropped.
-                _pq = _property_tasks_query_for_tenant(session, tenant_id)
+                _portfolio = (request.args.get("portfolio") or "").strip().lower()
+                if raw_get and not worker_filter and _portfolio != "all":
+                    _pq = _christos_dashboard_tasks_query(session, tenant_id)
+                else:
+                    _pq = _property_tasks_query_for_tenant(session, tenant_id)
                 # RBAC: client / property-owner only sees tasks for properties they own.
                 # (Staff scoping is enforced separately via the forced worker filter above;
                 # admin / manager / operation keep full tenant visibility.)
@@ -15766,6 +16117,25 @@ def property_tasks_api():
                     rows = []
 
                 if not rows:
+                    fallback = initial_tasks()
+                    if worker_filter or status_filter:
+                        fallback = _filter_task_dicts_for_query(
+                            fallback, worker_filter, status_filter
+                        )
+                    if fallback:
+                        _redact_property_task_list(fallback, identity)
+                        tot = len(fallback)
+                        page = fallback
+                        if client_limit is not None:
+                            page = fallback[client_offset : client_offset + client_limit]
+                        resp = _no_cache_json(jsonify(page))
+                        _attach_task_table_count_headers(resp, tot)
+                        if client_limit is not None:
+                            _attach_tasks_list_pagination_headers(
+                                resp, tot, client_offset, len(page), client_limit
+                            )
+                        resp.headers["X-Tasks-Fallback"] = "1"
+                        return resp, 200
                     resp = _no_cache_json(jsonify([]))
                     _attach_task_table_count_headers(resp, 0)
                     if client_limit is not None:
@@ -15842,10 +16212,17 @@ def property_tasks_api():
                     # Derive clean room label with guaranteed fallback
                     pname = (getattr(r, "property_name", None) or "").strip()
                     pid   = (r.property_id or "").strip()
-                    room_label = pname or (f"חדר {pid}" if pid else "חדר לא ידוע")
+                    if not pname and pid in CHRISTOS_PROPERTY_IDS:
+                        pname = _christos_property_i18n_ref(pid)
+                    room_label = pname or pid or ""
 
-                    desc_val = (r.description or "").strip() or "ביצוע משימה"
-                    ttype = (getattr(r, "task_type", None) or "").strip() or desc_val
+                    raw_desc = (r.description or "").strip()
+                    ttype = (getattr(r, "task_type", None) or "").strip()
+                    ttype_key = _task_type_to_i18n_key(ttype) if ttype else ""
+                    desc_val = _task_primary_display_text(raw_desc, ttype_key)
+                    wnotes_raw = (getattr(r, "worker_notes", None) or "").strip()
+                    room_num = _task_room_number_from_text(raw_desc, wnotes_raw)
+                    room_label_display = f"חדר {room_num}" if room_num else room_label
                     esc, pri_f, wnotes = _task_escalation_fields(r)
                     _delayed = False
                     if row_status == "In_Progress":
@@ -15864,9 +16241,9 @@ def property_tasks_api():
                         # aliases expected by frontend fallback chain
                         "title":            desc_val,
                         "room_id":          pid,
-                        "room":             room_label,
-                        "room_number":      room_label,
-                        "task_type":        ttype,
+                        "room":             room_label_display,
+                        "room_number":      room_num or room_label_display,
+                        "task_type":        ttype_key,
                         # rest of payload
                         "assigned_to":      assigned_to,
                         "description":      desc_val,
@@ -15875,6 +16252,7 @@ def property_tasks_api():
                         "created_at":       getattr(r, "created_at",       None),
                         "started_at":       getattr(r, "started_at",       None),
                         "completed_at":     getattr(r, "completed_at",     None),
+                        "completed_by":     getattr(r, "completed_by",     None) or "",
                         "duration_minutes": getattr(r, "duration_minutes", None),
                         "staff_name":       staff_name or "Unknown",
                         "worker_name":      staff_name or "Unknown",
@@ -15886,6 +16264,7 @@ def property_tasks_api():
                         "escalated":        esc,
                         "due_at":           getattr(r, "due_at", None) or "",
                         "actions":          STAFF_ACTIONS,
+                        **_task_source_payload_fields(r),
                     })
 
                 if client_limit is not None and not use_sql_pagination:
@@ -15895,6 +16274,13 @@ def property_tasks_api():
                 print(f"[Tasks] GET worker={worker_filter!r:15s} "
                       f"status={status_filter!r:12s} raw_api_tasks={raw_get} "
                       f"limit={client_limit} offset={client_offset} → {len(tasks)} tasks returned")
+                print(f"[Tasks API] GET count={len(tasks)} total={pagination_total if pagination_total is not None else len(tasks)}", flush=True)
+                if tasks:
+                    _s0 = tasks[0]
+                    print(
+                        f"[Tasks API] GET sample title/description={(_s0.get('description') or _s0.get('title') or '')!r}",
+                        flush=True,
+                    )
                 _redact_property_task_list(tasks, identity)
                 resp = _no_cache_json(jsonify(tasks))
                 _list_total = int(pagination_total) if pagination_total is not None else len(tasks)
@@ -15914,20 +16300,31 @@ def property_tasks_api():
                 return resp, 200
 
         data = request.get_json(silent=True) or {}
-        property_id = data.get("property_id") or ""
+        property_id = (data.get("property_id") or "").strip()
         staff_id = data.get("staff_id") or data.get("assigned_to") or ""
         assigned_to = staff_id
-        description = data.get("description") or ""
+        assigned_worker = (data.get("assigned_worker") or data.get("worker_id") or "").strip()
+        description = (data.get("description") or data.get("content") or data.get("title") or "").strip()
+        raw_user_request = (data.get("raw_user_request") or data.get("user_request") or "").strip()
+        task_source = _task_source_from_payload(data)
+        if raw_user_request or task_source == TASK_SOURCE_MAYA:
+            description = _maya_resolve_task_user_text(description, raw_user_request or None)
+            if raw_user_request:
+                print(f"[MayaTask] parsed user text={description!r}", flush=True)
         # Always default to Pending so new tasks appear on the worker screen immediately
         _raw_status = (data.get("status") or "").strip()
         status = _raw_status if _raw_status in (
             "Pending", "In_Progress", "Done", "Assigned", "Delayed", "Waiting",
         ) else "Pending"
         property_name = data.get("property_name") or ""
-        staff_name = data.get("staff_name") or ""
+        staff_name = (data.get("staff_name") or assigned_worker or "").strip()
         staff_phone = data.get("staff_phone") or ""
         property_context = data.get("property_context") or ""
         photo_url = data.get("photo_url") or ""
+        if not property_id and task_source in (TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL):
+            property_id = "christos-thaleri-villa-corfu"
+        if property_id in CHRISTOS_PROPERTY_IDS and not (property_name or "").strip():
+            property_name = _christos_property_i18n_ref(property_id) or property_name
 
         display_property = property_name.strip() or property_id or "חדר לא ידוע"
         guest_mgr_whatsapp_msg = None
@@ -15965,30 +16362,60 @@ def property_tasks_api():
         task_id = str(uuid.uuid4())
         created = now_iso()
         full_desc = description.strip()
-        if property_context:
+        if property_context and _maya_is_generic_task_content(full_desc):
             full_desc = f"{full_desc} | נכס: {property_context}" if full_desc else f"נכס: {property_context}"
-        if not full_desc:
-            full_desc = "ביצוע משימה"
         task_type = (data.get("task_type") or "").strip()
-        if not task_type:
-            dl = (full_desc or "").lower()
-            he = full_desc or ""
-            if any(x in he for x in ("ניקיון", "נקה", "מגבת", "מצעים")) or "clean" in dl:
-                task_type = TASK_TYPE_CLEANING_HE
-            elif any(x in he for x in ("תחזוק", "מזגן", "ברז", "נזיל", "נורה")) or "maint" in dl or "repair" in dl:
-                task_type = TASK_TYPE_MAINTENANCE_HE
-            elif "vip" in dl or "אורח vip" in he.lower():
-                task_type = TASK_TYPE_VIP_HE
-            else:
-                task_type = TASK_TYPE_SERVICE_HE
-        if property_id == "bazaar-jaffa-hotel" and _is_task_type_cleaning(task_type) and "יחידה" not in full_desc:
+        if not full_desc:
+            full_desc = _description_to_i18n_or_text("", task_type)
+        task_type = _task_type_to_i18n_key(task_type or data.get("task_type"))
+        display_desc = _task_primary_display_text(full_desc, task_type)
+        room_num = _task_room_number_from_text(full_desc, raw_user_request)
+        room_display = f"חדר {room_num}" if room_num else display_property
+        if property_id in CHRISTOS_PROPERTY_IDS:
+            prop_i18n = _christos_property_i18n_ref(property_id)
+            if prop_i18n and not (property_name or "").strip():
+                property_name = prop_i18n
+        if property_id == "bazaar-jaffa-hotel" and "cleaning" in task_type.lower() and "יחידה" not in full_desc:
             u = (abs(hash(task_id)) % 10) + 1
-            full_desc = f"{full_desc} — ניקיון יחידה {u}/10"
+            full_desc = f"{full_desc} — unit {u}/10"
         priority = (data.get("priority") or "normal").strip().lower()
         if priority not in ("normal", "high"):
             priority = "normal"
         due_at_raw = (data.get("due_at") or "").strip()
         due_at_val = due_at_raw or None
+        client_id = (data.get("client_id") or "").strip()
+        booking_id = (data.get("booking_id") or "").strip()
+        reservation_id = (data.get("reservation_id") or "").strip()
+
+        if client_id:
+            _cid_q = _property_tasks_query_for_tenant(session, tenant_id)
+            if _cid_q is not None:
+                existing = _cid_q.filter(PropertyTaskModel.client_id == client_id).first()
+                if existing:
+                    display_staff = (existing.staff_name or "").strip() or "Unknown"
+                    pname = (existing.property_name or "").strip() or existing.property_id or ""
+                    task_payload = {
+                        "id": existing.id,
+                        "property_id": existing.property_id or "",
+                        "staff_id": existing.staff_id or "",
+                        "assigned_to": existing.assigned_to or "",
+                        "description": existing.description or "",
+                        "title": existing.description or "",
+                        "task_type": getattr(existing, "task_type", None) or "",
+                        "property_name": pname,
+                        "room": pname,
+                        "room_number": pname,
+                        "staff_name": display_staff,
+                        "worker_name": display_staff,
+                        "staff_phone": existing.staff_phone or "",
+                        "status": existing.status or "Pending",
+                        "created_at": existing.created_at or "",
+                        "photo_url": getattr(existing, "photo_url", None) or "",
+                        "due_at": getattr(existing, "due_at", None) or "",
+                        "actions": STAFF_ACTIONS,
+                        **_task_source_payload_fields(existing),
+                    }
+                    return jsonify({"ok": True, "task": task_payload, "duplicate": True}), 200
 
         # ── Smart Dispatch: if worker already has an In_Progress task, queue as Pending ──
         queued_msg = None
@@ -16024,6 +16451,36 @@ def property_tasks_api():
         ):
             effective_status = "In_Progress"
 
+        if (
+            data.get("source") == "guest"
+            and property_id
+            and not (staff_name or "").strip()
+            and not (staff_id or "").strip()
+        ):
+            wname, wphone, wid = _guest_towel_resolve_worker(
+                session, tenant_id, property_id, property_name
+            )
+            if (wname or "").strip() and wname != "עובד":
+                staff_name = wname
+            if wphone and not (staff_phone or "").strip():
+                staff_phone = wphone
+            if wid and not (staff_id or "").strip():
+                staff_id = wid
+            if not (staff_name or "").strip():
+                staff_name = (data.get("worker_id") or data.get("assigned_worker") or "shalom").strip()
+            assigned_to = staff_id or assigned_to or staff_name
+
+        print("\n=== DEBUG: NEW GUEST TASK CREATED ===", flush=True)
+        print(f"Task Type/Name: {data.get('type') or data.get('name') or task_type}", flush=True)
+        print(
+            f"Assigned Worker ID in DB: {staff_id or assigned_to or 'No worker_id property'}",
+            flush=True,
+        )
+        print(f"Staff Name: {staff_name or 'No staff_name'}", flush=True)
+        print(f"Property/Room ID: {property_id or 'No property_id'}", flush=True)
+        print(f"Source: {data.get('source')}", flush=True)
+        print("======================================\n", flush=True)
+
         task = PropertyTaskModel(
             id=task_id,
             property_id=property_id,
@@ -16040,7 +16497,13 @@ def property_tasks_api():
             priority=priority,
             tenant_id=tenant_id,
             due_at=due_at_val,
+            source=task_source,
+            client_id=client_id or None,
+            booking_id=booking_id or None,
+            reservation_id=reservation_id or None,
         )
+        if raw_user_request and hasattr(task, "worker_notes"):
+            task.worker_notes = raw_user_request[:500]
         session.add(task)
         try:
             session.commit()
@@ -16070,6 +16533,10 @@ def property_tasks_api():
                 "queued": queued_msg is not None,
                 "queued_message": queued_msg,
                 "actions": STAFF_ACTIONS,
+                "source": task_source,
+                "client_id": client_id,
+                "booking_id": booking_id,
+                "reservation_id": reservation_id,
             }
             _DEMO_PROPERTY_TASKS_MEMORY.append(task_payload)
             resp = jsonify({"ok": True, "task": task_payload})
@@ -16093,14 +16560,16 @@ def property_tasks_api():
             "staff_id": staff_id,
             "assigned_to": assigned_to,
             # canonical + all frontend aliases so the card never appears empty
-            "description":   full_desc,
-            "title":         full_desc,
+            "description":   display_desc,
+            "title":         display_desc,
+            "content":       display_desc,
             "task_type":     task_type,
             "property_name": display_property,
-            "room":          display_property,
-            "room_number":   display_property,
+            "room":          room_display,
+            "room_number":   room_num or room_display,
             "staff_name":    display_staff,
             "worker_name":   display_staff,
+            "assigned_worker": assigned_worker or display_staff,
             "staff_phone":   staff_phone,
             "status":        effective_status,
             "created_at":    created,
@@ -16109,7 +16578,13 @@ def property_tasks_api():
             "queued_message": queued_msg,
             "due_at":        due_at_val or "",
             "actions":       STAFF_ACTIONS,
+            "source":        task_source,
+            "client_id":     client_id,
+            "booking_id":    booking_id,
+            "reservation_id": reservation_id,
         }
+        _emit_task_realtime(task_payload, action="created")
+        print(f"[Tasks API] saved title/description={display_desc!r} id={task_id}", flush=True)
         return jsonify({"ok": True, "task": task_payload}), 201
     except Exception as e:
         session.rollback()
@@ -16164,7 +16639,7 @@ def _normalize_property_task_patch_status(raw):
     if raw in ("In_Progress", "in_progress", "in progress", "InProgress", "started", "working"):
         return "In_Progress"
     if raw in ("done", "Done", "completed", "Completed"):
-        return "Done"
+        return "completed"
     if raw in ("pending", "Pending", "queued", "Queued"):
         return "Pending"
     if raw in ("assigned", "Assigned"):
@@ -16172,6 +16647,78 @@ def _normalize_property_task_patch_status(raw):
     if raw in ("delayed", "Delayed"):
         return "Delayed"
     return raw
+
+
+def _parse_worker_patch_payload(data, url_task_id):
+    """Map WorkerView / ops payloads → (task_id, status_raw, action, worker_id)."""
+    data = data if isinstance(data, dict) else {}
+    tid = str(
+        data.get("task_id") or data.get("id") or data.get("taskId") or url_task_id or ""
+    ).strip()
+    action = str(data.get("action") or data.get("operation") or "").strip().lower()
+    raw_status = (
+        data.get("status")
+        or data.get("task_status")
+        or data.get("new_status")
+        or data.get("state")
+    )
+    if raw_status is None or str(raw_status).strip() == "":
+        if action in ("start", "seen", "accept", "in_progress", "inprogress"):
+            raw_status = "In_Progress"
+        elif action in ("complete", "done", "finish", "completed"):
+            raw_status = "completed"
+        elif action in ("pending", "reset", "requeue"):
+            raw_status = "Pending"
+    worker_id = (
+        data.get("worker_id")
+        or data.get("worker_name")
+        or data.get("staff_name")
+        or data.get("assigned_to")
+        or ""
+    )
+    return tid, raw_status, action, str(worker_id).strip()
+
+
+def _find_property_task_by_id(session, tenant_id, tid):
+    """Tenant-scoped lookup with global id fallback (Christos seed / legacy rows)."""
+    if not session or not PropertyTaskModel or not tid:
+        return None
+    task = _property_tasks_query_for_tenant(session, tenant_id).filter(
+        PropertyTaskModel.id == tid
+    ).first()
+    if task:
+        return task
+    return session.query(PropertyTaskModel).filter(PropertyTaskModel.id == tid).first()
+
+
+def _worker_task_status_for_api(db_status):
+    """Worker portal JSON — align with frontend (`completed`, `In_Progress`, `Pending`)."""
+    st = (db_status or "Pending").strip()
+    low = st.lower().replace(" ", "_")
+    if low in ("done", "completed"):
+        return "completed"
+    if low in ("in_progress", "inprogress", "accepted", "assigned", "started", "seen", "working"):
+        return "In_Progress"
+    if low in ("pending", "queued", "waiting"):
+        return "Pending"
+    if low == "delayed":
+        return "Delayed"
+    return st
+
+
+def _notify_owner_on_seen_async(task_id):
+    """Fire-and-forget — Twilio/SMS must not block PATCH (fixes stuck בביצוע… UI)."""
+    if not task_id or not SessionLocal or not PropertyTaskModel:
+        return
+    session = SessionLocal()
+    try:
+        task = session.query(PropertyTaskModel).filter(PropertyTaskModel.id == task_id).first()
+        if task:
+            notify_owner_on_seen(task)
+    except Exception as e:
+        print(f"[Maya] notify_owner_on_seen async failed: {e}", flush=True)
+    finally:
+        session.close()
 
 
 def _auto_promote_pending_when_assigned(task, tid, now_ts):
@@ -16195,7 +16742,8 @@ def _auto_promote_pending_when_assigned(task, tid, now_ts):
 
 def _apply_property_task_status_to_row(task, new_status, tid, now_ts):
     """Mutates ORM row like PATCH handler (timestamps, notify owner on start)."""
-    if new_status != "Done":
+    _done_states = ("Done", "done", "completed", "Completed")
+    if new_status not in _done_states:
         try:
             task.completed_at = None
             task.duration_minutes = None
@@ -16206,10 +16754,14 @@ def _apply_property_task_status_to_row(task, new_status, tid, now_ts):
             task.started_at = now_ts
             print(f"[Perf] Task {str(tid)[:8]}… started_at={now_ts}", flush=True)
         try:
-            notify_owner_on_seen(task)
+            threading.Thread(
+                target=_notify_owner_on_seen_async,
+                args=(str(tid),),
+                daemon=True,
+            ).start()
         except Exception as e:
-            print("[Maya] notify_owner_on_seen failed:", e, flush=True)
-    elif new_status == "Done":
+            print("[Maya] notify_owner_on_seen schedule failed:", e, flush=True)
+    elif new_status in _done_states:
         task.completed_at = now_ts
         ref_ts_str = getattr(task, "started_at", None) or getattr(task, "created_at", None)
         if ref_ts_str:
@@ -16228,6 +16780,7 @@ def _apply_property_task_status_to_row(task, new_status, tid, now_ts):
                 )
             except Exception as _pe:
                 print(f"[Perf] duration calc error: {_pe}", flush=True)
+        new_status = "completed"
     task.status = new_status
 
 
@@ -16286,7 +16839,7 @@ def property_tasks_batch_update():
             )
             results.append({"id": tid, "ok": True, "status": new_status})
             status_touched = True
-            if new_status == "Done":
+            if new_status in ("Done", "done", "completed", "Completed"):
                 wn = getattr(task, "staff_name", "") or ""
                 if wn:
                     done_threads.append((wn, tid))
@@ -16302,6 +16855,154 @@ def property_tasks_batch_update():
         session.rollback()
         print(f"[property_tasks_batch] {e!r}", flush=True)
         return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+def _worker_portal_identity():
+    """Worker portal — JWT when present; demo tenant fallback (matches GET /api/worker/tasks)."""
+    try:
+        return get_property_tasks_auth_bundle()
+    except ValueError:
+        return {
+            "tenant_id": DEFAULT_TENANT_ID,
+            "user_id": f"demo-{DEFAULT_TENANT_ID}",
+            "app_role": "staff",
+            "worker_handle": "",
+            "email": "",
+        }
+
+
+def _property_task_patch_impl(tid, identity):
+    """PATCH body for property_tasks / worker task progress — returns Flask response tuple."""
+    if not SessionLocal or not PropertyTaskModel:
+        return jsonify({"error": "Tasks unavailable", "status": "error"}), 500
+    tenant_id = identity["tenant_id"]
+    data = request.get_json(silent=True) or {}
+    parsed_tid, raw_status, action, worker_id = _parse_worker_patch_payload(data, tid)
+    tid = parsed_tid or tid
+    if not tid:
+        return jsonify({"error": "Missing task id", "status": "error"}), 400
+    print(f"UPDATING TASK: {tid}")
+    session = SessionLocal()
+    status_touched = False
+    try:
+        task = _find_property_task_by_id(session, tenant_id, tid)
+        if not task:
+            print(f"PATCH 404 — task '{tid}' not found for tenant '{tenant_id}'")
+            return jsonify({"error": "Task not found", "status": "error"}), 404
+        now_ts = datetime.now(timezone.utc).isoformat()
+
+        if action == "cannot_take" and worker_id:
+            task.staff_name = worker_id
+            if hasattr(task, "assigned_to"):
+                task.assigned_to = worker_id
+            status_touched = True
+
+        if raw_status is not None and str(raw_status).strip() != "":
+            prev_status = (task.status or "").strip()
+            new_status = _normalize_property_task_patch_status(raw_status)
+            print(f"[Task] PATCH {tid[:8]}… '{raw_status}' → '{new_status}'", flush=True)
+            _apply_property_task_status_to_row(task, new_status, tid, now_ts)
+            if new_status in ("Done", "done", "completed", "Completed"):
+                completed_by = (
+                    (data.get("completed_by") or worker_id or "").strip()
+                    or _staff_handle_for_identity(identity)
+                    or ((identity.get("email") or "").split("@")[0].strip())
+                )
+                if completed_by and hasattr(task, "completed_by"):
+                    task.completed_by = completed_by
+            _audit_task_completed_session(
+                session,
+                getattr(task, "tenant_id", None) or identity["tenant_id"],
+                tid,
+                prev_status,
+                new_status,
+                identity["user_id"],
+                identity["email"],
+            )
+            status_touched = True
+
+        if worker_id and action != "cannot_take":
+            task.staff_name = worker_id
+            if hasattr(task, "assigned_to") and not getattr(task, "assigned_to", None):
+                task.assigned_to = worker_id
+
+        if "staff_name" in data and data["staff_name"]:
+            task.staff_name = data["staff_name"]
+        if "staff_phone" in data and data["staff_phone"]:
+            task.staff_phone = data["staff_phone"]
+        if "worker_notes" in data:
+            task.worker_notes = data["worker_notes"] or ""
+        if "staff_id" in data and data["staff_id"]:
+            task.staff_id = data["staff_id"]
+            if hasattr(task, "assigned_to"):
+                task.assigned_to = data["staff_id"]
+        if "assigned_to" in data and data["assigned_to"] and hasattr(task, "assigned_to"):
+            task.assigned_to = data["assigned_to"]
+
+        promoted = False
+        st_after = (task.status or "").strip().lower()
+        if st_after not in ("done", "completed", "archived", "cancelled", "closed"):
+            promoted = _auto_promote_pending_when_assigned(task, tid, now_ts)
+        if promoted:
+            print(f"[Task] Auto-promoted {tid[:8]}… Pending → In_Progress (worker assigned)", flush=True)
+            _audit_task_completed_session(
+                session,
+                getattr(task, "tenant_id", None) or identity["tenant_id"],
+                tid,
+                "Pending",
+                "In_Progress",
+                identity["user_id"],
+                identity["email"],
+            )
+            status_touched = True
+
+        session.commit()
+        print(f"UPDATING TASK: {tid} — saved ✅")
+        if status_touched or promoted:
+            _bump_tasks_version()
+            _invalidate_owner_dashboard_cache()
+
+        api_status = _worker_task_status_for_api(task.status)
+        _worker_for_agent = getattr(task, "staff_name", "") or ""
+        emit_payload = {
+            "id": task.id,
+            "status": api_status,
+            "description": getattr(task, "description", "") or "",
+            "task_type": getattr(task, "task_type", "") or "",
+            "property_id": getattr(task, "property_id", "") or "",
+            "property_name": getattr(task, "property_name", "") or "",
+            "staff_name": _worker_for_agent,
+            "started_at": getattr(task, "started_at", None),
+            "completed_at": getattr(task, "completed_at", None),
+            "completed_by": getattr(task, "completed_by", None) or "",
+        }
+        _emit_task_realtime(emit_payload, action="updated")
+        if api_status == "completed" and _worker_for_agent:
+            threading.Thread(
+                target=_run_performance_agent,
+                args=(_worker_for_agent, tid),
+                daemon=True,
+            ).start()
+
+        return jsonify({
+            "status": "success",
+            "message": "Task updated successfully",
+            "ok": True,
+            "task": {
+                "id": task.id,
+                "status": api_status,
+                "started_at": getattr(task, "started_at", None),
+                "completed_at": getattr(task, "completed_at", None),
+                "completed_by": getattr(task, "completed_by", None) or "",
+                "duration_minutes": getattr(task, "duration_minutes", None),
+            },
+        }), 200
+    except Exception as e:
+        session.rollback()
+        print(f"PATCH DB_ERROR: {e}")
+        return jsonify({"error": str(e), "status": "error", "message": str(e)}), 500
     finally:
         session.close()
 
@@ -16341,92 +17042,7 @@ def property_task_update(task_id):
             return jsonify({"error": str(e)}), 500
         finally:
             session.close()
-    print(f"UPDATING TASK: {tid}")
-    session = SessionLocal()
-    try:
-        task = _property_tasks_query_for_tenant(session, tenant_id).filter(
-            PropertyTaskModel.id == tid
-        ).first()
-        if not task:
-            print(f"PATCH 404 — task '{tid}' not found for tenant '{tenant_id}'")
-            return jsonify({"error": "Task not found"}), 404
-        data = request.get_json(silent=True) or {}
-        now_ts = datetime.now(timezone.utc).isoformat()
-        if "status" in data:
-            prev_status = (task.status or "").strip()
-            raw = (data.get("status") or "Pending").strip() or "Pending"
-            new_status = _normalize_property_task_patch_status(raw)
-            print(f"[Task] PATCH {tid[:8]}… '{raw}' → '{new_status}'", flush=True)
-            _apply_property_task_status_to_row(task, new_status, tid, now_ts)
-            _audit_task_completed_session(
-                session,
-                getattr(task, "tenant_id", None) or identity["tenant_id"],
-                tid,
-                prev_status,
-                new_status,
-                identity["user_id"],
-                identity["email"],
-            )
-
-        # Allow direct patch of staff_name (for assignment flow)
-        if "staff_name" in data and data["staff_name"]:
-            task.staff_name = data["staff_name"]
-        if "staff_phone" in data and data["staff_phone"]:
-            task.staff_phone = data["staff_phone"]
-
-        # Allow patching worker_notes
-        if "worker_notes" in data:
-            task.worker_notes = data["worker_notes"] or ""
-
-        if "staff_id" in data and data["staff_id"]:
-            task.staff_id = data["staff_id"]
-            if hasattr(task, "assigned_to"):
-                task.assigned_to = data["staff_id"]
-        if "assigned_to" in data and data["assigned_to"] and hasattr(task, "assigned_to"):
-            task.assigned_to = data["assigned_to"]
-
-        promoted = _auto_promote_pending_when_assigned(task, tid, now_ts)
-        if promoted:
-            print(f"[Task] Auto-promoted {tid[:8]}… Pending → In_Progress (worker assigned)", flush=True)
-            _audit_task_completed_session(
-                session,
-                getattr(task, "tenant_id", None) or identity["tenant_id"],
-                tid,
-                "Pending",
-                "In_Progress",
-                identity["user_id"],
-                identity["email"],
-            )
-
-        session.commit()
-        print(f"UPDATING TASK: {tid} — saved ✅")
-        if "status" in data or promoted:
-            _bump_tasks_version()
-            _invalidate_owner_dashboard_cache()
-
-        # ── Fire Performance Agent in background after completion ──
-        _worker_for_agent = getattr(task, "staff_name", "") or ""
-        _new_status_for_agent = task.status if ("status" in data or promoted) else None
-        if _new_status_for_agent in ("Done",) and _worker_for_agent:
-            threading.Thread(
-                target=_run_performance_agent,
-                args=(_worker_for_agent, tid),   # pass task_id for immutable log
-                daemon=True,
-            ).start()
-
-        return jsonify({"ok": True, "task": {
-            "id": task.id,
-            "status": task.status,
-            "started_at": getattr(task, "started_at", None),
-            "completed_at": getattr(task, "completed_at", None),
-            "duration_minutes": getattr(task, "duration_minutes", None),
-        }}), 200
-    except Exception as e:
-        session.rollback()
-        print(f"PATCH DB_ERROR: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        session.close()
+    return _property_task_patch_impl(tid, identity)
 
 
 def _run_performance_agent(worker_name: str, completed_task_id: str = None):
@@ -17018,24 +17634,96 @@ def api_reports_task_metrics():
         session.close()
 
 
-@app.route("/api/worker/tasks", methods=["GET", "OPTIONS"])
-def api_worker_tasks_compat():
-    """WorkerView.jsx — same payload as GET /api/property-tasks with ?worker_id=… (always 200 JSON)."""
+@app.route("/api/start-shift", methods=["POST", "OPTIONS"])
+@app.route("/api/end-shift", methods=["POST", "OPTIONS"])
+@app.route("/api/active-workers", methods=["GET", "OPTIONS"])
+@cross_origin(origins="*", allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "OPTIONS"])
+def api_worker_shift_compat():
+    """WorkerView shift controls — local state; no DB required."""
     if request.method == "OPTIONS":
         return Response(status=204)
-    wid = (request.args.get("worker_id") or request.args.get("worker") or "").strip()
-    qs = []
-    if wid:
-        qs.append(f"worker={wid}")
-        qs.append(f"worker_id={wid}")
-    path = "/api/property-tasks" + ("?" + "&".join(qs) if qs else "")
-    _fwd = []
-    if request.headers.get("Authorization"):
-        _fwd.append(("Authorization", request.headers.get("Authorization")))
-    if request.headers.get("X-Tenant-Id"):
-        _fwd.append(("X-Tenant-Id", request.headers.get("X-Tenant-Id")))
-    with app.test_request_context(path, method="GET", headers=_fwd):
-        return property_tasks_api()
+    if request.method == "GET":
+        data = request.get_json(silent=True) or {}
+        wid = (request.args.get("worker_id") or data.get("worker_id") or "").strip()
+        workers = [{"worker_id": wid}] if wid else []
+        return jsonify({"workers": workers, "ok": True}), 200
+    data = request.get_json(silent=True) or {}
+    wid = (data.get("worker_id") or "").strip()
+    path = (request.path or "").rstrip("/")
+    if path.endswith("/end-shift"):
+        return jsonify({"ok": True, "worker_id": wid, "shift": "finished"}), 200
+    return jsonify({"ok": True, "worker_id": wid, "shift": "active"}), 200
+
+
+@app.route("/api/worker/tasks/<string:task_id>", methods=["PATCH", "POST", "OPTIONS"])
+@cross_origin(origins="*", allow_headers=["Content-Type", "Authorization"], methods=["PATCH", "POST", "OPTIONS"])
+def api_worker_task_patch(task_id):
+    """WorkerView task progress — no JWT required (demo portal fallback)."""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    tid = str(task_id).strip() if task_id else ""
+    if not tid:
+        return jsonify({"error": "Missing task id", "status": "error"}), 400
+    identity = _worker_portal_identity()
+    return _property_task_patch_impl(tid, identity)
+
+
+@app.route("/api/worker/tasks", methods=["GET", "OPTIONS"])
+def api_worker_tasks_compat():
+    """WorkerView — open tasks on active properties; avoids over-filtering to []."""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    try:
+        identity = get_property_tasks_auth_bundle()
+    except ValueError:
+        identity = {"tenant_id": DEFAULT_TENANT_ID, "user_id": f"demo-{DEFAULT_TENANT_ID}", "app_role": "admin"}
+    tenant_id = identity.get("tenant_id") or DEFAULT_TENANT_ID
+    worker_filter = (
+        (request.args.get("worker") or request.args.get("worker_id") or "").strip().lower()
+    )
+    worker_filter = _apply_staff_task_scope(identity, worker_filter)
+    active_only = (request.args.get("active_only") or "").strip().lower() in ("1", "true", "yes")
+    portfolio = (request.args.get("portfolio") or "corfu").strip().lower()
+
+    if not SessionLocal or not PropertyTaskModel:
+        merged = _merge_initial_and_memory_tasks()
+        tasks = _filter_task_dicts_for_query(merged, worker_filter, "")
+        if not tasks:
+            tasks = initial_tasks()
+        resp = _no_cache_json(jsonify(tasks))
+        resp.headers["X-Tasks-Fallback"] = "1"
+        return resp, 200
+
+    session = SessionLocal()
+    try:
+        seed_active_properties(tenant_id)
+        tasks = _query_worker_portal_tasks(
+            session, tenant_id, worker_filter=worker_filter, active_only=active_only
+        )
+        if portfolio in ("corfu", "christos", "greece", "pilot"):
+            tasks = [
+                t for t in tasks
+                if (t.get("property_id") or "").strip() in CHRISTOS_PROPERTY_IDS
+            ]
+        if not tasks:
+            tasks = []
+        print(
+            f"[Tasks] GET worker={worker_filter!r:15s} active_only={active_only} "
+            f"→ {len(tasks)} tasks returned",
+            flush=True,
+        )
+        _redact_property_task_list(tasks, identity)
+        resp = _no_cache_json(jsonify(tasks))
+        _attach_task_table_count_headers(resp, len(tasks))
+        return resp, 200
+    except Exception as e:
+        print(f"[api/worker/tasks] {e}", flush=True)
+        fallback = initial_tasks()
+        resp = _no_cache_json(jsonify(fallback))
+        resp.headers["X-Tasks-Fallback"] = "1"
+        return resp, 200
+    finally:
+        session.close()
 
 
 @app.route("/api/settings/automated-welcome", methods=["GET", "PUT", "OPTIONS"])
@@ -17150,6 +17838,21 @@ def dev_test_task():
     })
 
     return jsonify({"ok": True, "task": task_payload}), 201
+
+
+# ── DEV: wipe all tasks and reseed Christos pilot ─────────────────────────────
+@app.route("/api/dev/purge-all-tasks", methods=["POST", "OPTIONS"])
+def dev_purge_all_tasks():
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    identity = _identity_or_none()
+    if identity is None:
+        return jsonify({"error": "Unauthorized"}), 401
+    if identity.get("app_role") not in ("admin", "manager"):
+        return jsonify({"error": "Forbidden — admin access required"}), 403
+    tenant_id = identity.get("tenant_id") or DEFAULT_TENANT_ID
+    out = purge_all_property_tasks(tenant_id, reseed_christos=True)
+    return jsonify({"ok": True, **out}), 200
 
 
 # ── DEV: reset a worker's tasks back to Pending ───────────────────────────────
@@ -17356,111 +18059,7 @@ def _delete_sim_engine_tasks(session, tenant_id, property_id):
 
 
 def _generate_simulation_tasks_for_occ(tenant_id, occupancy_pct, user_id=None):
-    """
-    Task volume scales with occupancy. At ~100% → 61 Cleaning tasks for Hotel Bazaar Jaffa.
-    Otherwise mixed Cleaning / Maintenance / Mini-bar restock (Service).
-    """
-    if not SessionLocal or not PropertyTaskModel:
-        return 0, "Tasks unavailable"
-    occ = float(occupancy_pct)
-    bazaar_id = BAZAAR_JAFFA_PROPERTY_ID
-    if occ >= 99.5:
-        n_total = 61
-        mix_cleaning_only = True
-    else:
-        n_total = max(1, int(round(61.0 * occ / 100.0)))
-        mix_cleaning_only = False
-
-    session = SessionLocal()
-    created = 0
-    try:
-        _delete_sim_engine_tasks(session, tenant_id, bazaar_id)
-        rooms = list_manual_rooms(tenant_id, owner_id=user_id or f"demo-{tenant_id}")
-        staff_by_property = {}
-        if PropertyStaffModel:
-            for r in rooms:
-                pid = r.get("id")
-                if not pid:
-                    continue
-                staff_records = session.query(PropertyStaffModel).filter_by(property_id=pid).all()
-                staff_by_property[pid] = [
-                    {"id": s.id, "name": s.name, "role": s.role or "Staff", "phone_number": getattr(s, "phone_number", None)}
-                    for s in staff_records
-                ]
-
-        def pick_staff(task_type_val):
-            sl = staff_by_property.get(bazaar_id) or []
-            tt_key = _normalize_task_type_for_dispatch(task_type_val)
-            for s in sl:
-                rl = (s.get("role") or "").lower()
-                nm = (s.get("name") or "").lower()
-                if tt_key == "cleaning" and ("clean" in rl or "עלמה" in nm or "alma" in nm):
-                    return s.get("id"), s.get("name"), (s.get("phone_number") or "") or "0501234567"
-                if tt_key == "maintenance" and ("maint" in rl or "תחזוק" in rl or "קובי" in nm or "kobi" in nm):
-                    return s.get("id"), s.get("name"), (s.get("phone_number") or "") or "0529876543"
-            if sl:
-                s = sl[0]
-                return s.get("id"), s.get("name"), (s.get("phone_number") or "") or ""
-            return "", "עלמה", "0501234567"
-
-        for i in range(n_total):
-            room_num = 101 + (i % 32)
-            if mix_cleaning_only:
-                task_type_val = TASK_TYPE_CLEANING_HE
-                desc = f"[SIM-ENGINE] ניקיון חדר {room_num} — סיבוב מלא (תפוסה מלאה)"
-                staff_id, staff_name, staff_phone = pick_staff(TASK_TYPE_CLEANING_HE)
-            else:
-                r = random.random()
-                if r < 0.60:
-                    task_type_val = TASK_TYPE_CLEANING_HE
-                    desc = f"[SIM-ENGINE] ניקיון חדר {room_num} — לפי עומס תפוסה"
-                    staff_id, staff_name, staff_phone = pick_staff(TASK_TYPE_CLEANING_HE)
-                elif r < 0.85:
-                    task_type_val = TASK_TYPE_MAINTENANCE_HE
-                    desc = f"[SIM-ENGINE] תחזוקה — בדיקת מזגן/מים חדר {room_num}"
-                    staff_id, staff_name, staff_phone = pick_staff(TASK_TYPE_MAINTENANCE_HE)
-                else:
-                    task_type_val = TASK_TYPE_SERVICE_HE
-                    desc = f"[SIM-ENGINE] מיני בר — מילוי מלאי חדר {room_num}"
-                    staff_id, staff_name, staff_phone = pick_staff(TASK_TYPE_SERVICE_HE)
-
-            tid = str(uuid.uuid4())
-            new_pt = PropertyTaskModel(
-                id=tid,
-                property_id=bazaar_id,
-                staff_id=staff_id or "",
-                assigned_to=staff_id or "",
-                description=desc,
-                status="Pending",
-                created_at=now_iso(),
-                property_name="Hotel Bazaar Jaffa",
-                staff_name=staff_name or "Staff",
-                staff_phone=staff_phone or "",
-                tenant_id=tenant_id,
-            )
-            if hasattr(new_pt, "task_type"):
-                new_pt.task_type = task_type_val
-            if hasattr(new_pt, "priority"):
-                new_pt.priority = "normal"
-            session.add(new_pt)
-            created += 1
-        session.commit()
-        try:
-            assign_stuck_property_tasks(tenant_id)
-        except Exception:
-            pass
-        return created, None
-    except Exception as e:
-        try:
-            session.rollback()
-        except Exception:
-            pass
-        print(f"[_generate_simulation_tasks_for_occ] {e}", flush=True)
-        import traceback as _tb_sim
-        _tb_sim.print_exc()
-        return 0, str(e)
-    finally:
-        session.close()
+    return 0, "Simulation disabled (Christos pilot)"
 
 
 def run_hotel_ops_simulation_refresh(tenant_id=None, user_id=None):
@@ -17653,36 +18252,29 @@ def api_ops_simulation_refresh():
 
 
 def _run_bootstrap_operational_data(tenant_id=None, user_id=None):
-    """Populate pilot properties + Bazaar/ROOMS/WeWork portfolio + hotel-ops tasks (idempotent)."""
+    """Christos Corfu pilot only — purge demo rows, ensure 3 properties + tasks."""
     tid = tenant_id or DEFAULT_TENANT_ID
-    uid = user_id or f"demo-{tid}"
     steps = []
     try:
-        seed_pilot_demo()
-        steps.append("seed_pilot_demo")
+        wipe = _run_christos_demo_integrity_wipe(tid, wipe_all=False)
+        steps.append({"christos_integrity_wipe": wipe})
     except Exception as e:
-        steps.append({"seed_pilot_demo": str(e)})
+        steps.append({"christos_integrity_wipe": str(e)})
     try:
-        ensure_emergency_portfolio_and_tasks(tid)
-        steps.append("ensure_emergency_portfolio_and_tasks")
+        out = seed_active_properties(tid)
+        steps.append({"seed_active_properties": out})
     except Exception as e:
-        steps.append({"ensure_emergency_portfolio_and_tasks": str(e)})
-    hotel = None
+        steps.append({"seed_active_properties": str(e)})
     try:
-        hotel = run_hotel_ops_simulation_refresh(tenant_id=tid, user_id=uid)
-        steps.append("run_hotel_ops_simulation_refresh")
-    except Exception as e:
-        steps.append({"run_hotel_ops_simulation_refresh": str(e)})
-    try:
-        demo_out = initialize_demo_data()
-        steps.append({"initialize_demo_data": demo_out})
-    except Exception as e:
-        steps.append({"initialize_demo_data": str(e)})
+        _maya_invalidate_stale_caches(tid)
+        _invalidate_maya_rooms_staff_cache(tid)
+    except Exception:
+        pass
     try:
         _bump_tasks_version()
     except Exception:
         pass
-    return {"ok": True, "steps": steps, "hotel_ops": hotel}
+    return {"ok": True, "steps": steps}
 
 
 @app.route("/api/ops/bootstrap-data", methods=["GET", "POST", "OPTIONS"])
@@ -17778,7 +18370,7 @@ def _maya_recent_completed_snapshot_for_chat(session, tenant_id, limit=14):
     if not session or not PropertyTaskModel:
         return out
     try:
-        q = _property_tasks_query_for_tenant(session, tenant_id)
+        q = _property_tasks_query_for_maya(session, tenant_id)
         if q is None:
             return out
         rows = (
@@ -17825,7 +18417,7 @@ def _maya_fastest_worker_reply(tenant_id):
     session = SessionLocal()
     rows = []
     try:
-        q = _property_tasks_query_for_tenant(session, tenant_id)
+        q = _property_tasks_query_for_maya(session, tenant_id)
         if q is None:
             return None
         rows = (
@@ -17887,6 +18479,8 @@ _MAYA_TASK_CONTEXT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)
 _MAYA_TASK_CONTEXT_LOCK = threading.Lock()
 _MAYA_ROOM_CONFIRM_PENDING = {}
 _MAYA_ROOM_CONFIRM_TTL_SEC = 360
+_MAYA_TASK_CREATE_PENDING = {}
+_MAYA_TASK_CREATE_PENDING_TTL_SEC = 600
 
 # Short-lived cache for rooms + staff data so consecutive Maya messages don't
 # re-query the DB on every single SSE request (saves 200-600 ms per message).
@@ -17912,6 +18506,8 @@ def _get_maya_rooms_and_staff(tenant_id: str, user_id: str):
         return cached["rooms"], cached["staff_by_property"]
 
     rooms = list_manual_rooms(tenant_id, owner_id=user_id)
+    if _christos_pilot_is_active(tenant_id, user_id, rooms):
+        rooms = _christos_pilot_room_rows(tenant_id, user_id, rooms)
     staff_by_property: dict = {}
     if SessionLocal and PropertyStaffModel:
         _sess = SessionLocal()
@@ -17984,23 +18580,10 @@ def _maya_refresh_task_context_cache(tenant_id):
     total_open = 0
     s = SessionLocal()
     try:
-        _tq = _property_tasks_query_for_tenant(s, tenant_id)
-        if _tq is None:
-            return
-        _terminal = ("Done", "done", "Completed", "completed", "archived", "Archived")
-        q_open = _tq.filter(
-            or_(
-                PropertyTaskModel.status.is_(None),
-                PropertyTaskModel.status == "",
-                ~PropertyTaskModel.status.in_(_terminal),
-            )
-        )
-        total_open = int(q_open.count() or 0)
-        rows = q_open.order_by(PropertyTaskModel.created_at.desc()).limit(10).all()
-        for r in rows:
+        rows = _maya_fetch_open_tasks(s, tenant_id)
+        total_open = len(rows)
+        for r in rows[:10]:
             st = (getattr(r, "status", "") or "").strip()
-            if st.lower() in ("done", "completed", "archived"):
-                continue
             active_tasks.append({
                 "id": r.id,
                 "description": ((getattr(r, "description", None) or "")[:140]).strip(),
@@ -18047,6 +18630,417 @@ def _maya_active_tasks_for_chat(tenant_id):
     tasks = list(ent.get("active_tasks") or [])
     total_open = int(ent.get("total_open") or 0)
     return tasks, total_open
+
+
+def _maya_is_open_task_intent(command):
+    if not command:
+        return False
+    return bool(
+        re.search(
+            r"(?:ל)?(?:פתוח|פתחי|פתח|צרי|צור|create|open)\s*(?:משימה|משימת|task)|"
+            r"פתיחת\s*משימה|open\s+task|create\s+task",
+            command,
+            re.I,
+        )
+    )
+
+
+def _maya_strip_task_open_boilerplate(text):
+    t = (text or "").strip()
+    t = re.sub(
+        r"^(?:.*?)(?:ל)?(?:פתוח|פתחי|פתח|צרי|צור|create|open)\s*(?:משימה|משימת|task)[:\s,-]*",
+        "",
+        t,
+        flags=re.I,
+    ).strip()
+    t = re.sub(r"^.*?פתיחת\s*משימה[:\s,-]*", "", t, flags=re.I).strip()
+    t = re.sub(r"(?:ניקיון|נקיון|cleaning|תחזוקה|maintenance|שירות|service)\s*", "", t, flags=re.I).strip()
+    t = re.sub(r"(?:חדר|room)\s*#?\s*\d{1,6}", "", t, flags=re.I).strip()
+    t = re.sub(r"^ל\s*", "", t).strip()
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _maya_extract_room_and_detail_from_command(command):
+    c = (command or "").strip()
+    room = None
+    detail = ""
+    m = re.search(r"(?:חדר|room)\s*#?\s*(\d{1,6})", c, re.I)
+    if m:
+        room = m.group(1)
+        detail = c[m.end():].strip()
+        if not detail or len(detail) < 2:
+            detail = _maya_strip_task_open_boilerplate(c[: m.start()])
+    else:
+        detail = _maya_strip_task_open_boilerplate(c)
+    detail = re.sub(r"^(?:ניקיון|נקיון)\s*", "", detail, flags=re.I).strip()
+    if detail and len(detail) < 2:
+        detail = ""
+    return room, (detail[:200] if detail else "")
+
+
+def _maya_is_generic_task_content(content):
+    c = (content or "").strip().lower()
+    if not c:
+        return True
+    generic = {
+        "ניקיון חדר",
+        "ניקיון",
+        "תחזוקה",
+        "שירות",
+        "task from maya",
+        "ביצוע משימה",
+        "תקלה/בקשה",
+        "cleaning",
+        "maintenance",
+        "משימה",
+        "perform task",
+        f"{I18N_TASK_PREFIX}worker.defaultdescription".lower(),
+        "worker.defaultdescription",
+    }
+    if c in generic:
+        return True
+    if c.startswith("@i18n:") or c.startswith("worker."):
+        return True
+    return False
+
+
+def _maya_resolve_task_user_text(content, command):
+    text = (content or "").strip()
+    if not _maya_is_generic_task_content(text):
+        return text
+    if command:
+        _, detail = _maya_extract_room_and_detail_from_command(command)
+        if detail:
+            return detail
+        stripped = _maya_strip_task_open_boilerplate(command)
+        if stripped and len(stripped) >= 2 and not _maya_is_generic_task_content(stripped):
+            return stripped[:200]
+    return text
+
+
+def _maya_try_create_room_detail_task(tenant_id, user_id, command):
+    if not _maya_is_open_task_intent(command):
+        return None
+    room, detail = _maya_extract_room_and_detail_from_command(command)
+    if not room or not detail:
+        return None
+    task_type, priority, _ = _maya_parse_task_fields_from_command(command)
+    rooms, _ = _get_maya_rooms_and_staff(tenant_id, user_id)
+    matched = _maya_resolve_properties_from_text(command, rooms)
+    if len(matched) > 1:
+        return None
+    prop = matched[0] if matched else (rooms[0] if len(rooms) == 1 else None)
+    if not prop and len(rooms) > 1:
+        prop = next(
+            (r for r in rooms if str(r.get("id") or "") == "christos-thaleri-villa-corfu"),
+            rooms[0],
+        )
+    print(f"[MayaTask] parsed user text={detail!r} room={room!r}", flush=True)
+    pending = {
+        "pending_intent": "create_task",
+        "property_id": prop.get("id") if prop else "",
+        "property_name": prop.get("name") if prop else "",
+        "task_type": task_type,
+        "priority": priority,
+        "description": detail,
+    }
+    return _maya_finalize_and_create_pending_task(tenant_id, user_id, pending, room, command)
+
+
+def _maya_is_numeric_only_reply(command):
+    return bool(re.match(r"^\d{1,6}$", (command or "").strip()))
+
+
+def _maya_task_create_pending_key(tenant_id, user_id):
+    return f"{tenant_id or ''}::{user_id or ''}"
+
+
+def _maya_clear_task_create_pending(tenant_id, user_id):
+    _MAYA_TASK_CREATE_PENDING.pop(_maya_task_create_pending_key(tenant_id, user_id), None)
+
+
+def _maya_get_task_create_pending(tenant_id, user_id):
+    key = _maya_task_create_pending_key(tenant_id, user_id)
+    pend = _MAYA_TASK_CREATE_PENDING.get(key)
+    if not pend:
+        return None
+    if (time.time() - float(pend.get("ts") or 0)) > _MAYA_TASK_CREATE_PENDING_TTL_SEC:
+        _MAYA_TASK_CREATE_PENDING.pop(key, None)
+        return None
+    return pend
+
+
+def _maya_set_task_create_pending(tenant_id, user_id, payload):
+    key = _maya_task_create_pending_key(tenant_id, user_id)
+    _MAYA_TASK_CREATE_PENDING[key] = {**payload, "ts": time.time()}
+
+
+def _maya_has_active_task_create_pending(tenant_id, user_id):
+    return _maya_get_task_create_pending(tenant_id, user_id) is not None
+
+
+def _maya_parse_task_fields_from_command(command):
+    c = command or ""
+    cl = c.lower()
+    task_type = "cleaning"
+    if any(x in c for x in ("תחזוק", "תיקון", "maintenance", "repair", "fix")):
+        task_type = "maintenance"
+    elif any(x in c for x in ("שירות", "service", "מגבת")):
+        task_type = "service"
+    elif any(x in c for x in ("ניקיון", "נקי", "clean", "cleaning", "מנקה")):
+        task_type = "cleaning"
+    priority = (
+        "high"
+        if any(x in c for x in ("דחוף מאוד", "דחיפות", "דחוף", "urgent", "high priority", "asap"))
+        else "normal"
+    )
+    room = None
+    m = re.search(r"(?:חדר|room)\s*#?\s*(\d{1,6})", c, re.I)
+    if m:
+        room = m.group(1)
+    return task_type, priority, room
+
+
+def _maya_extract_task_description_from_command(command, task_type="cleaning"):
+    _, detail = _maya_extract_room_and_detail_from_command(command)
+    if detail:
+        return detail
+    c = _maya_strip_task_open_boilerplate(command)
+    if not c:
+        return {"cleaning": "ניקיון", "maintenance": "תחזוקה", "service": "שירות"}.get(task_type, "משימה")
+    return c[:200]
+
+
+def _maya_resolve_properties_from_text(text, rooms):
+    if not rooms:
+        return []
+    t = (text or "").lower()
+    h = text or ""
+    out = []
+    seen = set()
+
+    def _add(pid):
+        if pid in seen:
+            return
+        for r in rooms:
+            if str(r.get("id") or "") == pid:
+                seen.add(pid)
+                out.append(r)
+                return
+
+    if (
+        "חוף מנטו" in h
+        or "manto beach suite" in t
+        or "סוויטת חוף" in h
+        or "luxury beach" in t
+        or "manto2p" in t
+    ):
+        _add("christos-manto-luxury-beach-2p-barbati")
+        return out
+    if "דירות מנטו" in h or "manto apartment" in t or "manto apt" in t or "mantoapartment" in t:
+        _add("christos-manto-beach-apartment-barbati")
+        return out
+    if "thaleri" in t or "תאלרי" in h or "thal" in t:
+        _add("christos-thaleri-villa-corfu")
+        return out
+    if "מנטו" in h or "manto" in t:
+        _add("christos-manto-beach-apartment-barbati")
+        _add("christos-manto-luxury-beach-2p-barbati")
+        return out
+    for r in rooms:
+        nm = (r.get("name") or "").strip()
+        if nm and nm.lower() in t and r.get("id") not in seen:
+            seen.add(r.get("id"))
+            out.append(r)
+    return out
+
+
+def _maya_task_type_he(task_type):
+    if task_type == "maintenance":
+        return TASK_TYPE_MAINTENANCE_HE
+    if task_type == "service":
+        return TASK_TYPE_SERVICE_HE
+    return TASK_TYPE_CLEANING_HE
+
+
+def _maya_finalize_and_create_pending_task(tenant_id, user_id, pending, room_number, command=""):
+    room = str(room_number or "").strip()
+    if not room:
+        fail = "לא הצלחתי לזהות מספר חדר — נסה שוב."
+        return {"success": True, "message": fail, "displayMessage": fail}
+    rooms, staff_by_property = _get_maya_rooms_and_staff(tenant_id, user_id)
+    prop_name = (pending.get("property_name") or "").strip()
+    prop_id = (pending.get("property_id") or "").strip()
+    for r in rooms:
+        if prop_id and str(r.get("id") or "") == prop_id:
+            prop_name = (r.get("name") or prop_name).strip()
+            break
+    if not prop_id and rooms:
+        pick = next(
+            (r for r in rooms if str(r.get("id") or "") == "christos-thaleri-villa-corfu"),
+            rooms[0],
+        )
+        prop_id = pick.get("id") or ""
+        prop_name = (pick.get("name") or prop_name).strip()
+    tt = pending.get("task_type") or "cleaning"
+    pri = pending.get("priority") or "normal"
+    desc_base = (pending.get("description") or "").strip()
+    tt_he = _maya_task_type_he(tt)
+    if not desc_base:
+        desc_base = f"{tt_he} חדר {room}"
+    print(f"[MayaTask] POST payload title/description={desc_base!r}", flush=True)
+    staff = "עלמה" if tt == "cleaning" else "קובי"
+    task_obj = {
+        "staffName": staff,
+        "content": desc_base,
+        "propertyName": prop_name,
+        "property_name": prop_name,
+        "status": "Pending",
+        "task_type": tt_he,
+        "priority": pri,
+    }
+    task, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+    _maya_clear_task_create_pending(tenant_id, user_id)
+    if not task:
+        fail = err or "לא הצלחתי לפתוח את המשימה."
+        return {"success": True, "message": fail, "displayMessage": fail, "response": fail}
+    notify_ok = True
+    try:
+        notify_ok = bool(enqueue_twilio_task("notify_task", task=task))
+    except Exception:
+        notify_ok = False
+    tt_label = {"cleaning": "ניקיון", "maintenance": "תחזוקה", "service": "שירות"}.get(tt, "משימה")
+    urg = " דחופה" if pri == "high" else ""
+    display = f"בסדר! פתחתי משימת {tt_label}{urg} לחדר {room} ב{prop_name or 'הנכס'}."
+    display = _maya_notice_whatsapp_may_sync_later(display, task_created=True, notify_enqueued=notify_ok)
+    try:
+        _maya_refresh_task_context_cache(tenant_id)
+        _bump_tasks_version()
+        _invalidate_owner_dashboard_cache()
+    except Exception:
+        pass
+    try:
+        _ACTIVITY_LOG.append({
+            "id": str(uuid.uuid4()),
+            "ts": int(time.time() * 1000),
+            "type": "task_created",
+            "text": f"משימה: {tt_label} חדר {room} — {prop_name}",
+            "task": task,
+        })
+    except Exception:
+        pass
+    return {
+        "success": True,
+        "message": display,
+        "displayMessage": display,
+        "response": display,
+        "taskCreated": True,
+        "task": task,
+    }
+
+
+def _maya_try_handle_task_create_pending(tenant_id, user_id, command):
+    pend = _maya_get_task_create_pending(tenant_id, user_id)
+    if not pend or pend.get("pending_intent") != "create_task":
+        return None
+    if _maya_user_declines_room_task(command):
+        _maya_clear_task_create_pending(tenant_id, user_id)
+        msg = "בסדר, לא אפתח משימה."
+        return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+    if _maya_is_open_task_intent(command):
+        _maya_clear_task_create_pending(tenant_id, user_id)
+        return None
+    missing = pend.get("missing_field") or ""
+    if missing == "property":
+        rooms, _ = _get_maya_rooms_and_staff(tenant_id, user_id)
+        matched = _maya_resolve_properties_from_text(command, rooms)
+        if len(matched) == 1:
+            prop = matched[0]
+            pend["property_id"] = prop.get("id")
+            pend["property_name"] = prop.get("name")
+            if pend.get("room"):
+                return _maya_finalize_and_create_pending_task(tenant_id, user_id, pend, pend.get("room"), command)
+            pend["missing_field"] = "room"
+            _maya_set_task_create_pending(tenant_id, user_id, pend)
+            msg = "באיזה חדר?"
+            return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+        if len(matched) > 1:
+            names = " או ".join((r.get("name") or "").strip() for r in matched if r.get("name"))
+            msg = f"באיזה נכס מדובר — {names}?"
+            return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+        msg = "לא זיהיתי את הנכס — נסה שוב (Manto Beach Suite / Manto Apartments / Thaleri Villa)."
+        return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+    if missing == "room":
+        room = None
+        if _maya_is_numeric_only_reply(command):
+            room = (command or "").strip()
+        else:
+            m = re.search(r"(?:חדר|room)\s*#?\s*(\d{1,6})", command or "", re.I)
+            if m:
+                room = m.group(1)
+        if room:
+            return _maya_finalize_and_create_pending_task(tenant_id, user_id, pend, room, command)
+        msg = "באיזה חדר? כתוב מספר חדר (למשל 100)."
+        return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+    return None
+
+
+def _maya_try_begin_task_create_from_command(tenant_id, user_id, command):
+    if not _maya_is_open_task_intent(command):
+        return None
+    rooms, staff_by_property = _get_maya_rooms_and_staff(tenant_id, user_id)
+    task_type, priority, room_parsed = _maya_parse_task_fields_from_command(command)
+    room, detail = _maya_extract_room_and_detail_from_command(command)
+    room = room or room_parsed
+    desc = detail or _maya_extract_task_description_from_command(command, task_type)
+    matched = _maya_resolve_properties_from_text(command, rooms)
+    if len(matched) > 1:
+        _maya_set_task_create_pending(tenant_id, user_id, {
+            "pending_intent": "create_task",
+            "missing_field": "property",
+            "task_type": task_type,
+            "priority": priority,
+            "description": desc,
+            "room": room,
+        })
+        names = " או ".join((r.get("name") or "").strip() for r in matched if r.get("name"))
+        msg = f"באיזה נכס מדובר — {names}?"
+        return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+    prop = matched[0] if matched else None
+    if not prop and len(rooms) == 1:
+        prop = rooms[0]
+    if not prop and len(rooms) > 1:
+        _maya_set_task_create_pending(tenant_id, user_id, {
+            "pending_intent": "create_task",
+            "missing_field": "property",
+            "task_type": task_type,
+            "priority": priority,
+            "description": desc,
+            "room": room,
+        })
+        msg = "באיזה נכס מדובר?"
+        return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
+    if room:
+        pend = {
+            "pending_intent": "create_task",
+            "property_id": prop.get("id") if prop else "",
+            "property_name": prop.get("name") if prop else "",
+            "task_type": task_type,
+            "priority": priority,
+            "description": desc,
+        }
+        return _maya_finalize_and_create_pending_task(tenant_id, user_id, pend, room, command)
+    _maya_set_task_create_pending(tenant_id, user_id, {
+        "pending_intent": "create_task",
+        "missing_field": "room",
+        "property_id": prop.get("id") if prop else "",
+        "property_name": prop.get("name") if prop else "",
+        "task_type": task_type,
+        "priority": priority,
+        "description": desc,
+    })
+    msg = "בשמחה, לאיזה חדר?"
+    return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
 
 
 def _maya_explicit_room_task_intent(command):
@@ -18146,7 +19140,7 @@ def _maya_last_cleaner_reply(tenant_id, room_digits):
     session = SessionLocal()
     rows = []
     try:
-        q = _property_tasks_query_for_tenant(session, tenant_id)
+        q = _property_tasks_query_for_maya(session, tenant_id)
         if q is None:
             return None
         room_match = or_(
@@ -18197,6 +19191,8 @@ def _build_maya_chat_stats_payload(tenant_id, user_id, command=None):
     cap = max(8, min(cap, 120))
 
     open_list, _cached_open_total = _maya_active_tasks_for_chat(tenant_id)
+    base["total_tasks"] = _cached_open_total
+    base["total_active_tasks"] = _cached_open_total
     if hint:
         open_list = [t for t in open_list if _maya_property_name_matches_scope(hint, t.get("property_name"))]
     base["recent_open_tasks"] = open_list[:cap]
@@ -18267,12 +19263,8 @@ def _build_maya_room_inventory_text_scoped(tenant_id, user_id, scope_hint):
             f"{title}: {len(block)} units — {occ} Occupied, {rd} Ready, {dirty} Dirty."
         )
 
-    if scope_hint == "bazaar":
-        return _lines_for("bazaar-jaffa-hotel", "Hotel Bazaar Jaffa") or _build_maya_room_inventory_text(tenant_id, user_id)
-    if scope_hint == "city_tower":
-        return _lines_for("leonardo-city-tower-ramat-gan", "Leonardo Plaza City Tower") or _build_maya_room_inventory_text(tenant_id, user_id)
-    if scope_hint == "rooms":
-        return _lines_for("rooms-branch-acro-tlv", "ROOMS Acro TLV") or _build_maya_room_inventory_text(tenant_id, user_id)
+    if scope_hint in ("bazaar", "city_tower", "rooms", "corfu", "christos"):
+        return _build_maya_room_inventory_text(tenant_id, user_id)
     return _build_maya_room_inventory_text(tenant_id, user_id)
 
 
@@ -18282,6 +19274,8 @@ def _build_stats_summary_payload(tenant_id, user_id, for_maya_chat=False):
     if user_id is None:
         user_id = f"demo-{tenant_id}"
     rooms = list_manual_rooms(tenant_id, owner_id=user_id)
+    if for_maya_chat and _christos_pilot_is_active(tenant_id, user_id, rooms):
+        rooms = _christos_pilot_room_rows(tenant_id, user_id, rooms)
     room_ids = [r.get("id") for r in rooms if r.get("id")]
     total_properties = len(rooms)
     total_capacity = sum((r.get("max_guests") or 2) for r in rooms)
@@ -18296,7 +19290,11 @@ def _build_stats_summary_payload(tenant_id, user_id, for_maya_chat=False):
     if SessionLocal and PropertyTaskModel:
         session_obj = SessionLocal()
         try:
-            _tq = _property_tasks_query_for_tenant(session_obj, tenant_id)
+            _tq = (
+                _property_tasks_query_for_maya(session_obj, tenant_id)
+                if for_maya_chat
+                else _property_tasks_query_for_tenant(session_obj, tenant_id)
+            )
             _terminal = ("Done", "done", "Completed", "completed", "archived", "Archived")
             if _tq is not None:
                 total_property_tasks_all = _tq.count()
@@ -18406,7 +19404,7 @@ def _build_stats_summary_payload(tenant_id, user_id, for_maya_chat=False):
     except Exception:
         _occ = None
 
-    # Hotel Bazaar / 61-unit portfolio: occupancy = (occupied rooms / 61) * 100 from live status grid
+    # Christos pilot: occupancy from live status grid (property count from API)
     occ_from_grid = None
     try:
         _grid = _room_status_grid_payload(tenant_id, user_id)
@@ -18476,6 +19474,7 @@ def _build_stats_summary_payload(tenant_id, user_id, for_maya_chat=False):
         "recent_bookings": recent_bookings,
         "recent_open_tasks": recent_open_tasks,
         "occupancy_pct": occ_from_grid if occ_from_grid is not None else _occ,
+        **({"christos_pilot_scope": True} if for_maya_chat and _christos_pilot_is_active(tenant_id, user_id, rooms) else {}),
     }
 
 
@@ -20404,16 +21403,16 @@ def _do_startup_init():
                 print(f"[startup] ⚠️  DB init failed ({db_label}): {_db_err}")
                 print("[startup]    Server will start anyway — visit /db-status for details.")
                 print("[startup]    If using Supabase: fill in real credentials in .env")
-            # Pilot portfolio + Sarona/ToHA/… properties; purge synthetic tasks; optional task seed via env
+            # Pilot portfolio seed — insert missing Christos rows only; never wipe user properties.
             try:
-                purge_synthetic_property_tasks(DEFAULT_TENANT_ID)
-                seed_pilot_demo()
-                ensure_emergency_portfolio_and_tasks(DEFAULT_TENANT_ID)
-                print("[startup] ✅ Emergency seed: purge + seed_pilot_demo + ensure_emergency_portfolio_and_tasks", flush=True)
-            except Exception as _emg:
-                print(f"[startup] ⚠️ Emergency seed: {_emg}", flush=True)
+                seed_active_properties(DEFAULT_TENANT_ID)
+                _sc = _db_manual_room_count(DEFAULT_TENANT_ID)
+                _si = _db_manual_room_ids(DEFAULT_TENANT_ID)
+                print(f"[startup] ✅ christos seed (no property purge) pid={os.getpid()} db_count={_sc}", flush=True)
+                print(f"[Properties API] startup count={_sc} ids={_si}", flush=True)
+            except Exception as _spd:
+                print(f"[startup] ⚠️ christos seed: {_spd}", flush=True)
             for _name, _fn in (
-                ("seed_dashboard_data", seed_dashboard_data),
                 ("load_leads_from_db", lambda: load_leads_from_db()),
             ):
                 try:
@@ -20421,21 +21420,12 @@ def _do_startup_init():
                     print(f"[startup] ✅ {_name}", flush=True)
                 except Exception as _se:
                     print(f"[startup] ⚠️  {_name}: {_se}", flush=True)
-            try:
-                _run_bootstrap_operational_data()
-                print("[startup] ✅ _run_bootstrap_operational_data (pilot + Bazaar/WeWork + hotel ops)", flush=True)
-            except Exception as _boot_e:
-                print(f"[startup] ⚠️  _run_bootstrap_operational_data: {_boot_e}", flush=True)
-        if AUTO_MODE and os.getenv("SKIP_DEMO_ENGINE_INIT", "").lower() not in ("1", "true", "yes"):
-            try:
-                initialize_demo_data()
-                start_maya_demo_engine_scheduler()
-            except Exception as _demo_e:
-                print(f"[startup] ⚠️  demo engine init: {_demo_e}", flush=True)
+            # Greece pilot: skip Bazaar/WeWork bootstrap — keeps exactly 3 properties + 3 tasks
+        # Demo engine disabled — Christos pilot uses live API only
         elif not AUTO_MODE:
             print("[startup] Demo engine scheduler skipped (AUTO_MODE=0)", flush=True)
         try:
-            _ensure_maya_brain_mock_tasks()
+            pass  # mock tasks disabled — Christos pilot only
         except Exception as _mt:
             print(f"[startup] ⚠️  mock tasks: {_mt}", flush=True)
         try:
@@ -20595,6 +21585,16 @@ if __name__ == "__main__":
     print(f"[hotel_dashboard] Auth: {_auth_label} | Production mode: {_is_production}")
     print(f"[hotel_dashboard] Binding → http://0.0.0.0:{_port}  (frontend proxy: http://localhost:{_port})")
 
-    app.run(host="0.0.0.0", port=_port, debug=True, threaded=True, use_reloader=_use_reloader)
+    if socketio:
+        socketio.run(
+            app,
+            host="0.0.0.0",
+            port=_port,
+            debug=True,
+            use_reloader=_use_reloader,
+            allow_unsafe_werkzeug=True,
+        )
+    else:
+        app.run(host="0.0.0.0", port=_port, debug=True, threaded=True, use_reloader=_use_reloader)
 
 

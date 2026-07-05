@@ -22,7 +22,6 @@ import WhatsAppMonitor from './components/operator/WhatsAppMonitor';
 import GuestDashboard from './components/guest/GuestDashboard';
 import ShiftScheduler from './components/admin/ShiftScheduler';
 import ManualOperationsHub from './components/admin/ManualOperationsHub';
-import BazaarWeek1ManagerView from './components/dashboard/BazaarWeek1ManagerView';
 import { MissionProvider } from './context/MissionContext';
 import { PropertiesProvider } from './context/PropertiesContext';
 import hotelRealtime from './services/hotelRealtime';
@@ -364,7 +363,6 @@ function MainApp() {
         if (activeView === 'scheduler') return <ShiftScheduler key="scheduler" />;
         if (activeView === 'godmode')    return <GodModeDashboard key="godmode" />;
         if (activeView === 'manualops') return <ManualOperationsHub key="manual-ops" />;
-        if (activeView === 'bazaar-week') return <BazaarWeek1ManagerView key="bazaar-week1" />;
         if (activeView === 'analytics')  return <OwnerDashboard key="owner-analytics" onSwitchToEmployee={() => setActiveView('field')} />;
         return <EnterpriseDashboard key="host-dashboard" />;
     }

@@ -1,49 +1,75 @@
-import React, { useState } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { resolvePropertyCardImage } from '../../utils/propertyCardImages';
+import React, { useState, useMemo } from 'react';
+import { X, ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
+import {
+  buildPropertyGalleryImages,
+} from '../../utils/propertyGallery';
 import './PropertyGallery.css';
 
-const PLACEHOLDER = 'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&auto=format&fit=crop';
-
 /**
- * PropertyGallery — clean, modern photo gallery for properties.
- * Displays all pictures from the pictures array in a responsive scrollable grid.
- * Supports lightbox on click.
+ * PropertyGallery — renders backend pictures only (deduped by URL).
  */
 export default function PropertyGallery({ property, className = '' }) {
-  const pictures = (property?.pictures && Array.isArray(property.pictures))
-    ? property.pictures.filter(Boolean)
-    : [];
-  const mainImage =
-    property?.mainImage
-    || property?.photo_url
-    || property?.image_url
-    || pictures[0]
-    || resolvePropertyCardImage(property)
-    || PLACEHOLDER;
-  const allImages = pictures.length > 0 ? pictures : (mainImage ? [mainImage] : []);
-
+  const allImages = useMemo(
+    () => buildPropertyGalleryImages(property),
+    [property?.id, property?.pictures, property?.images, property?.mainImage, property?.cover_image, property?.photo_url],
+  );
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [broken, setBroken] = useState(() => new Set());
 
-  if (allImages.length === 0) return null;
+  if (!allImages.length) {
+    return (
+      <div className={`property-gallery property-gallery--empty ${className}`.trim()} dir="rtl">
+        <div className="property-gallery-placeholder">
+          <ImageOff size={32} />
+          <span>אין תמונות</span>
+        </div>
+      </div>
+    );
+  }
+
+  const visibleImages = allImages.filter((src) => !broken.has(src));
+
+  if (!visibleImages.length) {
+    return (
+      <div className={`property-gallery property-gallery--empty ${className}`.trim()} dir="rtl">
+        <div className="property-gallery-placeholder">
+          <ImageOff size={32} />
+          <span>אין תמונות</span>
+        </div>
+      </div>
+    );
+  }
 
   const openLightbox = (idx) => setLightboxIndex(idx);
   const closeLightbox = () => setLightboxIndex(null);
-  const goPrev = () => setLightboxIndex((i) => (i <= 0 ? allImages.length - 1 : i - 1));
-  const goNext = () => setLightboxIndex((i) => (i >= allImages.length - 1 ? 0 : i + 1));
+  const goPrev = () => setLightboxIndex((i) => (i <= 0 ? visibleImages.length - 1 : i - 1));
+  const goNext = () => setLightboxIndex((i) => (i >= visibleImages.length - 1 ? 0 : i + 1));
+
+  const markBroken = (src) => {
+    setBroken((prev) => {
+      const next = new Set(prev);
+      next.add(src);
+      return next;
+    });
+  };
 
   return (
     <div className={`property-gallery ${className}`.trim()} dir="rtl">
       <div className="property-gallery-grid property-gallery-grid--full">
-        {allImages.map((src, idx) => (
+        {visibleImages.map((src, idx) => (
           <button
-            key={idx}
+            key={`${src}-${idx}`}
             type="button"
             className="property-gallery-thumb"
             onClick={() => openLightbox(idx)}
             aria-label={`תמונה ${idx + 1}`}
           >
-            <img src={src} alt={`${property?.name || 'נכס'} - תמונה ${idx + 1}`} loading="lazy" />
+            <img
+              src={src}
+              alt={`${property?.name || 'נכס'} - תמונה ${idx + 1}`}
+              loading="lazy"
+              onError={() => markBroken(src)}
+            />
           </button>
         ))}
       </div>
@@ -74,8 +100,9 @@ export default function PropertyGallery({ property, className = '' }) {
           </button>
           <div className="property-gallery-lightbox-img-wrap" onClick={(e) => e.stopPropagation()}>
             <img
-              src={allImages[lightboxIndex]}
+              src={visibleImages[lightboxIndex]}
               alt={`${property?.name || 'נכס'} - תמונה ${lightboxIndex + 1}`}
+              onError={() => markBroken(visibleImages[lightboxIndex])}
             />
           </div>
           <button

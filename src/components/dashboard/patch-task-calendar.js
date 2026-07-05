@@ -1,5 +1,5 @@
 const fs = require('fs');
-const p = require('path').join(__dirname, 'TaskCalendar.js');
+const p = require('path').join(__dirname, 'TaskCalendar.jsx');
 let s = fs.readFileSync(p, 'utf8');
 
 s = s.replace(/\{t\.description\}/g, "{typeof t.description === 'string' ? t.description : String(t.title || t.content || '')}");
@@ -28,4 +28,4 @@ s = s.replace(/t\.staff_name &&/g, '(t.staff_name || t.staffName) &&');
 s = s.replace(/t\.staff_phone &&/g, '(t.staff_phone || t.phone) &&');
 
 fs.writeFileSync(p, s);
-console.log('Patched TaskCalendar.js');
+console.log('Patched TaskCalendar.jsx');

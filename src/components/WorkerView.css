@@ -59,7 +59,7 @@
   box-shadow: none !important;
 }
 
-/* ── Visual urgency (pending): &lt;3 min green | 3–5 min orange pulse | ≥5 min red ── */
+/* Visual urgency (pending): under 3 min green | 3–5 min orange pulse | 5+ min red */
 .wv-focus-urgency-green {
   border: 4px solid #22c55e !important;
   box-shadow:
@@ -280,5 +280,259 @@
   cursor: pointer;
 }
 .wv-btn-done-he {
-  font-size: clamp(1.35rem, 5vw, 1.55rem) !important;
+  min-width: 86px !important;
+  min-height: unset !important;
+  padding-block: 14px !important;
+  padding-inline: 16px !important;
+  width: auto !important;
+  max-width: none !important;
+  border: none !important;
+  border-radius: 18px !important;
+  font-weight: 900 !important;
+  font-size: clamp(1rem, 4vw, 1.25rem) !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  word-break: keep-all !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  line-height: normal !important;
+}
+
+.wv-focus-actions {
+  overflow: visible !important;
+}
+
+.wv-mission-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.wv-mission-card.task-card {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  overflow: visible !important;
+}
+
+.wv-mission-card-room {
+  margin: 4px 0 6px;
+  font-size: clamp(1.25rem, 4vw, 1.75rem);
+  font-weight: 800;
+  color: #e8eef9;
+  white-space: nowrap;
+  overflow: visible;
+  letter-spacing: 0;
+}
+
+.wv-room-line {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  letter-spacing: 0 !important;
+  flex-shrink: 0;
+}
+
+.wv-mission-card-selected {
+  box-shadow:
+    0 0 0 2px rgba(0, 229, 200, 0.55),
+    0 8px 32px rgba(0, 0, 0, 0.35) !important;
+}
+
+.wv-mission-card-property {
+  margin: 8px 0 4px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #e8eef9;
+  white-space: normal;
+  overflow: visible;
+}
+
+.wv-mission-card-context {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(200, 214, 235, 0.55);
+  white-space: normal;
+  overflow: visible;
+}
+
+.wv-mission-card-staff {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(200, 214, 235, 0.55);
+}
+
+.wv-mission-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.wv-mission-detail-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 251;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 8px 12px 28px;
+  background: linear-gradient(180deg, rgba(10, 18, 35, 0.98) 0%, rgba(6, 12, 22, 0.99) 100%);
+  border-top: 1px solid rgba(0, 229, 200, 0.2);
+  border-radius: 24px 24px 0 0;
+  animation: wvSlideUp 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.wv-mission-detail-close {
+  position: sticky;
+  top: 4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  margin-bottom: 8px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8eef9;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+[dir="rtl"] .wv-mission-detail-close {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.wv-btn-done-label {
+  display: inline-block;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  padding-inline: 6px;
+  unicode-bidi: isolate;
+  min-width: max-content;
+}
+
+.wv-lang-pill {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.wv-lang-btn {
+  min-width: 2.25rem;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(232, 238, 249, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wv-lang-btn-active {
+  background: rgba(0, 229, 200, 0.18);
+  color: #00e5c8;
+}
+
+.wv-focus-card[dir="rtl"],
+.wv-board-card-rtl[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+.wv-focus-card[dir="ltr"],
+.wv-board-card-rtl[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+
+.wv-focus-card {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.wv-hotel-name-line,
+.wv-staff-pill,
+.wv-card-line-clamp {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.wv-board-card-rtl {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.wv-board-card-rtl .task-description {
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+[dir="ltr"] .wv-focus-card,
+[dir="ltr"] .wv-board-card-rtl {
+  direction: ltr;
+  text-align: left;
+}
+
+@keyframes wvIn {
+  0%  { opacity:0; transform:scale(0.82) translateY(32px); }
+  65% { transform:scale(1.03) translateY(-3px); }
+  100%{ opacity:1; transform:scale(1) translateY(0); }
+}
+@keyframes wvOut {
+  to  { opacity:0; transform:translateX(110%) rotate(7deg); }
+}
+@keyframes wvPrev {
+  to  { opacity:0; transform:translateX(-110%) rotate(-7deg); }
+}
+@keyframes wvFlyUp {
+  0%  { opacity:1; transform:translate(var(--tx),var(--ty)) scale(1); }
+  100%{ opacity:0; transform:translate(var(--tx2),var(--ty2)) scale(0.3); }
+}
+@keyframes wvPulse {
+  0%,100%{ box-shadow:0 0 0 0 rgba(37,211,102,0.55); }
+  50%    { box-shadow:0 0 0 16px rgba(37,211,102,0); }
+}
+@keyframes wvSpin  { to{ transform:rotate(360deg); } }
+@keyframes wvBounce {
+  0%,100%{ transform:scale(1); }
+  40%    { transform:scale(1.14); }
+  70%    { transform:scale(0.93); }
+}
+@keyframes wvSlideUp {
+  from{ transform:translateY(100%); }
+  to  { transform:translateY(0); }
+}
+@keyframes wvSlideDown {
+  from{ transform:translateY(0); }
+  to  { transform:translateY(100%); }
+}
+@keyframes wvToast {
+  from{ opacity:0; transform:translateX(-50%) translateY(14px); }
+  to  { opacity:1; transform:translateX(-50%) translateY(0); }
+}
+@keyframes wvFadeIn {
+  from{ opacity:0; transform:translateY(8px); }
+  to  { opacity:1; transform:translateY(0); }
 }

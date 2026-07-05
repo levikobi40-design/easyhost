@@ -4,8 +4,9 @@ import hotelRealtime from '../services/hotelRealtime';
 import { subscribeCrossTabTaskSync } from '../utils/taskSyncBridge';
 import useStore from '../store/useStore';
 import { isBiktaNessZionaUser } from '../utils/biktaUser';
-import { applyTaskStatusLock, setTaskStatusLock } from '../utils/taskStatusPriority';
+import { applyTaskStatusLock, setTaskStatusLock, mergeMissionTaskLists, dedupeTaskListByIdAndClient } from '../utils/taskStatusPriority';
 import { clearTaskUpdateQueue } from '../utils/taskUpdateQueue';
+import { readPendingMayaTasksFromStorage, registerPendingMayaTask, clearPendingMayaTask } from '../utils/taskSyncBridge';
 
 /** Mission board: background poll interval (reduces server/log noise vs 5s). */
 export const TASKS_REFRESH_POLL_MS = 30000;
@@ -50,6 +51,22 @@ export function MissionProvider({ children }) {
   useEffect(() => {
     tasksRef.current = tasks;
   }, [tasks]);
+
+  const mergeWithServerRows = useCallback((prev, serverRows, pageSize = TASK_MISSION_PAGE_SIZE) => {
+    const pendingOnly = dedupeTaskListByIdAndClient([
+      ...readPendingMayaTasksFromStorage(),
+      ...(prev ?? []).filter((t) => t?.pending_sync === true),
+    ]);
+    const tail = (prev ?? [])
+      .filter((t) => t && t.pending_sync !== true)
+      .slice(pageSize);
+    return mergeMissionTaskLists(
+      pendingOnly,
+      serverRows,
+      tail,
+      statusLocksRef.current,
+    );
+  }, []);
 
   /**
    * @param {{ blocking?: boolean }} [opts] — blocking true = full loader (pull-to-refresh / hard reload).
@@ -103,7 +120,11 @@ export function MissionProvider({ children }) {
             });
           }
           setHasMoreTasks(false);
-          setTasks(list.map((row) => applyTaskStatusLock(row, statusLocksRef.current)));
+          setTasks(mergeWithServerRows(
+            tasksRef.current,
+            list.map((row) => applyTaskStatusLock(row, statusLocksRef.current)),
+            list.length,
+          ));
         })
         .catch(() => {
           if (loadId === loadRef.current) setTasks((prev) => (prev ?? []));
@@ -145,8 +166,12 @@ export function MissionProvider({ children }) {
             : page && typeof page === 'object' && !Array.isArray(page)
               ? Boolean(page.hasMore)
               : rows.length < totalForMore;
-        setHasMoreTasks(hasMore);
-        setTasks(rows.map((row) => applyTaskStatusLock(row, statusLocksRef.current)));
+          setHasMoreTasks(hasMore);
+          setTasks((prev) => mergeWithServerRows(
+            prev,
+            rows.map((row) => applyTaskStatusLock(row, statusLocksRef.current)),
+            TASK_MISSION_PAGE_SIZE,
+          ));
       })
       .catch(() => {
         if (loadId === loadRef.current) setTasks((prev) => (prev ?? []));
@@ -155,7 +180,7 @@ export function MissionProvider({ children }) {
         if (loadId !== loadRef.current) return;
         setLoading(false);
       });
-  }, [authToken, skipMissionFetch]);
+  }, [authToken, skipMissionFetch, mergeWithServerRows]);
 
   const loadMoreTasks = useCallback(() => {
     if (skipMissionFetch) return Promise.resolve();
@@ -167,11 +192,17 @@ export function MissionProvider({ children }) {
       .then((page) => {
         if (!page || typeof page !== 'object' || Array.isArray(page)) return;
         const chunk = page.tasks || [];
-        const existing = new Set((prev || []).map((t) => String(t.id)));
-        const append = chunk
-          .filter((row) => row && !existing.has(String(row.id)))
-          .map((row) => applyTaskStatusLock(row, statusLocksRef.current));
-        setTasks([...(prev || []), ...append]);
+        const append = dedupeTaskListByIdAndClient(
+          chunk
+            .filter((row) => row)
+            .map((row) => applyTaskStatusLock(row, statusLocksRef.current)),
+        );
+        setTasks((prev) => dedupeTaskListByIdAndClient([...(prev || []), ...append.filter(
+          (row) => !(prev || []).some(
+            (t) => String(t.id) === String(row.id)
+              || (t.client_id && row.client_id && String(t.client_id) === String(row.client_id)),
+          ),
+        )]));
         setHasMoreTasks(Boolean(page.hasMore));
       })
       .catch(() => {})
@@ -208,16 +239,10 @@ export function MissionProvider({ children }) {
         }
         const headLen = head.length;
         setHasMoreTasks(ct !== null ? headLen < ct : Boolean(page.hasMore));
-        setTasks((prev) => {
-          const p = prev ?? [];
-          const tail = p.slice(TASK_MISSION_PAGE_SIZE);
-          const headIds = new Set(head.map((t) => String(t.id)));
-          const rest = tail.filter((t) => t && !headIds.has(String(t.id)));
-          return [...head, ...rest];
-        });
+        setTasks((prev) => mergeWithServerRows(prev, head, TASK_MISSION_PAGE_SIZE));
       })
       .catch(() => {});
-  }, [authToken, skipMissionFetch]);
+  }, [authToken, skipMissionFetch, mergeWithServerRows]);
 
   const debouncedRefresh = useCallback(() => {
     if (skipMissionFetch) return;
@@ -294,7 +319,11 @@ export function MissionProvider({ children }) {
         .then(([list, counts]) => {
           if (loadId !== loadRef.current) return;
           if (!Array.isArray(list)) return;
-          setTasks(list.map((row) => applyTaskStatusLock(row, statusLocksRef.current)));
+          setTasks(mergeWithServerRows(
+            tasksRef.current,
+            list.map((row) => applyTaskStatusLock(row, statusLocksRef.current)),
+            list.length,
+          ));
           const t = counts && Number.isFinite(Number(counts.total)) ? Number(counts.total) : list.length;
           setTasksTotal(t);
           if (counts) {
@@ -360,6 +389,8 @@ export function MissionProvider({ children }) {
     return {
       ...raw,
       id,
+      client_id: raw.client_id != null ? String(raw.client_id) : undefined,
+      pending_sync: Boolean(raw.pending_sync),
       property_id:   raw.property_id   != null ? String(raw.property_id)   : '',
       property_name: raw.property_name != null ? String(raw.property_name) : '',
       description:   raw.description   != null ? String(raw.description)   : '',
@@ -367,6 +398,7 @@ export function MissionProvider({ children }) {
       staff_name:    raw.staff_name    != null ? String(raw.staff_name)    : '',
       staff_phone:   raw.staff_phone   != null ? String(raw.staff_phone)   : '',
       status:        raw.status        != null ? String(raw.status)        : 'Pending',
+      source:        raw.source        != null ? String(raw.source)        : '',
     };
   }, []);
 
@@ -374,13 +406,15 @@ export function MissionProvider({ children }) {
     if (skipMissionFetch) return;
     const safe = sanitiseTask(newTask);
     if (!safe) return;
-    setTasks((prev) => {
-      const p = prev ?? [];
-      if (p.some((t) => t.id === safe.id)) return p;
-      return [safe, ...p];
-    });
+    if (safe.pending_sync) {
+      registerPendingMayaTask(safe);
+      setTasks((prev) => mergeWithServerRows(prev, [], TASK_MISSION_PAGE_SIZE));
+    } else {
+      if (safe.client_id) clearPendingMayaTask(safe.client_id);
+      pollTasksQuiet({ force: true });
+    }
     syncTotalFromServer().catch(() => {});
-  }, [skipMissionFetch, syncTotalFromServer, sanitiseTask]);
+  }, [skipMissionFetch, syncTotalFromServer, sanitiseTask, mergeWithServerRows, pollTasksQuiet]);
 
   const updateTaskInList = useCallback((taskId, updater) => {
     setTasks((prev) =>

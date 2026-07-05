@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Users, Trash2, Wind, Wifi, Tv, Car, Waves, UtensilsCrossed, Shirt, Building2 } from 'lucide-react';
 import PropertyGallery from './PropertyGallery';
 import { isBazaarJaffaProperty } from '../../data/propertyData';
+import { formatPropertyPriceLabel, buildPropertyGalleryImages } from '../../utils/propertyGallery';
 import {
   ROOMS_WORKSPACE_OFFICE_INTERIOR_CDN,
   ROOMS_WORKSPACE_OFFICE_INTERIOR_LOCAL,
@@ -79,10 +80,19 @@ const PropertyCard = React.memo(function PropertyCard({
   const [galleryExpanded, setGalleryExpanded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
 
-  const rawMain = propertyNameNeedsRoomsOfficeHero(property.name)
-    ? pickRoomsOfficeImageByPropertyId(property.id)
-    : property.mainImage || PLACEHOLDER_IMAGE;
-  const cacheBust = rawMain && !String(rawMain).includes('unsplash');
+  const galleryImages = buildPropertyGalleryImages(property);
+  const coverUrl = galleryImages[0] || '';
+  const extraPhotos = galleryImages.length > 1 ? galleryImages.length - 1 : 0;
+  const priceLabel = formatPropertyPriceLabel(property);
+
+  const showHeroImg = Boolean(coverUrl);
+  const rawMain = coverUrl;
+  const u = String(rawMain || '').trim();
+  const cacheBust =
+    u.startsWith('http://') ||
+    u.startsWith('https://') ||
+    u.startsWith('/uploads/') ||
+    u.includes('/uploads/');
   const imgSrc = cacheBust
     ? `${rawMain}${String(rawMain).includes('?') ? '&' : '?'}_=${imageRefreshKey}`
     : rawMain;
@@ -93,39 +103,26 @@ const PropertyCard = React.memo(function PropertyCard({
     setImgFailed(false);
   }, [imgSrc, property.id]);
 
-  const extraPhotos = property.pictures && property.pictures.length > 1 ? property.pictures.length - 1 : 0;
-
   return (
     <div className="property-card property-card-airbnb group bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300">
       <div className="relative aspect-video overflow-hidden property-card-hero-bg bg-gradient-to-br from-slate-200 via-slate-300 to-slate-400">
-        {!imgFailed && (
+        {showHeroImg && !imgFailed && (
           <img
             src={heroSrc}
             alt=""
             className="property-card-img absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 z-[1]"
             loading="lazy"
             decoding="async"
-            onError={() => {
-              if (heroSrc === imgSrc) {
-                setHeroSrc(ROOMS_WORKSPACE_OFFICE_INTERIOR_LOCAL);
-                return;
-              }
-              const i = ROOMS_OFFICE_IMAGE_FALLBACK_CHAIN.indexOf(heroSrc);
-              if (i >= 0 && i < ROOMS_OFFICE_IMAGE_FALLBACK_CHAIN.length - 1) {
-                setHeroSrc(ROOMS_OFFICE_IMAGE_FALLBACK_CHAIN[i + 1]);
-              } else {
-                setImgFailed(true);
-              }
-            }}
+            onError={() => setImgFailed(true)}
           />
         )}
-        {imgFailed && (
+        {(!showHeroImg || imgFailed) && (
           <div
             className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-300 to-slate-500 text-white"
             aria-hidden
           >
             <Building2 size={52} strokeWidth={1.6} className="opacity-95 drop-shadow-sm" />
-            <span className="text-[11px] font-bold uppercase tracking-wide opacity-90">Workspace</span>
+            <span className="text-[11px] font-bold tracking-wide opacity-90">אין תמונה</span>
           </div>
         )}
         <div className="absolute top-3 right-3 z-[3]">
@@ -171,11 +168,14 @@ const PropertyCard = React.memo(function PropertyCard({
         <div className="flex justify-between items-start gap-2 mb-1">
           <h3 className="property-card-title text-base font-bold text-gray-900 flex-1">{property.name}</h3>
           <span className="text-gray-900 font-bold shrink-0">
-            {property.brand === 'WeWork' || property.price === '0' ? (
-              <>₪{property.price}<span className="text-gray-500 font-normal text-sm"> · לעדכון</span></>
-            ) : (
-              <>${property.price}<span className="text-gray-500 font-normal text-sm"> / night</span></>
-            )}
+            {priceLabel ? (
+              <>
+                {priceLabel}
+                <span className="text-gray-500 font-normal text-sm"> / night</span>
+              </>
+            ) : property.brand === 'WeWork' ? (
+              <>₪0<span className="text-gray-500 font-normal text-sm"> · לעדכון</span></>
+            ) : null}
           </span>
         </div>
         <div className="flex items-center gap-2 text-gray-500 text-xs mb-3 flex-wrap">
@@ -253,6 +253,11 @@ const PropertyCard = React.memo(function PropertyCard({
 }, (prev, next) => (
   prev.property?.id === next.property?.id
   && prev.property?.mainImage === next.property?.mainImage
+  && prev.property?.photo_url === next.property?.photo_url
+  && prev.property?.cover_image === next.property?.cover_image
+  && JSON.stringify(prev.property?.pictures) === JSON.stringify(next.property?.pictures)
+  && JSON.stringify(prev.property?.images) === JSON.stringify(next.property?.images)
+  && prev.property?.image_url === next.property?.image_url
   && prev.property?.status === next.property?.status
   && prev.property?.name === next.property?.name
   && prev.property?.price === next.property?.price

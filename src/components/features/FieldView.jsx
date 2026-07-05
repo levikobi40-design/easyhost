@@ -4,7 +4,8 @@ import { AlertTriangle, QrCode, MapPin, Zap, User } from 'lucide-react';
 import useStore from '../../store/useStore';
 import { isBiktaForcePhone, BIKTA_TENANT_ID, parseJwtPayload } from '../../utils/biktaUser';
 import { isDashboardAdmin } from '../../utils/dashboardRoles';
-import { LANGUAGE_OPTIONS, normalizeLang } from '../../utils/languages';
+import { normalizeLang } from '../../utils/languages';
+import { PILOT_LANGUAGE_OPTIONS } from '../../utils/pilotLanguages';
 import useTranslations from '../../hooks/useTranslations';
 import {
   setWorkerLanguage, registerStaff, getStaffTasks,
@@ -18,7 +19,7 @@ import './FieldView.css';
 // Worker app supports the full enterprise language set so field cleaners can pick
 // their own language (e.g. Arabic / Albanian in Greece, Hindi in Dubai, Thai in
 // Thailand) regardless of the property's market.
-const WORKER_LANGUAGES = LANGUAGE_OPTIONS.map((o) => ({ code: o.code, label: o.label }));
+const WORKER_LANGUAGES = PILOT_LANGUAGE_OPTIONS.map((o) => ({ code: o.code, label: o.label }));
 
 /* Issue categories: ASCII icons only */
 const ISSUE_CATEGORIES = [
