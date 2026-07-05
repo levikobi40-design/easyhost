@@ -4698,6 +4698,68 @@ def _guard_property_mutation_auth():
     return None
 
 
+def _admin_extra_key_from_request():
+    """Optional DEBLOAT_KEY / X-Admin-Key — extra layer on top of JWT admin auth."""
+    data = request.get_json(silent=True) or {}
+    return (
+        request.args.get("key", "").strip()
+        or request.headers.get("X-Admin-Key", "").strip()
+        or (data.get("key") or "").strip()
+    )
+
+
+def _check_admin_extra_key():
+    """
+    When DEBLOAT_KEY env is set, require a matching key (never a substitute for JWT).
+    Returns None on success, or (response, status_code) on failure.
+    """
+    expected = os.getenv("DEBLOAT_KEY", "").strip()
+    if not expected:
+        return None
+    if _admin_extra_key_from_request() != expected:
+        return jsonify({
+            "error": "Forbidden",
+            "hint": "DEBLOAT_KEY required (query ?key=, header X-Admin-Key, or JSON key)",
+        }), 403
+    return None
+
+
+def _guard_admin_destructive_route(*, allow_get_when_auth_disabled=True):
+    """
+    Gate for init/wipe/debloat/seed admin routes.
+    AUTH_DISABLED=true: legacy dev workflow (GET allowed when allow_get_when_auth_disabled).
+    AUTH_DISABLED=false: POST only, admin JWT required, DEBLOAT_KEY when configured.
+    Returns None on success, or (response, status_code) on failure.
+    """
+    if AUTH_DISABLED:
+        if request.method == "GET" and not allow_get_when_auth_disabled:
+            return jsonify({"error": "Method not allowed", "hint": "Use POST"}), 405
+        try:
+            tenant_id, user_id = get_auth_context_from_request()
+        except Exception:
+            tenant_id, user_id = DEFAULT_TENANT_ID, f"demo-{DEFAULT_TENANT_ID}"
+        request.tenant_id = _coerce_demo_tenant_id(tenant_id)
+        request.user_id = user_id
+        return None
+    if request.method != "POST":
+        return jsonify({"error": "Method not allowed", "hint": "Use POST with admin Bearer token"}), 405
+    try:
+        identity = get_property_tasks_auth_bundle()
+    except Exception as exc:
+        msg = str(exc).strip() or "Unauthorized"
+        return jsonify({"error": msg}), 401
+    if identity.get("app_role") != "admin":
+        return jsonify({"error": "Forbidden — admin required"}), 403
+    key_err = _check_admin_extra_key()
+    if key_err:
+        return key_err
+    tenant_id = _coerce_demo_tenant_id(identity.get("tenant_id") or DEFAULT_TENANT_ID)
+    user_id = (identity.get("user_id") or "").strip() or f"demo-{tenant_id}"
+    request.tenant_id = tenant_id
+    request.user_id = user_id
+    return None
+
+
 def _norm_task_status_category(status_val):
     """Map DB status to pending | in_progress | done (aligned with frontend taskStatusRank)."""
     raw = (status_val or "").strip().lower().replace(" ", "_")
@@ -10458,7 +10520,7 @@ def demo_toggle():
     return jsonify({"ok": True, "active": True})
 
 
-@app.route("/init-db", methods=["GET"])
+@app.route("/init-db", methods=["GET", "POST"])
 def init_db_browser():
     """
     Browser-friendly one-shot endpoint.
@@ -10467,7 +10529,23 @@ def init_db_browser():
       2. Seed 10 pilot properties + mock staff
       3. Start the simulation bots
       4. Return a plain-text summary so you can see it immediately in the browser
+
+    Production (AUTH_DISABLED=false): hidden unless ENABLE_INIT_DB=true; POST + admin JWT only.
+    Development (AUTH_DISABLED=true): GET remains available for local one-click init.
     """
+    if _is_production and not AUTH_DISABLED and not _env_truthy("ENABLE_INIT_DB"):
+        return jsonify({"error": "Not found"}), 404
+    if AUTH_DISABLED and request.method == "GET":
+        pass
+    elif request.method == "GET":
+        return jsonify({"error": "Method not allowed", "hint": "Use POST"}), 405
+    else:
+        if _is_production and not _env_truthy("ENABLE_INIT_DB"):
+            return jsonify({"error": "Not found"}), 404
+        guard = _guard_admin_destructive_route(allow_get_when_auth_disabled=False)
+        if guard:
+            return guard
+
     lines = []
 
     def log(msg):
@@ -12753,41 +12831,24 @@ def admin_wipe_demo_properties():
     """
     One-shot cleanup so the operator can start from a clean slate.
 
-    GET so it can be fired straight from the browser address bar.
-
     Scope:
       • default     → removes junk/non-Christos properties; keeps Christos Corfu pilot (4).
       • ?all=true   → removes EVERY property for the tenant (full clean slate).
 
     Cascades property_tasks + property_staff, purges orphan/SIM tasks,
-    resets Maya context/memory caches. POST is auth-gated; GET honors DEBLOAT_KEY.
+    resets Maya context/memory caches.
+    AUTH_DISABLED=true: GET allowed for local dev. Otherwise POST + admin JWT (+ DEBLOAT_KEY if set).
     """
     if request.method == "OPTIONS":
         return Response(status=204)
-    if request.method == "POST" and not AUTH_DISABLED:
-        ident = _identity_or_none()
-        if not ident:
-            return jsonify({"error": "Unauthorized"}), 401
-        if ident.get("app_role") not in ("admin", "manager", "operation"):
-            return jsonify({"error": "Forbidden"}), 403
-    if request.method == "GET":
-        _key = os.getenv("DEBLOAT_KEY", "").strip()
-        if _key and request.args.get("key", "").strip() != _key:
-            return jsonify({"error": "Forbidden", "hint": "append ?key=<DEBLOAT_KEY>"}), 403
+    guard = _guard_admin_destructive_route()
+    if guard:
+        return guard
 
     if not SessionLocal or not ManualRoomModel:
         return jsonify({"error": "Database unavailable"}), 500
 
-    # Resolve tenant the same way delete_property does.
-    tenant_id = DEFAULT_TENANT_ID
-    try:
-        if AUTH_DISABLED:
-            tenant_id, _ = get_auth_context_from_request()
-        else:
-            tenant_id = get_tenant_id_from_request() or DEFAULT_TENANT_ID
-    except Exception:
-        tenant_id = DEFAULT_TENANT_ID
-
+    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
     wipe_all = request.args.get("all", "").strip().lower() in ("1", "true", "yes", "on")
     result = _run_christos_demo_integrity_wipe(tenant_id, wipe_all=wipe_all)
     if not result.get("ok"):
@@ -12802,26 +12863,15 @@ def admin_debloat_images():
     Handy right after adding the Cloudinary env vars: cleans the DB on demand
     without waiting for a redeploy.
 
-    Supports GET so it can be fired straight from a browser address bar, and POST
-    for programmatic calls. POST is gated to admin/manager/operation; GET is left
-    open for one-click maintenance (the sweep is idempotent and only ever
-    migrates/strips bloated image text — it never deletes properties). If a
-    DEBLOAT_KEY env var is set, GET additionally requires ?key=<DEBLOAT_KEY>.
+    AUTH_DISABLED=true: GET allowed for local dev. Otherwise POST + admin JWT (+ DEBLOAT_KEY if set).
+    The sweep is idempotent — it only migrates/strips bloated image text.
     """
     if request.method == "OPTIONS":
         return Response(status=204)
 
-    if request.method == "POST" and not AUTH_DISABLED:
-        ident = _identity_or_none()
-        if not ident:
-            return jsonify({"error": "Unauthorized"}), 401
-        if ident.get("app_role") not in ("admin", "manager", "operation"):
-            return jsonify({"error": "Forbidden"}), 403
-
-    if request.method == "GET":
-        _debloat_key = os.getenv("DEBLOAT_KEY", "").strip()
-        if _debloat_key and request.args.get("key", "").strip() != _debloat_key:
-            return jsonify({"error": "Forbidden", "hint": "append ?key=<DEBLOAT_KEY>"}), 403
+    guard = _guard_admin_destructive_route()
+    if guard:
+        return guard
 
     summary = _debloat_base64_images("manual")
     return jsonify({"ok": True, "cloudinary_configured": _CLOUDINARY_CONFIGURED, **summary}), 200
@@ -17777,6 +17827,9 @@ def dev_initialize_demo_data():
     """Manual trigger for 80% occupancy simulation (idempotent)."""
     if request.method == "OPTIONS":
         return Response(status=204)
+    guard = _guard_admin_destructive_route(allow_get_when_auth_disabled=False)
+    if guard:
+        return guard
     out = initialize_demo_data()
     code = 200 if out.get("ok") else 500
     return jsonify(out), code
@@ -18306,13 +18359,11 @@ def api_ops_bootstrap_data():
     """Emergency seed after DB purge — pilot demo + Bazaar/WeWork portfolio + simulation tasks."""
     if request.method == "OPTIONS":
         return Response(status=204)
-    tenant_id = DEFAULT_TENANT_ID
-    user_id = f"demo-{DEFAULT_TENANT_ID}"
-    if not AUTH_DISABLED:
-        try:
-            tenant_id, user_id = get_auth_context_from_request()
-        except Exception:
-            pass
+    guard = _guard_admin_destructive_route()
+    if guard:
+        return guard
+    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+    user_id = getattr(request, "user_id", f"demo-{tenant_id}")
     payload = _run_bootstrap_operational_data(tenant_id=tenant_id, user_id=user_id)
     return jsonify(payload), 200
 
