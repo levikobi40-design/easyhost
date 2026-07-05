@@ -4463,6 +4463,68 @@ def get_property_tasks_auth_bundle():
     }
 
 
+def _maya_identity_can_mutate(identity):
+    """Admin/manager may run operational mutations via Maya chat."""
+    if AUTH_DISABLED:
+        return True
+    return (identity or {}).get("app_role") in ("admin", "manager")
+
+
+def _maya_mutation_forbidden_response():
+    return jsonify({
+        "error": "Forbidden — admin or manager required for this action",
+        "success": False,
+    }), 403
+
+
+def _maya_forbidden_result_dict():
+    return {
+        "success": False,
+        "error": "Forbidden — admin or manager required for this action",
+        "forbidden": True,
+    }
+
+
+def _maya_guard_mutation_from_identity(identity):
+    """Return None if allowed, else (response, status_code)."""
+    if _maya_identity_can_mutate(identity):
+        return None
+    return _maya_mutation_forbidden_response()
+
+
+def _maya_guard_mutation_in_chat():
+    """Enforce Maya chat RBAC for operational mutations when AUTH_DISABLED=false."""
+    try:
+        chat_active = getattr(request, "_maya_chat_active", False)
+    except RuntimeError:
+        return None
+    if not chat_active:
+        return None
+    if AUTH_DISABLED:
+        return None
+    identity = getattr(request, "maya_identity", None)
+    if not identity:
+        return jsonify({"error": "Unauthorized", "success": False}), 401
+    return _maya_guard_mutation_from_identity(identity)
+
+
+def _maya_if_forbidden_task_err(err):
+    if err == "forbidden":
+        return _maya_mutation_forbidden_response()
+    return None
+
+
+def _maya_llm_action_is_mutating(action):
+    return (action or "").strip().lower() in (
+        "add_task",
+        "add_tasks",
+        "mark_task_done",
+        "register_staff",
+        "send_whatsapp_onboarding",
+        "create_work_shift",
+    )
+
+
 def _audit_task_completed_session(session, tenant_id, task_id, prev_status, new_status, actor_user_id, actor_email):
     """Append one row when a task moves into a completed state."""
     if not session or not TaskAuditLogModel or not task_id:
@@ -4512,6 +4574,21 @@ def _property_tasks_query_for_tenant(session, tenant_id):
     else:
         q = q.filter(PropertyTaskModel.tenant_id == tenant_id)
     return q
+
+
+def _property_task_for_tenant_by_id(session, tenant_id, task_id):
+    """Single property_task row scoped to tenant (legacy NULL → default tenant only)."""
+    if not PropertyTaskModel or not task_id:
+        return None
+    tid = str(task_id).strip()
+    q = session.query(PropertyTaskModel).filter(PropertyTaskModel.id == tid)
+    if tenant_id == DEFAULT_TENANT_ID:
+        q = q.filter(
+            or_(PropertyTaskModel.tenant_id == tenant_id, PropertyTaskModel.tenant_id.is_(None))
+        )
+    else:
+        q = q.filter(PropertyTaskModel.tenant_id == tenant_id)
+    return q.first()
 
 
 def _christos_pilot_room_rows(tenant_id, user_id, rooms=None):
@@ -7652,6 +7729,9 @@ def _maya_register_staff_from_action(tenant_id: str, user_id: str, staff_obj: di
     Returns (staff_record_dict | None, error_str | None).
     Uses PropertyStaffModel when available (hotel portfolio staff), falls back to StaffModel.
     """
+    denied = _maya_guard_mutation_in_chat()
+    if denied:
+        return None, "forbidden"
     name = (staff_obj.get("name") or "").strip()
     phone = (staff_obj.get("phone") or staff_obj.get("phone_number") or "").strip() or None
     role = (staff_obj.get("role") or "Staff").strip() or "Staff"
@@ -8614,6 +8694,9 @@ def _maya_try_start_task_from_natural_command(tenant_id, user_id, command):
     ) or any(x in he for x in ("נקי", "נקה", "התחל", "טפל", "בצע", "מטפל", "ניקיון"))
     if not wants_lobby or not wants_action:
         return None
+    denied = _maya_guard_mutation_in_chat()
+    if denied:
+        return _maya_forbidden_result_dict()
     session = SessionLocal()
     try:
         q = _property_tasks_query_for_tenant(session, tenant_id)
@@ -8640,9 +8723,13 @@ def _maya_try_start_task_from_natural_command(tenant_id, user_id, command):
         tid = best.id
         assign_stuck_property_tasks(tenant_id)
         session.expire_all()
-        task = session.query(PropertyTaskModel).filter_by(id=tid).first()
+        task = _property_task_for_tenant_by_id(session, tenant_id, tid)
         if not task:
-            return None
+            return {
+                "success": False,
+                "error": "Task not found",
+                "code": "not_found",
+            }
         desc_short = (task.description or "")[:160]
         if _norm_task_status_category(getattr(task, "status", None)) == "in_progress":
             display = f"המשימה «{desc_short[:72]}» כבר בביצוע (In_Progress)."
@@ -8723,18 +8810,22 @@ def _maya_find_task_id_for_completion(tenant_id, hint):
 
 def _maya_mark_property_task_done(tenant_id, task_id, user_id=None):
     """Persist Done on property_tasks so Mission Board polling reflects completion."""
+    denied = _maya_guard_mutation_in_chat()
+    if denied:
+        return False, "forbidden"
     if not task_id or not SessionLocal or not PropertyTaskModel:
         return False, "no_task_or_db"
     tid = str(task_id).strip()
     session = SessionLocal()
     try:
-        task = (
-            session.query(PropertyTaskModel)
-            .filter_by(id=tid, tenant_id=tenant_id)
-            .first()
-        )
-        if not task:
-            task = session.query(PropertyTaskModel).filter_by(id=tid).first()
+        q = session.query(PropertyTaskModel).filter(PropertyTaskModel.id == tid)
+        if tenant_id == DEFAULT_TENANT_ID:
+            q = q.filter(
+                or_(PropertyTaskModel.tenant_id == tenant_id, PropertyTaskModel.tenant_id.is_(None))
+            )
+        else:
+            q = q.filter(PropertyTaskModel.tenant_id == tenant_id)
+        task = q.first()
         if not task:
             return False, "not_found"
         st = (task.status or "").strip().lower()
@@ -13637,6 +13728,8 @@ def _maya_create_property_task_from_room_problem(tenant_id, user_id, command):
         "task_type": "Maintenance",
     }
     task, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+    if err == "forbidden":
+        return _maya_forbidden_result_dict()
     if not task:
         return None
     display = f"בסדר גמור, פתחתי משימת תחזוקה לחדר {room_num}"
@@ -13858,6 +13951,9 @@ def _is_unknown_property(name: str) -> bool:
 
 def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command=None):
     """Create task from action.add_task format: {staffName, content, propertyName, status}"""
+    denied = _maya_guard_mutation_in_chat()
+    if denied:
+        return None, "forbidden"
     if not SessionLocal or not PropertyTaskModel or not PropertyStaffModel:
         return None, "Tasks unavailable"
     staff_name = (task_obj.get("staffName") or "").strip() or "Staff"
@@ -13925,6 +14021,9 @@ def _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_prope
 
 def _create_task_from_gemini(tenant_id, user_id, gemini_result, rooms, staff_by_property):
     """Create a property task from Gemini's structured JSON. Returns (task_dict, error)."""
+    denied = _maya_guard_mutation_in_chat()
+    if denied:
+        return None, "forbidden"
     if not SessionLocal or not PropertyTaskModel or not PropertyStaffModel:
         return None, "Tasks unavailable"
     intent = (gemini_result.get("intent") or "").lower()
@@ -14384,6 +14483,7 @@ def _maya_build_json_response_from_llm_output(
     rooms: list,
     staff_by_property: dict,
     truth_audit=None,
+    maya_identity=None,
 ):
     """
     Turn raw LLM output (JSON action or prose) into the same dict POST /ai/maya-command returns.
@@ -14460,6 +14560,8 @@ def _maya_build_json_response_from_llm_output(
         and not looks_like_question
         and parsed.get("action") not in ("add_task", "add_tasks", "info", "clarify", "mark_task_done")
     ):
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         staff = "אבי" if any(x in (command or "") for x in ["קצר", "חשמל", "electrical", "נשרף", "נשרפה", "מנורה"]) else "עלמה"
         if any(x in (command or "") for x in ["ניקיון", "מגבת", "מנקה", "clean", "cleaning"]):
             staff = "עלמה"
@@ -14488,12 +14590,16 @@ def _maya_build_json_response_from_llm_output(
         })
 
     if parsed.get("action") == "mark_task_done":
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         task_id = (parsed.get("task_id") or parsed.get("id") or "").strip()
         if not task_id:
             hint = (parsed.get("match_description") or parsed.get("content") or "").strip()
             task_id = _maya_find_task_id_for_completion(tenant_id, hint)
         msg = (parsed.get("message") or "סימנתי את המשימה כבוצעה במערכת.").strip()
         ok, err = _maya_mark_property_task_done(tenant_id, task_id, user_id)
+        if err == "forbidden":
+            return _truth_out(_maya_forbidden_result_dict())
         if ok:
             _maya_memory_log_turn(tenant_id, command or "", msg)
             try:
@@ -14526,6 +14632,8 @@ def _maya_build_json_response_from_llm_output(
         })
 
     if parsed.get("action") == "add_tasks" and isinstance(parsed.get("tasks"), list):
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         created_tasks = []
         last_err = None
         notify_all_ok = True
@@ -14533,6 +14641,8 @@ def _maya_build_json_response_from_llm_output(
             if not isinstance(task_obj, dict):
                 continue
             t, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+            if err == "forbidden":
+                return _truth_out(_maya_forbidden_result_dict())
             if t:
                 task_created = True
                 task = t
@@ -14572,8 +14682,12 @@ def _maya_build_json_response_from_llm_output(
             })
 
     if parsed.get("action") == "add_task" and isinstance(parsed.get("task"), dict):
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         task_obj = parsed["task"]
         task, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+        if err == "forbidden":
+            return _truth_out(_maya_forbidden_result_dict())
         if err:
             _em = f"לא ניתן ליצור משימה: {err}"
             print("[Maya] add_task failed:", err, flush=True)
@@ -14587,7 +14701,11 @@ def _maya_build_json_response_from_llm_output(
         if task:
             task_created = True
     elif parsed.get("intent") in ("cleaning", "maintenance", "housekeeping", "electrician"):
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         task, err = _create_task_from_gemini(tenant_id, user_id, parsed, rooms, staff_by_property)
+        if err == "forbidden":
+            return _truth_out(_maya_forbidden_result_dict())
         if err:
             _em = f"לא ניתן ליצור משימה (legacy intent): {err}"
             print("[Maya] create from gemini intent failed:", err, flush=True)
@@ -14603,7 +14721,11 @@ def _maya_build_json_response_from_llm_output(
 
     # ── register_staff: create a new staff / employee record directly from chat ──
     if parsed.get("action") == "register_staff" and isinstance(parsed.get("staff"), dict):
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         staff_rec, s_err = _maya_register_staff_from_action(tenant_id, user_id, parsed["staff"], rooms)
+        if s_err == "forbidden":
+            return _truth_out(_maya_forbidden_result_dict())
         if s_err:
             fail_msg = f"לא ניתן לרשום עובד/ת: {s_err}"
             print(f"[Maya] register_staff failed: {s_err}", flush=True)
@@ -14630,6 +14752,8 @@ def _maya_build_json_response_from_llm_output(
 
     # ── create_work_shift: schedule a work shift as a PropertyTask of type משמרת ──
     if parsed.get("action") == "create_work_shift":
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         shift_obj = parsed.get("shift") or {}
         emp_name  = (shift_obj.get("employee_name") or shift_obj.get("staffName") or "").strip()
         time_slot = (shift_obj.get("time_slot") or shift_obj.get("shift_time") or "").strip()
@@ -14654,6 +14778,8 @@ def _maya_build_json_response_from_llm_output(
             "status": "Pending",
         }
         shift_task, s_err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+        if s_err == "forbidden":
+            return _truth_out(_maya_forbidden_result_dict())
         if s_err or not shift_task:
             fail_msg = f"לא ניתן לשמור את המשמרת: {s_err or 'שגיאה לא ידועה'}"
             _maya_memory_log_turn(tenant_id, command or "", fail_msg)
@@ -14672,6 +14798,8 @@ def _maya_build_json_response_from_llm_output(
 
     # ── send_whatsapp_onboarding: send a WhatsApp welcome/onboarding message ──
     if parsed.get("action") == "send_whatsapp_onboarding":
+        if not _maya_identity_can_mutate(maya_identity):
+            return _truth_out(_maya_forbidden_result_dict())
         wa_phone = (parsed.get("phone") or "").strip()
         wa_name  = (parsed.get("name") or "").strip()
         wa_msg   = (parsed.get("message") or "").strip()
@@ -14821,12 +14949,23 @@ def ai_maya_command():
     if request.method == "OPTIONS":
         return Response(status=204)
     try:
-        tenant_id, user_id = get_auth_context_from_request()
-    except Exception:
+        maya_identity = get_property_tasks_auth_bundle()
+    except Exception as exc:
         if AUTH_DISABLED:
-            tenant_id, user_id = DEFAULT_TENANT_ID, f"demo-{DEFAULT_TENANT_ID}"
+            maya_identity = {
+                "tenant_id": DEFAULT_TENANT_ID,
+                "user_id": f"demo-{DEFAULT_TENANT_ID}",
+                "app_role": "admin",
+                "worker_handle": "",
+                "email": "",
+            }
         else:
-            return jsonify({"error": "Unauthorized", "success": False}), 401
+            msg = str(exc).strip() or "Unauthorized"
+            return jsonify({"error": msg, "success": False}), 401
+    tenant_id = maya_identity["tenant_id"]
+    user_id = maya_identity["user_id"]
+    request.maya_identity = maya_identity
+    request._maya_chat_active = True
     data = request.get_json(silent=True) or {}
     command = _scrub_maya_input_text((data.get("command") or data.get("message") or ""))
     tasks_for_analysis = data.get("tasksForAnalysis")
@@ -14888,6 +15027,9 @@ def ai_maya_command():
             if _maya_user_confirms_room_task(command, str(_pend.get("room") or "")):
                 room_num = str(_pend.get("room") or "").strip()
                 del _MAYA_ROOM_CONFIRM_PENDING[_rp_key]
+                denied = _maya_guard_mutation_from_identity(maya_identity)
+                if denied:
+                    return denied
                 if room_num and TaskModel:
                     t = create_task(tenant_id, "Cleaning", f"חדר {room_num}")
                     _maya_refresh_task_context_cache(tenant_id)
@@ -14907,6 +15049,8 @@ def ai_maya_command():
 
         _tcp = _maya_try_handle_task_create_pending(tenant_id, user_id, command)
         if _tcp:
+            if _tcp.get("forbidden"):
+                return jsonify(_tcp), 403
             _maya_memory_log_turn(tenant_id, command, _tcp.get("message") or _tcp.get("displayMessage") or "")
             return jsonify(_tcp), 200
 
@@ -14928,17 +15072,25 @@ def ai_maya_command():
     if command:
         _maya_room_detail = _maya_try_create_room_detail_task(tenant_id, user_id, command)
         if _maya_room_detail:
+            if _maya_room_detail.get("forbidden"):
+                return jsonify(_maya_room_detail), 403
             _maya_memory_log_turn(tenant_id, command, _maya_room_detail.get("message") or _maya_room_detail.get("displayMessage") or "")
             return jsonify(_maya_room_detail), 200
         _maya_task_begin = _maya_try_begin_task_create_from_command(tenant_id, user_id, command)
         if _maya_task_begin:
+            if _maya_task_begin.get("forbidden"):
+                return jsonify(_maya_task_begin), 403
             _maya_memory_log_turn(tenant_id, command, _maya_task_begin.get("message") or _maya_task_begin.get("displayMessage") or "")
             return jsonify(_maya_task_begin), 200
         _maya_task_start = _maya_try_start_task_from_natural_command(tenant_id, user_id, command)
         if _maya_task_start:
+            if _maya_task_start.get("forbidden"):
+                return jsonify(_maya_task_start), 403
             return jsonify(_maya_task_start), 200
         _maya_room_problem = _maya_create_property_task_from_room_problem(tenant_id, user_id, command)
         if _maya_room_problem:
+            if _maya_room_problem.get("forbidden"):
+                return jsonify(_maya_room_problem), 403
             return jsonify(_maya_room_problem), 200
 
     if command and _maya_is_fastest_worker_question(command):
@@ -15290,6 +15442,9 @@ def ai_maya_command():
     # "לשלוח מנקה לחדר X" - direct task creation and staff notification (check first - most specific)
     _m = re.search(r"(?:לשלוח\s+)?מנקה\s+לחדר\s+(\d+)", command or "")
     if _m:
+        denied = _maya_guard_mutation_from_identity(maya_identity)
+        if denied:
+            return denied
         room_num = _m.group(1)
         rooms = list_manual_rooms(tenant_id, owner_id=user_id or f"demo-{tenant_id}")
         staff_by_property = {}
@@ -15314,6 +15469,8 @@ def ai_maya_command():
                 break
         task_obj = {"staffName": "עלמה", "content": f"ניקיון חדר {room_num}", "propertyName": prop_name, "status": "Pending"}
         task, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
+        if err == "forbidden":
+            return _maya_mutation_forbidden_response()
         if not task and TaskModel:
             t = create_task(tenant_id, "Cleaning", f"חדר {room_num}")
             if t:
@@ -15339,6 +15496,9 @@ def ai_maya_command():
     # "חדר [מספר]" - any mention of room number creates task (guest management)
     _room = re.search(r"(?:חדר|room)\s*(\d+)", command or "", re.I)
     if _room and not _maya_command_is_maintenance_room_report(command or ""):
+        denied = _maya_guard_mutation_from_identity(maya_identity)
+        if denied:
+            return denied
         room_num = _room.group(1)
         print(f"DEBUG: Maya decided to CREATE task for room {room_num}")
         if TaskModel:
@@ -15365,6 +15525,9 @@ def ai_maya_command():
     # Test message: "שלחי הודעת בדיקה" - WhatsApp first, Voice fallback on limit
     cmd_lower = (command or "").lower().strip()
     if "הודעת בדיקה" in command or "test message" in cmd_lower or "send test" in cmd_lower:
+        denied = _maya_guard_mutation_from_identity(maya_identity)
+        if denied:
+            return denied
         msg = "בדיקת מערכת מאיה - המשימה התקבלה"
         r_wa = send_whatsapp(OWNER_PHONE, msg)
         if not r_wa.get("success"):
@@ -15389,6 +15552,9 @@ def ai_maya_command():
         "off",
     )
     if _em_voice_enabled and _maya_strict_emergency_warranted(command or ""):
+        denied = _maya_guard_mutation_from_identity(maya_identity)
+        if denied:
+            return denied
         tts_msg = "קובי, יש מצב חירום במלון. בדוק את לוח המשימות."
         v = make_emergency_call(OWNER_PHONE, tts_msg)
         msg_he = f"חירום - הודעה ממערכת מאיה: {command[:100]}"
@@ -15534,6 +15700,9 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
 
     if not GEMINI_MODEL:
         if is_task_like:
+            denied = _maya_guard_mutation_from_identity(maya_identity)
+            if denied:
+                return denied
             staff = "אבי" if any(x in (command or "") for x in ["קצר", "חשמל", "electrical", "נשרף", "נשרפה", "מנורה"]) else "עלמה"
             if any(x in (command or "") for x in ["ניקיון", "מגבת", "מנקה", "clean", "cleaning"]):
                 staff = "עלמה"
@@ -15541,6 +15710,8 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
                 staff = "קובי"
             parsed_fallback = {"action": "add_task", "task": {"staffName": staff, "content": (command or "תקלה/בקשה")[:200], "propertyName": "Chandler", "status": "Pending"}}
             task, err = _create_task_from_action(tenant_id, user_id, parsed_fallback["task"], rooms, staff_by_property, command)
+            if err == "forbidden":
+                return _maya_mutation_forbidden_response()
             if task:
                 staff_name = task.get("staff_name", "")
                 notify_ok = True
@@ -15741,6 +15912,7 @@ Rules:
                         rooms,
                         staff_by_property,
                         truth_audit=_truth_audit,
+                        maya_identity=maya_identity,
                     )
                     yield (
                         "data: "
@@ -15797,7 +15969,10 @@ Rules:
             rooms,
             staff_by_property,
             truth_audit=_truth_audit,
+            maya_identity=maya_identity,
         )
+    if isinstance(result, dict) and result.get("forbidden"):
+        return jsonify(result), 403
     return jsonify(result), 200
 
 
@@ -19037,6 +19212,8 @@ def _maya_finalize_and_create_pending_task(tenant_id, user_id, pending, room_num
     }
     task, err = _create_task_from_action(tenant_id, user_id, task_obj, rooms, staff_by_property, command)
     _maya_clear_task_create_pending(tenant_id, user_id)
+    if err == "forbidden":
+        return _maya_forbidden_result_dict()
     if not task:
         fail = err or "לא הצלחתי לפתוח את המשימה."
         return {"success": True, "message": fail, "displayMessage": fail, "response": fail}
