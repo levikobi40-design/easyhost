@@ -3092,6 +3092,20 @@ if create_engine and sessionmaker and declarative_base:
         created_at = Column(String)
         updated_at = Column(String)
 
+    class MayaPendingClarificationModel(Base):
+        """Persistent Maya multi-turn clarification (task create room/property follow-ups)."""
+        __tablename__ = "maya_pending_clarifications"
+
+        id = Column(String, primary_key=True)
+        tenant_id = Column(String, index=True)
+        user_id = Column(String, index=True)
+        intent = Column(String)
+        missing_field = Column(String)
+        payload_json = Column(Text)
+        created_at = Column(String)
+        expires_at = Column(String, index=True)
+        resolved_at = Column(String, index=True)
+
     def ensure_staff_schema():
         if not ENGINE or not text:
             return
@@ -3787,6 +3801,7 @@ else:
     DamageReportModel       = None
     BookingModel            = None
     PropertyKnowledgeModel = None
+    MayaPendingClarificationModel = None
 
 # ── Eager schema init ────────────────────────────────────────────────────────
 # This runs at module import time (when Gunicorn loads app.py), so Supabase
@@ -12799,6 +12814,7 @@ def _reset_maya_demo_caches(tenant_id):
         task_pending_drop = [k for k in _MAYA_TASK_CREATE_PENDING if str(k).startswith(f"{tenant_id}::")]
         for k in task_pending_drop:
             _MAYA_TASK_CREATE_PENDING.pop(k, None)
+        _clear_maya_pending_for_tenant(tenant_id)
     except Exception:
         pass
     try:
@@ -14579,6 +14595,11 @@ def _maya_build_json_response_from_llm_output(
 
     if parsed.get("action") == "clarify":
         q = parsed.get("question") or "Which property or room should I assign this to?"
+        task_obj = parsed.get("task") if isinstance(parsed.get("task"), dict) else {}
+        if _maya_clarify_is_task_creation(parsed, command):
+            missing = _maya_infer_missing_field_from_clarify(parsed, command, task_obj)
+            payload = _maya_build_pending_payload_from_clarify(parsed, command, task_obj)
+            set_maya_pending(tenant_id, user_id, "create_task", missing, payload)
         _maya_memory_log_turn(tenant_id, command or "", q)
         return _truth_out({
             "success": True,
@@ -15509,8 +15530,9 @@ def ai_maya_command():
                 return jsonify({"success": True, "message": display, "displayMessage": display, "taskCreated": True, "task": {"id": t.get("id")}}), 200
 
     # 100+ clients infrastructure confirmation (skip numeric-only room follow-up during pending task create)
+    _active_pending = get_maya_pending(tenant_id, user_id)
     if (
-        not _maya_has_active_task_create_pending(tenant_id, user_id)
+        not _active_pending
         and not _maya_is_numeric_only_reply(command)
         and (
             "100" in (command or "")
@@ -18791,7 +18813,214 @@ _MAYA_TASK_CONTEXT_LOCK = threading.Lock()
 _MAYA_ROOM_CONFIRM_PENDING = {}
 _MAYA_ROOM_CONFIRM_TTL_SEC = 360
 _MAYA_TASK_CREATE_PENDING = {}
-_MAYA_TASK_CREATE_PENDING_TTL_SEC = 600
+_MAYA_TASK_CREATE_PENDING_TTL_SEC = 900  # 15 minutes — DB expires_at uses same TTL
+
+
+def _maya_task_create_pending_key(tenant_id, user_id):
+    return f"{tenant_id or ''}::{user_id or ''}"
+
+
+def _maya_pending_iso_to_epoch(iso_val):
+    if not iso_val:
+        return 0.0
+    try:
+        return datetime.fromisoformat(str(iso_val).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def expire_maya_pending_rows(session=None):
+    """Resolve expired unresolved pending clarification rows."""
+    if not ENGINE or not MayaPendingClarificationModel or not SessionLocal:
+        return 0
+    own = session is None
+    sess = session or SessionLocal()
+    try:
+        now = now_iso()
+        rows = (
+            sess.query(MayaPendingClarificationModel)
+            .filter(
+                MayaPendingClarificationModel.resolved_at.is_(None),
+                MayaPendingClarificationModel.expires_at < now,
+            )
+            .all()
+        )
+        for row in rows:
+            row.resolved_at = now
+        if own:
+            sess.commit()
+        return len(rows)
+    except Exception as e:
+        if own:
+            try:
+                sess.rollback()
+            except Exception:
+                pass
+        print(f"[expire_maya_pending_rows] {e!r}", flush=True)
+        return 0
+    finally:
+        if own:
+            sess.close()
+
+
+def clear_maya_pending(tenant_id, user_id):
+    """Mark active pending rows resolved and drop RAM cache entry."""
+    key = _maya_task_create_pending_key(tenant_id, user_id)
+    _MAYA_TASK_CREATE_PENDING.pop(key, None)
+    if not tenant_id or not user_id or not ENGINE or not MayaPendingClarificationModel or not SessionLocal:
+        return
+    session = SessionLocal()
+    try:
+        now = now_iso()
+        rows = (
+            session.query(MayaPendingClarificationModel)
+            .filter(
+                MayaPendingClarificationModel.tenant_id == tenant_id,
+                MayaPendingClarificationModel.user_id == user_id,
+                MayaPendingClarificationModel.resolved_at.is_(None),
+            )
+            .all()
+        )
+        for row in rows:
+            row.resolved_at = now
+        session.commit()
+    except Exception as e:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        print(f"[clear_maya_pending] {e!r}", flush=True)
+    finally:
+        session.close()
+
+
+def set_maya_pending(tenant_id, user_id, intent, missing_field, payload):
+    """Persist pending clarification — DB is source of truth when ENGINE exists."""
+    if not tenant_id or not user_id:
+        return
+    clear_maya_pending(tenant_id, user_id)
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    expires = (now_dt + timedelta(seconds=_MAYA_TASK_CREATE_PENDING_TTL_SEC)).isoformat()
+    row_id = str(uuid.uuid4())
+    store = dict(payload or {})
+    if ENGINE and SessionLocal and MayaPendingClarificationModel:
+        session = SessionLocal()
+        try:
+            session.add(
+                MayaPendingClarificationModel(
+                    id=row_id,
+                    tenant_id=str(tenant_id),
+                    user_id=str(user_id),
+                    intent=(intent or "create_task"),
+                    missing_field=(missing_field or ""),
+                    payload_json=json.dumps(store, ensure_ascii=False),
+                    created_at=now,
+                    expires_at=expires,
+                    resolved_at=None,
+                )
+            )
+            session.commit()
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            print(f"[set_maya_pending] {e!r}", flush=True)
+        finally:
+            session.close()
+    key = _maya_task_create_pending_key(tenant_id, user_id)
+    _MAYA_TASK_CREATE_PENDING[key] = {
+        **store,
+        "pending_intent": intent or "create_task",
+        "missing_field": missing_field or "",
+        "ts": time.time(),
+        "_pending_id": row_id,
+    }
+
+
+def get_maya_pending(tenant_id, user_id):
+    """Load active pending clarification — DB first, RAM cache as dev fallback."""
+    if not tenant_id or not user_id:
+        return None
+    expire_maya_pending_rows()
+    key = _maya_task_create_pending_key(tenant_id, user_id)
+    if ENGINE and SessionLocal and MayaPendingClarificationModel:
+        session = SessionLocal()
+        try:
+            now = now_iso()
+            row = (
+                session.query(MayaPendingClarificationModel)
+                .filter(
+                    MayaPendingClarificationModel.tenant_id == tenant_id,
+                    MayaPendingClarificationModel.user_id == user_id,
+                    MayaPendingClarificationModel.resolved_at.is_(None),
+                    MayaPendingClarificationModel.expires_at >= now,
+                )
+                .order_by(MayaPendingClarificationModel.created_at.desc())
+                .first()
+            )
+            if row:
+                try:
+                    payload = json.loads(row.payload_json or "{}")
+                    if not isinstance(payload, dict):
+                        payload = {}
+                except Exception:
+                    payload = {}
+                pend = {
+                    **payload,
+                    "pending_intent": row.intent or "create_task",
+                    "missing_field": row.missing_field or "",
+                    "ts": _maya_pending_iso_to_epoch(row.created_at) or time.time(),
+                    "_pending_id": row.id,
+                }
+                _MAYA_TASK_CREATE_PENDING[key] = pend
+                return pend
+        except Exception as e:
+            print(f"[get_maya_pending] {e!r}", flush=True)
+        finally:
+            session.close()
+    pend = _MAYA_TASK_CREATE_PENDING.get(key)
+    if not pend:
+        return None
+    if (time.time() - float(pend.get("ts") or 0)) > _MAYA_TASK_CREATE_PENDING_TTL_SEC:
+        _MAYA_TASK_CREATE_PENDING.pop(key, None)
+        return None
+    return pend
+
+
+def _clear_maya_pending_for_tenant(tenant_id):
+    """Resolve all active pending rows for a tenant (demo reset)."""
+    if not tenant_id:
+        return
+    prefix = f"{tenant_id}::"
+    for k in list(_MAYA_TASK_CREATE_PENDING.keys()):
+        if str(k).startswith(prefix):
+            _MAYA_TASK_CREATE_PENDING.pop(k, None)
+    if not ENGINE or not MayaPendingClarificationModel or not SessionLocal:
+        return
+    session = SessionLocal()
+    try:
+        now = now_iso()
+        rows = (
+            session.query(MayaPendingClarificationModel)
+            .filter(
+                MayaPendingClarificationModel.tenant_id == tenant_id,
+                MayaPendingClarificationModel.resolved_at.is_(None),
+            )
+            .all()
+        )
+        for row in rows:
+            row.resolved_at = now
+        session.commit()
+    except Exception as e:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        print(f"[_clear_maya_pending_for_tenant] {e!r}", flush=True)
+    finally:
+        session.close()
 
 # Short-lived cache for rooms + staff data so consecutive Maya messages don't
 # re-query the DB on every single SSE request (saves 200-600 ms per message).
@@ -19062,32 +19291,27 @@ def _maya_is_numeric_only_reply(command):
     return bool(re.match(r"^\d{1,6}$", (command or "").strip()))
 
 
-def _maya_task_create_pending_key(tenant_id, user_id):
-    return f"{tenant_id or ''}::{user_id or ''}"
-
-
 def _maya_clear_task_create_pending(tenant_id, user_id):
-    _MAYA_TASK_CREATE_PENDING.pop(_maya_task_create_pending_key(tenant_id, user_id), None)
+    clear_maya_pending(tenant_id, user_id)
 
 
 def _maya_get_task_create_pending(tenant_id, user_id):
-    key = _maya_task_create_pending_key(tenant_id, user_id)
-    pend = _MAYA_TASK_CREATE_PENDING.get(key)
-    if not pend:
-        return None
-    if (time.time() - float(pend.get("ts") or 0)) > _MAYA_TASK_CREATE_PENDING_TTL_SEC:
-        _MAYA_TASK_CREATE_PENDING.pop(key, None)
-        return None
-    return pend
+    return get_maya_pending(tenant_id, user_id)
 
 
 def _maya_set_task_create_pending(tenant_id, user_id, payload):
-    key = _maya_task_create_pending_key(tenant_id, user_id)
-    _MAYA_TASK_CREATE_PENDING[key] = {**payload, "ts": time.time()}
+    intent = (payload or {}).get("pending_intent") or "create_task"
+    missing = (payload or {}).get("missing_field") or ""
+    store = {
+        k: v
+        for k, v in (payload or {}).items()
+        if k not in ("pending_intent", "missing_field", "ts", "_pending_id")
+    }
+    set_maya_pending(tenant_id, user_id, intent, missing, store)
 
 
 def _maya_has_active_task_create_pending(tenant_id, user_id):
-    return _maya_get_task_create_pending(tenant_id, user_id) is not None
+    return get_maya_pending(tenant_id, user_id) is not None
 
 
 def _maya_parse_task_fields_from_command(command):
@@ -19252,6 +19476,77 @@ def _maya_finalize_and_create_pending_task(tenant_id, user_id, pending, room_num
     }
 
 
+def _maya_clarify_is_task_creation(parsed, command):
+    """True when LLM clarify is part of a task-create flow (not generic info)."""
+    q = (parsed.get("question") or "")
+    if parsed.get("task") and isinstance(parsed.get("task"), dict):
+        return True
+    if any(
+        x in q
+        for x in (
+            "לפתוח את המשימה",
+            "פתוח את המשימה",
+            "open the task",
+            "assign this",
+            "לפתוח משימה",
+        )
+    ):
+        return True
+    if _maya_is_open_task_intent(command):
+        return True
+    ql = q.lower()
+    if any(x in q for x in ("נכס", "חדר", "מלון", "אתר")) or any(
+        x in ql for x in ("property", "room", "hotel", "site")
+    ):
+        return True
+    return False
+
+
+def _maya_infer_missing_field_from_clarify(parsed, command, task_obj=None):
+    q = parsed.get("question") or ""
+    ql = q.lower()
+    if any(x in q for x in ("חדר", "room")) or re.search(r"מספר\s*חדר", q, re.I):
+        return "room"
+    if any(x in q for x in ("נכס", "מלון", "אתר")) or any(
+        x in ql for x in ("property", "hotel", "site")
+    ):
+        return "property"
+    task_obj = task_obj or {}
+    content = (task_obj.get("content") or command or "")
+    room, _ = _maya_extract_room_and_detail_from_command(content)
+    prop_name = (task_obj.get("propertyName") or task_obj.get("property_name") or "").strip()
+    if room and _is_unknown_property(prop_name):
+        return "property"
+    if _is_unknown_property(prop_name):
+        return "property"
+    return "room"
+
+
+def _maya_build_pending_payload_from_clarify(parsed, command, task_obj=None):
+    task_obj = task_obj if isinstance(task_obj, dict) else {}
+    task_type, priority, room_parsed = _maya_parse_task_fields_from_command(command)
+    room, detail = _maya_extract_room_and_detail_from_command(command)
+    room = room or room_parsed
+    if not room:
+        m = re.search(r"(?:חדר|room)\s*#?\s*(\d{1,6})", (task_obj.get("content") or ""), re.I)
+        if m:
+            room = m.group(1)
+    desc = (
+        (task_obj.get("content") or "").strip()
+        or detail
+        or _maya_extract_task_description_from_command(command, task_type)
+    )
+    prop_name = (task_obj.get("propertyName") or task_obj.get("property_name") or "").strip()
+    return {
+        "task_type": task_type,
+        "priority": (task_obj.get("priority") or priority or "normal"),
+        "description": desc,
+        "room": room,
+        "property_name": prop_name,
+        "property_id": "",
+    }
+
+
 def _maya_try_handle_task_create_pending(tenant_id, user_id, command):
     pend = _maya_get_task_create_pending(tenant_id, user_id)
     if not pend or pend.get("pending_intent") != "create_task":
@@ -19265,6 +19560,9 @@ def _maya_try_handle_task_create_pending(tenant_id, user_id, command):
         return None
     missing = pend.get("missing_field") or ""
     if missing == "property":
+        if _maya_is_numeric_only_reply(command):
+            msg = "באיזה נכס מדובר? כתוב שם נכס (Manto Beach Suite / Manto Apartments / Thaleri Villa)."
+            return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
         rooms, _ = _get_maya_rooms_and_staff(tenant_id, user_id)
         matched = _maya_resolve_properties_from_text(command, rooms)
         if len(matched) == 1:
