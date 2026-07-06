@@ -12808,11 +12808,8 @@ def _reset_maya_demo_caches(tenant_id):
     except Exception:
         pass
     try:
-        pending_drop = [k for k in _MAYA_ROOM_CONFIRM_PENDING if str(k).startswith(f"{tenant_id}::")]
+        pending_drop = [k for k in _MAYA_TASK_CREATE_PENDING if str(k).startswith(f"{tenant_id}::")]
         for k in pending_drop:
-            _MAYA_ROOM_CONFIRM_PENDING.pop(k, None)
-        task_pending_drop = [k for k in _MAYA_TASK_CREATE_PENDING if str(k).startswith(f"{tenant_id}::")]
-        for k in task_pending_drop:
             _MAYA_TASK_CREATE_PENDING.pop(k, None)
         _clear_maya_pending_for_tenant(tenant_id)
     except Exception:
@@ -14599,7 +14596,7 @@ def _maya_build_json_response_from_llm_output(
         if _maya_clarify_is_task_creation(parsed, command):
             missing = _maya_infer_missing_field_from_clarify(parsed, command, task_obj)
             payload = _maya_build_pending_payload_from_clarify(parsed, command, task_obj)
-            set_maya_pending(tenant_id, user_id, "create_task", missing, payload)
+            set_maya_pending(tenant_id, user_id, MAYA_PENDING_INTENT_CREATE_TASK, missing, payload)
         _maya_memory_log_turn(tenant_id, command or "", q)
         return _truth_out({
             "success": True,
@@ -14657,6 +14654,7 @@ def _maya_build_json_response_from_llm_output(
             return _truth_out(_maya_forbidden_result_dict())
         created_tasks = []
         last_err = None
+        last_failed_task_obj = None
         notify_all_ok = True
         for task_obj in parsed["tasks"]:
             if not isinstance(task_obj, dict):
@@ -14675,6 +14673,7 @@ def _maya_build_json_response_from_llm_output(
                     notify_all_ok = False
             elif err:
                 last_err = err
+                last_failed_task_obj = task_obj
         if created_tasks:
             staff_name = (created_tasks[0] or {}).get("staff_name", "")
             display_msg = f"Created {len(created_tasks)} tasks successfully! ✅" if not TWILIO_SIMULATE else "Message simulated successfully."
@@ -14691,7 +14690,15 @@ def _maya_build_json_response_from_llm_output(
                 "tasks": created_tasks,
                 "parsed": parsed,
             })
+        if last_err == "forbidden":
+            return _truth_out(_maya_forbidden_result_dict())
         if last_err:
+            fail_obj = last_failed_task_obj if isinstance(last_failed_task_obj, dict) else {}
+            if _maya_persist_pending_from_add_task_failure(
+                tenant_id, user_id, command, fail_obj, last_err
+            ):
+                _maya_memory_log_turn(tenant_id, command or "", str(last_err).strip())
+                return _truth_out(_maya_clarification_response_from_err(last_err, parsed))
             _em = f"לא ניתן ליצור משימות מהתשובה: {last_err}"
             print("[Maya] add_tasks all failed:", last_err, flush=True)
             return _truth_out({
@@ -14710,6 +14717,9 @@ def _maya_build_json_response_from_llm_output(
         if err == "forbidden":
             return _truth_out(_maya_forbidden_result_dict())
         if err:
+            if _maya_persist_pending_from_add_task_failure(tenant_id, user_id, command, task_obj, err):
+                _maya_memory_log_turn(tenant_id, command or "", str(err).strip())
+                return _truth_out(_maya_clarification_response_from_err(err, parsed))
             _em = f"לא ניתן ליצור משימה: {err}"
             print("[Maya] add_task failed:", err, flush=True)
             return _truth_out({
@@ -14728,6 +14738,9 @@ def _maya_build_json_response_from_llm_output(
         if err == "forbidden":
             return _truth_out(_maya_forbidden_result_dict())
         if err:
+            if _maya_persist_pending_from_add_task_failure(tenant_id, user_id, command, parsed, err):
+                _maya_memory_log_turn(tenant_id, command or "", str(err).strip())
+                return _truth_out(_maya_clarification_response_from_err(err, parsed))
             _em = f"לא ניתן ליצור משימה (legacy intent): {err}"
             print("[Maya] create from gemini intent failed:", err, flush=True)
             return _truth_out({
@@ -15034,40 +15047,7 @@ def ai_maya_command():
         _total_property_task_rows = int(maya_stats_snapshot.get("total_property_tasks_all") or 0)
         _open_task_count = int(maya_stats_snapshot.get("total_tasks") or 0)
 
-    _rp_key = _maya_room_pending_key(tenant_id, user_id)
     if command:
-        _pend = _MAYA_ROOM_CONFIRM_PENDING.get(_rp_key)
-        if _pend and (time.time() - float(_pend.get("ts") or 0)) < _MAYA_ROOM_CONFIRM_TTL_SEC:
-            if _maya_user_declines_room_task(command):
-                del _MAYA_ROOM_CONFIRM_PENDING[_rp_key]
-                msg = "בסדר, לא אפתח משימה."
-                _maya_memory_log_turn(tenant_id, command, msg)
-                return jsonify(
-                    {"success": True, "message": msg, "displayMessage": msg, "response": msg}
-                ), 200
-            if _maya_user_confirms_room_task(command, str(_pend.get("room") or "")):
-                room_num = str(_pend.get("room") or "").strip()
-                del _MAYA_ROOM_CONFIRM_PENDING[_rp_key]
-                denied = _maya_guard_mutation_from_identity(maya_identity)
-                if denied:
-                    return denied
-                if room_num and TaskModel:
-                    t = create_task(tenant_id, "Cleaning", f"חדר {room_num}")
-                    _maya_refresh_task_context_cache(tenant_id)
-                    if t:
-                        display = f"Task opened for room {room_num}"
-                        _maya_memory_log_turn(tenant_id, command, display)
-                        return jsonify({
-                            "success": True,
-                            "message": display,
-                            "displayMessage": display,
-                            "taskCreated": True,
-                            "task": {"id": t.get("id")},
-                        }), 200
-                fail = "לא הצלחתי לפתוח את המשימה — נסה שוב."
-                _maya_memory_log_turn(tenant_id, command, fail)
-                return jsonify({"success": True, "message": fail, "displayMessage": fail}), 200
-
         _tcp = _maya_try_handle_task_create_pending(tenant_id, user_id, command)
         if _tcp:
             if _tcp.get("forbidden"):
@@ -15529,7 +15509,7 @@ def ai_maya_command():
                 display = "משימה נוצרה בהצלחה לחדר " + room_num + " ✓"
                 return jsonify({"success": True, "message": display, "displayMessage": display, "taskCreated": True, "task": {"id": t.get("id")}}), 200
 
-    # 100+ clients infrastructure confirmation (skip numeric-only room follow-up during pending task create)
+    # 100+ clients infrastructure confirmation (skip while any clarification pending)
     _active_pending = get_maya_pending(tenant_id, user_id)
     if (
         not _active_pending
@@ -18810,8 +18790,7 @@ def _maya_fastest_worker_reply(tenant_id):
 # ── Maya task context cache (data/maya_context.json) — last ~10 open tasks per tenant ──
 _MAYA_TASK_CONTEXT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "maya_context.json")
 _MAYA_TASK_CONTEXT_LOCK = threading.Lock()
-_MAYA_ROOM_CONFIRM_PENDING = {}
-_MAYA_ROOM_CONFIRM_TTL_SEC = 360
+MAYA_PENDING_INTENT_CREATE_TASK = "create_task"
 _MAYA_TASK_CREATE_PENDING = {}
 _MAYA_TASK_CREATE_PENDING_TTL_SEC = 900  # 15 minutes — DB expires_at uses same TTL
 
@@ -19022,6 +19001,75 @@ def _clear_maya_pending_for_tenant(tenant_id):
     finally:
         session.close()
 
+
+def _maya_has_active_clarification(tenant_id, user_id):
+    """True when any non-expired Maya clarification pending exists for this user."""
+    return get_maya_pending(tenant_id, user_id) is not None
+
+
+def _maya_err_is_task_field_clarification(err):
+    """True when add_task failed because required task fields need user follow-up."""
+    if not err or err in ("forbidden", "Tasks unavailable"):
+        return False
+    es = str(err)
+    markers = (
+        "באיזה חדר",
+        "באיזה נכס",
+        "אני צריכה פרטים",
+        "which property",
+        "which room",
+        "property or room",
+    )
+    return any(m in es for m in markers)
+
+
+def _maya_infer_missing_field_from_task_err(err, task_obj, command):
+    es = str(err or "")
+    if "חדר" in es and "נכס" not in es:
+        return "room"
+    if "נכס" in es or "property" in es.lower() or "hotel" in es.lower():
+        return "property"
+    task_obj = task_obj if isinstance(task_obj, dict) else {}
+    prop_name = (task_obj.get("propertyName") or task_obj.get("property_name") or "").strip()
+    if _is_unknown_property(prop_name):
+        return "property"
+    room, _ = _maya_extract_room_and_detail_from_command(command or (task_obj.get("content") or ""))
+    if not room:
+        m = re.search(r"(?:חדר|room)\s*#?\s*(\d{1,6})", (task_obj.get("content") or ""), re.I)
+        if m:
+            room = m.group(1)
+    if room and _is_unknown_property(prop_name):
+        return "property"
+    if not room:
+        return "room"
+    return "property"
+
+
+def _maya_persist_pending_from_add_task_failure(tenant_id, user_id, command, task_obj, err):
+    if not _maya_err_is_task_field_clarification(err):
+        return False
+    task_obj = task_obj if isinstance(task_obj, dict) else {}
+    missing = _maya_infer_missing_field_from_task_err(err, task_obj, command)
+    payload = _maya_build_pending_payload_from_clarify({"task": task_obj}, command, task_obj)
+    payload["original_command"] = (command or "").strip()
+    payload["clarify_message"] = str(err).strip()
+    set_maya_pending(tenant_id, user_id, MAYA_PENDING_INTENT_CREATE_TASK, missing, payload)
+    return True
+
+
+def _maya_clarification_response_from_err(err, parsed=None):
+    msg = str(err).strip()
+    return {
+        "success": True,
+        "message": msg,
+        "displayMessage": msg,
+        "response": msg,
+        "taskCreated": False,
+        "task": None,
+        "parsed": parsed or {},
+        "pendingClarification": True,
+    }
+
 # Short-lived cache for rooms + staff data so consecutive Maya messages don't
 # re-query the DB on every single SSE request (saves 200-600 ms per message).
 _MAYA_ROOMS_STAFF_CACHE: dict = {}
@@ -19084,10 +19132,6 @@ def _invalidate_maya_rooms_staff_cache(tenant_id: str):
     stale_keys = [k for k in _MAYA_STATS_CACHE if k.startswith(f"{tenant_id}:")]
     for k in stale_keys:
         _MAYA_STATS_CACHE.pop(k, None)
-
-
-def _maya_room_pending_key(tenant_id, user_id):
-    return f"{tenant_id or ''}::{user_id or ''}"
 
 
 def _maya_load_maya_context_root_unlocked():
@@ -19296,11 +19340,14 @@ def _maya_clear_task_create_pending(tenant_id, user_id):
 
 
 def _maya_get_task_create_pending(tenant_id, user_id):
-    return get_maya_pending(tenant_id, user_id)
+    pend = get_maya_pending(tenant_id, user_id)
+    if not pend or pend.get("pending_intent") != MAYA_PENDING_INTENT_CREATE_TASK:
+        return None
+    return pend
 
 
 def _maya_set_task_create_pending(tenant_id, user_id, payload):
-    intent = (payload or {}).get("pending_intent") or "create_task"
+    intent = (payload or {}).get("pending_intent") or MAYA_PENDING_INTENT_CREATE_TASK
     missing = (payload or {}).get("missing_field") or ""
     store = {
         k: v
@@ -19311,7 +19358,7 @@ def _maya_set_task_create_pending(tenant_id, user_id, payload):
 
 
 def _maya_has_active_task_create_pending(tenant_id, user_id):
-    return get_maya_pending(tenant_id, user_id) is not None
+    return _maya_get_task_create_pending(tenant_id, user_id) is not None
 
 
 def _maya_parse_task_fields_from_command(command):
@@ -19549,7 +19596,7 @@ def _maya_build_pending_payload_from_clarify(parsed, command, task_obj=None):
 
 def _maya_try_handle_task_create_pending(tenant_id, user_id, command):
     pend = _maya_get_task_create_pending(tenant_id, user_id)
-    if not pend or pend.get("pending_intent") != "create_task":
+    if not pend or pend.get("pending_intent") != MAYA_PENDING_INTENT_CREATE_TASK:
         return None
     if _maya_user_declines_room_task(command):
         _maya_clear_task_create_pending(tenant_id, user_id)
@@ -19652,44 +19699,6 @@ def _maya_try_begin_task_create_from_command(tenant_id, user_id, command):
     })
     msg = "בשמחה, לאיזה חדר?"
     return {"success": True, "message": msg, "displayMessage": msg, "response": msg}
-
-
-def _maya_explicit_room_task_intent(command):
-    """User clearly asked to open a task (not only mentioning a room number)."""
-    if not command:
-        return False
-    if re.search(r"(?:לשלוח\s*)?מנקה\s+לחדר\s*\d+", command, re.I):
-        return True
-    if re.search(
-        r"(?:פתח(?:י|ו)?|צור(?:י|ו)?|לפתוח|open|create)\s+(?:משימה|task)",
-        command,
-        re.I,
-    ):
-        return True
-    if re.search(r"משימה\s+(?:ל|עבור)\s*(?:חדר|room)\s*\d+", command, re.I):
-        return True
-    if re.search(r"(?:חדר|room)\s*\d+", command, re.I) and any(
-        x in command for x in ("פתח", "צור", "לפתוח", "create", "open")
-    ) and "משימה" in command:
-        return True
-    return False
-
-
-def _maya_user_confirms_room_task(command, pending_room):
-    if not command:
-        return False
-    c = (command or "").strip().lower()
-    he = command or ""
-    if _maya_explicit_room_task_intent(command):
-        if pending_room and pending_room in re.sub(r"\D", "", he):
-            return True
-        if pending_room and pending_room in he:
-            return True
-    if re.match(r"^(כן|בטח|יאללה|סבבה|אשר|בוודאי|yes|ok|yep|sure)\b", c):
-        return True
-    if "אשר" in he and len(he) < 24:
-        return True
-    return False
 
 
 def _maya_user_declines_room_task(command):
