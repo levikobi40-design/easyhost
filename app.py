@@ -1747,13 +1747,20 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
     raise last_exc or RuntimeError("[Gemini] All models failed (stream chunks)")
 
 
-def _promote_property_task_to_in_progress_after_worker_notify(task_id: str) -> None:
+def _promote_property_task_to_in_progress_after_worker_notify(
+    task_id: str, tenant_id: str | None = None
+) -> None:
     """When a task notification is successfully sent to staff, move Pending → In_Progress (mission board)."""
     if not task_id or not SessionLocal or not PropertyTaskModel:
         return
+    tid = str(task_id).strip()
     session = SessionLocal()
     try:
-        row = session.query(PropertyTaskModel).filter_by(id=task_id).first()
+        row = None
+        if tenant_id:
+            row = _property_task_for_tenant_by_id(session, tenant_id, tid)
+        elif AUTH_DISABLED:
+            row = session.query(PropertyTaskModel).filter(PropertyTaskModel.id == tid).first()
         if not row:
             return
         raw = (getattr(row, "status", None) or "").strip()
@@ -7460,7 +7467,10 @@ def notify_staff_on_task_created(task):
 
         if ok and task_id:
             try:
-                _promote_property_task_to_in_progress_after_worker_notify(str(task_id))
+                _notify_tenant_id = ((task or {}).get("tenant_id") or "").strip() or None
+                _promote_property_task_to_in_progress_after_worker_notify(
+                    str(task_id), tenant_id=_notify_tenant_id
+                )
             except Exception:
                 pass
 
@@ -16993,15 +17003,13 @@ def _parse_worker_patch_payload(data, url_task_id):
 
 
 def _find_property_task_by_id(session, tenant_id, tid):
-    """Tenant-scoped lookup with global id fallback (Christos seed / legacy rows)."""
+    """Tenant-scoped lookup; global id fallback only when AUTH_DISABLED (local dev)."""
     if not session or not PropertyTaskModel or not tid:
         return None
-    task = _property_tasks_query_for_tenant(session, tenant_id).filter(
-        PropertyTaskModel.id == tid
-    ).first()
-    if task:
+    task = _property_task_for_tenant_by_id(session, tenant_id, str(tid).strip())
+    if task or not AUTH_DISABLED:
         return task
-    return session.query(PropertyTaskModel).filter(PropertyTaskModel.id == tid).first()
+    return session.query(PropertyTaskModel).filter(PropertyTaskModel.id == str(tid).strip()).first()
 
 
 def _worker_task_status_for_api(db_status):
