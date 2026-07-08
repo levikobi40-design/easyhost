@@ -1,6 +1,10 @@
-# Ensures Node (npm) and Python are available before railway.toml buildCommand runs.
+# Node: let the Nixpacks Node provider install ONE version (package.json detected).
+# Do NOT add nodejs_* to nixPkgs — that duplicates the provider and causes header collisions.
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+
 [phases.setup]
-nixPkgs = ["python311", "nodejs_22"]
+nixPkgs = ["python311"]
 
 [start]
 cmd = "PYTHONPATH=. gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"
