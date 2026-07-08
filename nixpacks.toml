@@ -1,10 +1,19 @@
 # Node: let the Nixpacks Node provider install ONE version (package.json detected).
 # Do NOT add nodejs_* to nixPkgs — that duplicates the provider and causes header collisions.
-# Python: let the Nixpacks Python provider install ONE runtime from requirements.txt/runtime.txt.
-# Do NOT add python311 to nixPkgs — bare Nix Python has no pip on PATH.
+# Python: use the Nixpacks Python provider venv (/opt/venv) — never bare nix python311/pip.
 [variables]
 NIXPACKS_NODE_VERSION = "22"
+NIXPACKS_PYTHON_VERSION = "3.11"
 CI = "false"
 
+# Mixed Node+Python: force both providers (Node 22 only via NIXPACKS_NODE_VERSION).
+providers = ["node", "python"]
+
+[phases.install]
+cmds = ["...", "pip install -r requirements.txt"]
+
+[phases.build]
+cmds = ["...", "npm run build"]
+
 [start]
-cmd = "PYTHONPATH=. gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"
+cmd = "PYTHONPATH=. /opt/venv/bin/gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"

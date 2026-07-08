@@ -2,7 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "PYTHONPATH=. gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"
+startCommand = "PYTHONPATH=. /opt/venv/bin/gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
