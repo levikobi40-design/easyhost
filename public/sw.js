@@ -7,7 +7,7 @@
    ════════════════════════════════════════════════════════════════ */
 
 const APP_NAME    = 'easyhost-ai';
-const CACHE_VER   = 'v3';                          // bump to bust old caches
+const CACHE_VER   = 'v4';                          // bump to bust old caches (CRA→Vite migration)
 const SHELL_CACHE = `${APP_NAME}-shell-${CACHE_VER}`;
 const DATA_CACHE  = `${APP_NAME}-data-${CACHE_VER}`;
 

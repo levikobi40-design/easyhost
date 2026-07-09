@@ -10,5 +10,9 @@ NIXPACKS_NODE_VERSION = "22"
 NIXPACKS_PYTHON_VERSION = "3.11"
 CI = "false"
 
+# Node is first provider → unprefixed build phase runs `npm run build` (Vite → build/).
+[phases.build]
+cmds = ["npm run build"]
+
 [start]
 cmd = "PYTHONPATH=. /opt/venv/bin/gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT"

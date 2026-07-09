@@ -1797,10 +1797,39 @@ _PUBLIC_DIR = os.path.join(_BASE_DIR, "public")         # fallback for dev
 _static_dir   = _BUILD_DIR  if os.path.isdir(_BUILD_DIR)  else _PUBLIC_DIR
 _template_dir = _BUILD_DIR  if os.path.isdir(_BUILD_DIR)  else _PUBLIC_DIR
 
+
+def _frontend_build_diagnostics():
+    """Log whether build/index.html looks like Vite (/assets) or stale CRA (/static/js/main)."""
+    idx = os.path.join(_BUILD_DIR, "index.html")
+    if not os.path.isfile(idx):
+        print(f"[frontend] ⚠️  no build/index.html — run npm run build (serving public/ fallback)", flush=True)
+        return
+    try:
+        with open(idx, encoding="utf-8", errors="replace") as fh:
+            html = fh.read(4096)
+    except OSError as exc:
+        print(f"[frontend] ⚠️  could not read build/index.html: {exc}", flush=True)
+        return
+    if "/assets/" in html and "/static/js/main." not in html:
+        print("[frontend] ✅ Vite build detected (index.html → /assets/*)", flush=True)
+    elif "/static/js/main." in html:
+        print(
+            "[frontend] 🚨 STALE CRA index.html in build/ — references /static/js/main.* "
+            "(run npm run build; do not commit build/ to git)",
+            flush=True,
+        )
+    else:
+        print("[frontend] ⚠️  build/index.html has no /assets/* script tags", flush=True)
+
+
+_frontend_build_diagnostics()
+
 app = Flask(
     __name__,
-    static_folder=os.path.join(_static_dir, "static"),  # JS/CSS chunks
-    template_folder=_template_dir,                       # index.html
+    # Vite emits hashed JS/CSS under build/assets/ and icons at build root — not build/static/.
+    static_folder=_static_dir,
+    static_url_path="",
+    template_folder=_template_dir,
 )
 
 # CORS — all routes (`/*` includes /api/health heartbeat → clears “Python Offline” when Flask is up)
@@ -2397,7 +2426,7 @@ def _debloat_base64_images(reason="boot"):
     Returns a small summary dict.
     """
     summary = {"scanned": 0, "migrated": 0, "stripped": 0, "failed": 0}
-    if not SessionLocal or not ManualRoomModel:
+    if not ENGINE or not SessionLocal or not ManualRoomModel:
         return summary
     try:
         session = SessionLocal()
@@ -2497,6 +2526,13 @@ def _build_database_url() -> str:
         if "sslmode" not in raw and ("supabase" in raw.lower() or _is_pg_url(raw)):
             raw += ("&" if "?" in raw else "?") + "sslmode=require"
 
+        _placeholder_markers = ("<", ">", "YOUR_", "[password]", "[PASSWORD]", "PASSWORD]", "changeme")
+        if any(m in raw for m in _placeholder_markers):
+            print(
+                "[DB] ⚠️  DATABASE_URL looks like a template (placeholder text detected). "
+                "Replace with the real Supabase Session pooler URI in Railway Variables.",
+                flush=True,
+            )
         safe = re.sub(r":([^:@]+)@", ":***@", raw)
         print(f"[DB] ✅ Using DATABASE_URL (exact) → {safe}")
         return raw
@@ -2523,9 +2559,10 @@ def _build_database_url() -> str:
     # ── 2. SUPABASE_URL + SUPABASE_DB_PASSWORD ──────────────────────────────
     if m and db_password:
         project_ref = m.group(1)
+        pooler_region = (os.getenv("SUPABASE_POOLER_REGION") or "us-east-1").strip()
         url = (
             f"postgresql://postgres.{project_ref}:{db_password}"
-            f"@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
+            f"@aws-0-{pooler_region}.pooler.supabase.com:6543/postgres?sslmode=require"
         )
         print(f"[DB] ✅ Supabase (SUPABASE_DB_PASSWORD) — project: {project_ref}")
         return url
@@ -2781,9 +2818,20 @@ if create_engine and sessionmaker and declarative_base:
                 # The admin must fix the DATABASE_URL env var.
                 print("[DB] 🚨 PRODUCTION: refusing SQLite fallback — all DB endpoints")
                 print("[DB]    will return HTTP 503 until DATABASE_URL is corrected.")
-                print("[DB]    Go to Render → Environment → DATABASE_URL and set a")
-                print("[DB]    valid Supabase Session Pooler URL, e.g.:")
+                print("[DB]    Railway → Service → Variables → DATABASE_URL:")
+                print("[DB]    Supabase Session pooler URI (port 6543, user postgres.PROJECT_REF), e.g.:")
                 print("[DB]    postgresql://postgres.REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require")
+                try:
+                    from urllib.parse import urlparse as _urlparse
+
+                    _pu = _urlparse(DATABASE_URL)
+                    print(
+                        f"[DB]    Resolved host={_pu.hostname or '?'} port={_pu.port or '?'} "
+                        f"user={(_pu.username or '?')[:32]}",
+                        flush=True,
+                    )
+                except Exception:
+                    pass
                 ENGINE = None   # endpoints check for None and return 503
             else:
                 # ── Local dev only: fall back to SQLite so development can continue ─
@@ -22118,7 +22166,9 @@ def serve_react(path=""):
     print(f"[frontend] _PUBLIC_DIR={_PUBLIC_DIR} exists={os.path.isfile(public_index)}", flush=True)
 
     if os.path.isfile(build_index):
-        return send_from_directory(_BUILD_DIR, "index.html")
+        resp = send_from_directory(_BUILD_DIR, "index.html")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
 
     if os.path.isfile(public_index):
         return send_from_directory(_PUBLIC_DIR, "index.html")
