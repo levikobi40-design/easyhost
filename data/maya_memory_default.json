@@ -2,7 +2,7 @@
 "tenant_id": "default",
 "turns": [
 {
-"ts": "2026-07-12T13:40:06.479100+00:00",
+"ts": "2026-07-12T14:27:04.773627+00:00",
 "role": "system",
 "content": "Christos Corfu pilot: 3 active properties only (Thaleri Villa + 2 Manto Barbati). Task/property counts come from live DB + STATS_JSON — never cite 22, 61, or legacy Bazaar totals. Report 0 open tasks when the board is empty.",
 "meta": {

@@ -1852,6 +1852,8 @@ app = Flask(
     static_url_path="",
     template_folder=_template_dir,
 )
+# Allow multi-image / base64 property uploads (default Werkzeug limit is too small → hard 413).
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
 
 # CORS — all routes (`/*` includes /api/health heartbeat → clears “Python Offline” when Flask is up)
 _RAILWAY_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()  # e.g. "xyz.up.railway.app"
@@ -1946,7 +1948,7 @@ _jwt_secret_env = os.getenv("JWT_SECRET", "").strip()
 app.config["SECRET_KEY"]              = _jwt_secret_env or os.urandom(32).hex()
 app.config["SESSION_PERMANENT"]       = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
-app.config["MAX_CONTENT_LENGTH"]      = 20 * 1024 * 1024  # 20 MB — allows large base64 image payloads
+app.config["MAX_CONTENT_LENGTH"]      = 32 * 1024 * 1024  # 32 MB — multi-image / base64 uploads
 # Production (Render / Railway / Heroku) — cross-site cookies require Secure + SameSite=None.
 # Railway sets several RAILWAY_* vars; check all of them plus a manual override.
 def _detect_production() -> bool:
@@ -1992,6 +1994,18 @@ def _handle_http_exception(e):
             "message": e.description or str(e),
         }), e.code
     return e
+
+
+@app.errorhandler(413)
+def _handle_payload_too_large(e):
+    """Graceful JSON for oversized uploads (avoids opaque proxy/browser 413 pages)."""
+    limit_mb = int((app.config.get("MAX_CONTENT_LENGTH") or 0) / (1024 * 1024)) or 32
+    return jsonify({
+        "ok": False,
+        "error": "payload_too_large",
+        "message": f"Upload too large. Max {limit_mb} MB per request — compress images or upload fewer files.",
+        "urls": [],
+    }), 413
 
 
 @app.errorhandler(Exception)
@@ -12174,69 +12188,82 @@ def upload_images():
     uploaded URL as the property's photo_url immediately so the caller
     does not need a separate PATCH request.
     """
-    files = request.files.getlist("files") or (
-        [request.files["file"]] if request.files.get("file") else []
-    )
-    if not files:
-        return jsonify({"error": "Missing files", "urls": []}), 400
+    try:
+        files = request.files.getlist("files") or (
+            [request.files["file"]] if request.files.get("file") else []
+        )
+        if not files:
+            return jsonify({"error": "Missing files", "urls": []}), 400
 
-    if _production_image_storage_required() and not _image_storage_configured():
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
-
-    property_id = (request.form.get("property_id") or "").strip() or None
-    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
-
-    uploaded_urls = []
-    for f in files:
-        if not f or not f.filename:
-            continue
-        ct = (f.content_type or "").lower()
-        if not ct.startswith("image/"):
-            return jsonify({"error": f"Invalid file type: {f.filename}", "urls": []}), 400
-
-        data, new_ext = _compress_image(f.stream)
-        fallback_ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
-        try:
-            url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
-        except ImageStorageNotConfiguredError:
+        if _production_image_storage_required() and not _image_storage_configured():
             return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
-        if _production_image_storage_required() and _is_data_uri(url):
-            return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
-        uploaded_urls.append(url)
 
-    # ── Persist URLs to property if property_id provided ─────────────────────
-    # Save photo_url AND merge into the gallery stored in description so that
-    # GET /properties/<id> returns the full pictures[] array immediately.
-    if property_id and uploaded_urls and SessionLocal and ManualRoomModel:
-        try:
-            _sess = SessionLocal()
+        property_id = (request.form.get("property_id") or "").strip() or None
+        tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+
+        uploaded_urls = []
+        for f in files:
+            if not f or not f.filename:
+                continue
+            ct = (f.content_type or "").lower()
+            if not ct.startswith("image/"):
+                return jsonify({"error": f"Invalid file type: {f.filename}", "urls": []}), 400
+
+            data, new_ext = _compress_image(f.stream)
+            fallback_ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
             try:
-                row = _sess.query(ManualRoomModel).filter_by(
-                    id=property_id, tenant_id=tenant_id
-                ).first()
-                if row:
-                    row.photo_url = uploaded_urls[0]
-                    # Merge new URLs into the existing gallery in description
-                    existing_main, existing_gallery = _split_description_gallery(row.description or "")
-                    merged_gallery = []
-                    seen_gallery = set()
-                    for gu in (uploaded_urls + existing_gallery):
-                        s = str(gu).strip()
-                        if s and s not in seen_gallery:
-                            seen_gallery.add(s)
-                            merged_gallery.append(s)
-                    row.description = _merge_description_gallery(existing_main, merged_gallery)
-                    _sess.commit()
-                    print(f"[upload_images] ✅ photo_url + gallery({len(merged_gallery)}) saved to property {property_id}")
-            except Exception as _dbe:
-                _sess.rollback()
-                print(f"[upload_images] DB save warning: {_dbe}")
-            finally:
-                _sess.close()
-        except Exception as _outer:
-            print(f"[upload_images] Session error: {_outer}")
+                url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
+            except ImageStorageNotConfiguredError:
+                return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
+            if _production_image_storage_required() and _is_data_uri(url):
+                return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
+            uploaded_urls.append(url)
 
-    return jsonify({"urls": uploaded_urls})
+        # ── Persist URLs to property if property_id provided ─────────────────────
+        # Save photo_url AND merge into the gallery stored in description so that
+        # GET /properties/<id> returns the full pictures[] array immediately.
+        if property_id and uploaded_urls and SessionLocal and ManualRoomModel:
+            try:
+                _sess = SessionLocal()
+                try:
+                    row = _sess.query(ManualRoomModel).filter_by(
+                        id=property_id, tenant_id=tenant_id
+                    ).first()
+                    if row:
+                        row.photo_url = uploaded_urls[0]
+                        # Merge new URLs into the existing gallery in description
+                        existing_main, existing_gallery = _split_description_gallery(row.description or "")
+                        merged_gallery = []
+                        seen_gallery = set()
+                        for gu in (uploaded_urls + existing_gallery):
+                            s = str(gu).strip()
+                            if s and s not in seen_gallery:
+                                seen_gallery.add(s)
+                                merged_gallery.append(s)
+                        row.description = _merge_description_gallery(existing_main, merged_gallery)
+                        _sess.commit()
+                        print(f"[upload_images] ✅ photo_url + gallery({len(merged_gallery)}) saved to property {property_id}")
+                except Exception as _dbe:
+                    _sess.rollback()
+                    print(f"[upload_images] DB save warning: {_dbe}")
+                finally:
+                    _sess.close()
+            except Exception as _outer:
+                print(f"[upload_images] Session error: {_outer}")
+
+        return jsonify({"urls": uploaded_urls})
+    except Exception as _up_err:
+        from werkzeug.exceptions import RequestEntityTooLarge
+        if isinstance(_up_err, RequestEntityTooLarge) or getattr(_up_err, "code", None) == 413:
+            limit_mb = int((app.config.get("MAX_CONTENT_LENGTH") or 0) / (1024 * 1024)) or 32
+            return jsonify({
+                "ok": False,
+                "error": "payload_too_large",
+                "message": f"Upload too large. Max {limit_mb} MB per request.",
+                "urls": [],
+            }), 413
+        print(f"[upload_images] error: {_up_err}", flush=True)
+        return jsonify({"error": str(_up_err) or "Upload failed", "urls": []}), 500
 
 
 @app.route("/api/rooms/manual/photo/upload", methods=["POST"])
