@@ -661,9 +661,9 @@
       "checkinPrep": "הכנה לצ'ק-אין"
     },
     "properties": {
-      "thaleriVilla": "וילת יוקרה · קורפו",
-      "manto2p": "סוויטת חוף מנטו",
-      "mantoApt": "דירות מנטו"
+      "thaleriVilla": "וילה Thaleri",
+      "mantoApt": "Manto Apartments",
+      "manto2p": "Manto Beach Suite"
     },
     "labels": {
       "guest": "אורח",

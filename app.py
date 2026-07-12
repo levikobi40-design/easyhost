@@ -414,7 +414,7 @@ INTENT FIRST:
 You are the live ops brain for the Christos Corfu pilot. Ground every count in STATS_JSON and LIVE DATA. Kobi is your owner (קובי). Never invent occupancy %, property counts (22/30/61/15), or task totals. Never describe yourself as software or AI.
 
 CHRISTOS CORFU PILOT (authoritative property names — use exact names from the prompt property list):
-• Corfu Luxury Villa (christos-thaleri-villa-corfu)
+• וילה Thaleri (christos-thaleri-villa-corfu)
 • Manto Apartments (christos-manto-beach-apartment-barbati)
 • Manto Beach Suite (christos-manto-luxury-beach-2p-barbati)
 
@@ -443,7 +443,7 @@ FIELD RULES:
 
 # Pinned portfolio hotels (must match UI — see PropertiesContext buildBazaarJaffaPinned / buildCityTowerPinned)
 MAYA_PINNED_PROPERTY_LABELS = [
-    "Corfu Luxury Villa",
+    "וילה Thaleri",
     "Manto Apartments",
     "Manto Beach Suite",
 ]
@@ -669,12 +669,12 @@ def _task_room_number_from_text(*texts):
 
 
 def _christos_corfu_portfolio_seed():
-    """Greece pilot — 3 Corfu properties (English canonical names in DB)."""
+    """Greece pilot — 3 Corfu properties (canonical display names in DB)."""
     now = datetime.now(timezone.utc).isoformat()
     defs = [
         (
             "christos-thaleri-villa-corfu",
-            "Corfu Luxury Villa",
+            "וילה Thaleri",
             CORFU_LUXURY_ROOM_IMG,
             6, 3, 4, 2, 88,
         ),
@@ -907,9 +907,30 @@ def _purge_legacy_demo_properties(tenant_id=DEFAULT_TENANT_ID):
         session.close()
 
 
+def _christos_pilot_seed_needed(tenant_id=DEFAULT_TENANT_ID):
+    """True when any of the 3 Christos Corfu pilot properties are missing for this tenant."""
+    if not SessionLocal or not ManualRoomModel:
+        return False
+    tid = _coerce_demo_tenant_id(tenant_id)
+    session = SessionLocal()
+    try:
+        existing = {
+            str(r[0])
+            for r in session.query(ManualRoomModel.id).filter_by(tenant_id=tid).all()
+            if r and r[0]
+        }
+        return not set(CHRISTOS_PROPERTY_IDS).issubset(existing)
+    except Exception:
+        return False
+    finally:
+        session.close()
+
+
 def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
     """Insert 3 Greece pilot properties + 3 pending worker tasks (idempotent)."""
-    if not force and not SEED_DEMO_DATA:
+    tenant_id = _coerce_demo_tenant_id(tenant_id)
+    christos_needed = _christos_pilot_seed_needed(tenant_id)
+    if not force and not SEED_DEMO_DATA and not christos_needed:
         return {"properties": 0, "tasks": 0, "ok": True, "skipped": True}
     if not SessionLocal or not ManualRoomModel:
         return {"properties": 0, "tasks": 0, "ok": False}
@@ -1842,6 +1863,8 @@ _CORS_ORIGINS = [
     # Railway production — explicit URL + any env-injected domain
     "https://energetic-consideration-production-6e7a.up.railway.app",
     *(["https://" + _RAILWAY_DOMAIN] if _RAILWAY_DOMAIN else []),
+    r"https://.*\.up\.railway\.app",
+    r"https://.*\.onrender\.com",
 ]
 _CORS_RESOURCE_KW = {
     "origins": _CORS_ORIGINS,
@@ -1856,6 +1879,25 @@ _CORS_RESOURCE_KW = {
 }
 CORS(app, resources={r"/*": _CORS_RESOURCE_KW})
 
+
+def _cors_origin_allowed(origin):
+    """Allow localhost, configured origins, and any Railway/Render HTTPS origin."""
+    if not origin:
+        return False
+    if origin in _CORS_ORIGINS:
+        return True
+    try:
+        from urllib.parse import urlparse as _up
+        u = _up(origin)
+        h = (u.hostname or "").lower()
+        if u.scheme == "https" and (
+            h.endswith(".up.railway.app") or h.endswith(".onrender.com") or h == _RAILWAY_DOMAIN
+        ):
+            return True
+    except Exception:
+        pass
+    return False
+
 # ── Socket.IO (same port as Flask — localhost:1000 in dev) ───────────────────
 try:
     from flask_socketio import SocketIO, emit as _socketio_emit
@@ -1866,7 +1908,7 @@ except ImportError:
 socketio = (
     SocketIO(
         app,
-        cors_allowed_origins=_CORS_ORIGINS + ["http://localhost:1000", "http://127.0.0.1:1000"],
+        cors_allowed_origins="*",
         async_mode="threading",
         path="/socket.io",
         logger=False,
@@ -2018,6 +2060,23 @@ def api_db_status():
             payload["ping"] = "ok"
         except Exception as _pe:
             payload["ping"] = f"failed: {str(_pe)[:120]}"
+    if request.args.get("seed") in ("1", "true", "christos") and ENGINE and SessionLocal:
+        try:
+            _tid = _coerce_demo_tenant_id(
+                request.headers.get("X-Tenant-Id") or DEFAULT_TENANT_ID
+            )
+            _seed_out = seed_active_properties(_tid, force=request.args.get("force") in ("1", "true"))
+            payload["christos_seed"] = _seed_out
+            if ManualRoomModel:
+                _s = SessionLocal()
+                try:
+                    payload["properties_count"] = _s.query(ManualRoomModel).filter_by(
+                        tenant_id=_tid
+                    ).count()
+                finally:
+                    _s.close()
+        except Exception as _se:
+            payload["christos_seed"] = {"ok": False, "error": str(_se)[:200]}
     return jsonify(payload), 200 if payload["db_ready"] else 503
 
 
@@ -2049,7 +2108,7 @@ def _cors_allow_origin_for_request():
     if origin in dev_origins:
         return origin
     # Railway and Render production origins — reflect so credentials work
-    if origin in _CORS_ORIGINS:
+    if origin in _CORS_ORIGINS or _cors_origin_allowed(origin):
         return origin
     try:
         from urllib.parse import urlparse as _up
@@ -3456,9 +3515,9 @@ if create_engine and sessionmaker and declarative_base:
             try:
                 _seed_out = seed_active_properties(DEFAULT_TENANT_ID)
                 if isinstance(_seed_out, dict) and _seed_out.get("skipped"):
-                    print("[init_db] seed_active_properties skipped (SEED_DEMO_DATA=false)", flush=True)
+                    print("[init_db] seed_active_properties skipped (portfolio complete)", flush=True)
                 else:
-                    print("[init_db] ✅ seed_active_properties: Christos + worker tasks", flush=True)
+                    print(f"[init_db] ✅ seed_active_properties: {_seed_out}", flush=True)
             except Exception as _cs_err:
                 print(f"[init_db] seed_active_properties note: {_cs_err}", flush=True)
             ensure_users_table()
@@ -3885,6 +3944,12 @@ if ENGINE and Base:
         except Exception as _pk_e:
             print(f"[app.py] property_knowledge ensure note: {_pk_e}")
         print(f"[app.py] ✅ Connected to {_db_label_eager} successfully — tables ready")
+        if _is_pg and _christos_pilot_seed_needed(DEFAULT_TENANT_ID):
+            try:
+                _eager_seed = seed_active_properties(DEFAULT_TENANT_ID)
+                print(f"[app.py] Christos pilot seed (postgres): {_eager_seed}", flush=True)
+            except Exception as _es_e:
+                print(f"[app.py] Christos pilot seed note: {_es_e}", flush=True)
     except Exception as _eager_err:
         print(f"[app.py] ⚠️  Eager schema init failed (will retry on first request): {_eager_err}")
 
@@ -4878,7 +4943,7 @@ def _guard_property_mutation_auth():
     except Exception as exc:
         msg = str(exc).strip() or "Unauthorized"
         return jsonify({"error": msg}), 401
-    if identity.get("app_role") not in ("admin", "manager"):
+    if identity.get("app_role") not in ("admin", "manager", "client"):
         return jsonify({"error": "Forbidden — admin or manager required"}), 403
     tenant_id = _coerce_demo_tenant_id(identity.get("tenant_id") or DEFAULT_TENANT_ID)
     user_id = (identity.get("user_id") or "").strip() or f"demo-{tenant_id}"
@@ -8675,7 +8740,7 @@ def _build_maya_room_inventory_text(tenant_id, user_id):
         )
 
     parts = [
-        _lines_for("christos-thaleri-villa-corfu", "Corfu Luxury Villa"),
+        _lines_for("christos-thaleri-villa-corfu", "וילה Thaleri"),
         _lines_for("christos-manto-beach-apartment-barbati", "Manto Apartments"),
         _lines_for("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite"),
     ]
@@ -9060,7 +9125,7 @@ def _escalate_stale_red_tasks(tenant_id=DEFAULT_TENANT_ID):
 
 
 _AUTOGEN_SAMPLES = [
-    ("christos-thaleri-villa-corfu", "Corfu Luxury Villa", "ניקיון וילה — סבב בוקר", TASK_TYPE_CLEANING_HE),
+    ("christos-thaleri-villa-corfu", "וילה Thaleri", "ניקיון וילה — סבב בוקר", TASK_TYPE_CLEANING_HE),
     ("christos-manto-beach-apartment-barbati", "Manto Apartments", "החלפת מצעים — דירת חוף", TASK_TYPE_CLEANING_HE),
     ("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite", "בקשת מגבות — סוויטת חוף", TASK_TYPE_SERVICE_HE),
 ]
@@ -9139,7 +9204,7 @@ def _insert_random_maintenance_task(tenant_id=DEFAULT_TENANT_ID):
     desc = _r.choice(_MAINT_AUTOGEN_LINES)
     pid, pname = _r.choice(
         [
-            ("christos-thaleri-villa-corfu", "Corfu Luxury Villa"),
+            ("christos-thaleri-villa-corfu", "וילה Thaleri"),
             ("christos-manto-beach-apartment-barbati", "Manto Apartments"),
             ("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite"),
         ]
@@ -9310,8 +9375,26 @@ def _is_demo_seed_tenant(tenant_id) -> bool:
 
 
 def _kick_background_seed(tenant_id: str) -> None:
-    """Disabled — Christos pilot only; no background demo portfolio seed."""
-    return
+    """Idempotent Christos pilot seed — runs once per tenant per process when properties missing."""
+    tenant_id = _coerce_demo_tenant_id(tenant_id or DEFAULT_TENANT_ID)
+    if tenant_id in _PORTFOLIO_SEED_DONE or tenant_id in _PORTFOLIO_SEED_RUNNING:
+        return
+    if not _christos_pilot_seed_needed(tenant_id):
+        _PORTFOLIO_SEED_DONE.add(tenant_id)
+        return
+    _PORTFOLIO_SEED_RUNNING.add(tenant_id)
+
+    def _run():
+        try:
+            out = seed_active_properties(tenant_id)
+            print(f"[_kick_background_seed] tenant={tenant_id!r} → {out}", flush=True)
+        except Exception as _kse:
+            print(f"[_kick_background_seed] {tenant_id!r}: {_kse}", flush=True)
+        finally:
+            _PORTFOLIO_SEED_RUNNING.discard(tenant_id)
+            _PORTFOLIO_SEED_DONE.add(tenant_id)
+
+    threading.Thread(target=_run, daemon=True, name=f"ChristosSeed-{tenant_id[:12]}").start()
 
 
 def _demo_seed_allowed(tenant_id=DEFAULT_TENANT_ID):
@@ -9356,7 +9439,7 @@ def ensure_min_property_tasks_volume(tenant_id=DEFAULT_TENANT_ID, minimum=100):
             return
         need = minimum - n
         props = [
-            ("christos-thaleri-villa-corfu", "Corfu Luxury Villa"),
+            ("christos-thaleri-villa-corfu", "וילה Thaleri"),
             ("christos-manto-beach-apartment-barbati", "Manto Apartments"),
             ("christos-manto-luxury-beach-2p-barbati", "Manto Beach Suite"),
         ]
@@ -12317,41 +12400,48 @@ def create_property():
 
     if request.method == "GET":
         tenant_id = DEFAULT_TENANT_ID
-        if not AUTH_DISABLED:
+        # GET is read-only: never hard-fail with 401/403 (CORS-hostile). Soft-resolve auth.
+        try:
+            tenant_id, user_id = get_auth_context_from_request()
+            tenant_id = _coerce_demo_tenant_id(tenant_id or DEFAULT_TENANT_ID)
+            request.tenant_id = tenant_id
+            request.user_id = user_id or f"demo-{tenant_id}"
+        except Exception:
             try:
-                tenant_id = get_tenant_id_from_request()
-                if not tenant_id and ALLOW_DEMO_AUTH:
-                    tenant_id = DEFAULT_TENANT_ID
-                if not tenant_id:
-                    return jsonify({"error": "Unauthorized"}), 401
-                request.tenant_id = tenant_id
-            except Exception as e:
-                return jsonify({"error": str(e)}), 401
-        else:
-            try:
-                tenant_id, _ = get_auth_context_from_request()
+                hdr_tid = request.headers.get("X-Tenant-Id") or request.args.get("tenant_id")
+                tenant_id = _coerce_demo_tenant_id(hdr_tid or DEFAULT_TENANT_ID)
             except Exception:
                 tenant_id = DEFAULT_TENANT_ID
             request.tenant_id = tenant_id
-        tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
-        try:
-            _, request.user_id = get_auth_context_from_request()
-        except Exception:
             request.user_id = f"demo-{tenant_id}"
+        tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
         # Never return 204 on GET — always JSON 200 (OPTIONS alone uses 204 for CORS).
         if ENGINE and ManualRoomModel:
+            if _christos_pilot_seed_needed(tenant_id):
+                try:
+                    seed_active_properties(tenant_id)
+                except Exception as _sync_seed_e:
+                    print(f"[create_property] Christos sync seed: {_sync_seed_e}", flush=True)
+            if _christos_pilot_seed_needed(DEFAULT_TENANT_ID):
+                try:
+                    seed_active_properties(DEFAULT_TENANT_ID)
+                except Exception as _def_seed_e:
+                    print(f"[create_property] Christos default-tenant seed: {_def_seed_e}", flush=True)
             # Non-blocking: seed runs at most once per tenant per process lifetime.
             _kick_background_seed(tenant_id)
         try:
             user_id = getattr(request, "user_id", None)
-            # RBAC: admin / manager / operation see every property in the tenant;
-            # client (property owner) and staff are restricted to rows whose
-            # owner_id matches their user_id (or is NULL = tenant-shared).
+            # RBAC: admin / manager / operation / client see tenant portfolio
+            # (Christos seeds use owner_id=NULL = tenant-shared). Staff keeps owner filter.
             _ident = _identity_or_none()
-            if _ident and _ident.get("app_role") in ("admin", "manager", "operation"):
+            _role = (_ident or {}).get("app_role") if _ident else None
+            if _role in ("admin", "manager", "operation", "client") or not _ident:
                 user_id = None
             try:
                 rooms = list_manual_rooms(tenant_id, owner_id=user_id)
+                if (not rooms) and tenant_id != DEFAULT_TENANT_ID:
+                    # Pilot fallback: surface default-tenant Christos portfolio when JWT tenant is empty
+                    rooms = list_manual_rooms(DEFAULT_TENANT_ID, owner_id=None)
             except Exception as _list_err:
                 print(f"[create_property] list_manual_rooms failed: {_list_err!r}", flush=True)
                 import traceback as _tb_lm
@@ -22071,6 +22161,12 @@ def _do_startup_init():
             try:
                 init_db()
                 print(f"[startup] ✅ Connected to {db_label} successfully — tables ready")
+                if _christos_pilot_seed_needed(DEFAULT_TENANT_ID):
+                    try:
+                        _boot_seed = seed_active_properties(DEFAULT_TENANT_ID)
+                        print(f"[startup] Christos pilot seed: {_boot_seed}", flush=True)
+                    except Exception as _bs_e:
+                        print(f"[startup] Christos pilot seed note: {_bs_e}", flush=True)
                 if SEED_DEMO_DATA:
                     ensure_default_tenants()
                 ensure_demo_user()

@@ -50,7 +50,7 @@ export const initialProperties = [
 
     id: 'christos-thaleri-villa-corfu',
 
-    name: 'Corfu Luxury Villa',
+    name: 'וילה Thaleri',
 
     description: 'Greece Corfu pilot property.',
 

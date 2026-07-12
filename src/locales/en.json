@@ -664,9 +664,9 @@
       "checkinPrep": "Check-in preparation"
     },
     "properties": {
-      "thaleriVilla": "Corfu Luxury Villa",
-      "manto2p": "Manto Beach Suite",
-      "mantoApt": "Manto Apartments"
+      "thaleriVilla": "וילה Thaleri",
+      "mantoApt": "Manto Apartments",
+      "manto2p": "Manto Beach Suite"
     },
     "labels": {
       "guest": "Guest",

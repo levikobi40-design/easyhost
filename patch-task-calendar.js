@@ -1,5 +1,5 @@
 const fs = require('fs');
-const p = 'src/components/dashboard/TaskCalendar.js';
+const p = 'src/components/dashboard/TaskCalendar.jsx';
 let s = fs.readFileSync(p, 'utf8');
 
 // Fix task.description render - never render object
@@ -33,4 +33,4 @@ s = s.replace(/t\.staff_name &&/, '(t.staff_name || t.staffName) &&');
 s = s.replace(/t\.staff_phone &&/, '(t.staff_phone || t.phone) &&');
 
 fs.writeFileSync(p, s);
-console.log('Patched TaskCalendar.js');
+console.log('Patched TaskCalendar.jsx');

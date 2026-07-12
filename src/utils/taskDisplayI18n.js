@@ -42,9 +42,9 @@ const CHRISTOS_PROPERTY_KEYS = {
 
 /** Hebrew display names when i18n bundle is not ready yet */
 const CHRISTOS_DISPLAY_HE = {
-  'christos-thaleri-villa-corfu': 'וילת יוקרה · קורפו',
-  'christos-manto-beach-apartment-barbati': 'דירות מנטו',
-  'christos-manto-luxury-beach-2p-barbati': 'סוויטת חוף מנטו',
+  'christos-thaleri-villa-corfu': 'וילה Thaleri',
+  'christos-manto-beach-apartment-barbati': 'Manto Apartments',
+  'christos-manto-luxury-beach-2p-barbati': 'Manto Beach Suite',
 };
 
 /** Hard Hebrew fallbacks when i18n bundle is not ready */

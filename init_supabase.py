@@ -155,17 +155,15 @@ except Exception as e:
     sys.exit(1)
 
 # ── 4. Seed pilot data ──────────────────────────────────────────────────────
-print("[init_supabase] Seeding pilot demo data (10 properties + mock staff)…")
+print("[init_supabase] Seeding Christos Corfu pilot (3 properties)…")
 try:
-    from app import seed_pilot_demo, SessionLocal, ManualRoomModel, DEMO_PILOT_PROPERTY_NAMES
-    seed_pilot_demo()
-    # Count properties created
+    from app import seed_active_properties, _run_christos_demo_integrity_wipe, DEFAULT_TENANT_ID, SessionLocal, ManualRoomModel
+    _run_christos_demo_integrity_wipe(DEFAULT_TENANT_ID, wipe_all=False)
+    seed_active_properties(DEFAULT_TENANT_ID)
     session = SessionLocal()
     try:
-        count = session.query(ManualRoomModel).filter(
-            ManualRoomModel.name.in_(DEMO_PILOT_PROPERTY_NAMES)
-        ).count()
-        print(f"[init_supabase] ✅  {count} pilot properties in Supabase")
+        count = session.query(ManualRoomModel).filter_by(tenant_id=DEFAULT_TENANT_ID).count()
+        print(f"[init_supabase] ✅  {count} properties in Supabase")
     finally:
         session.close()
 except Exception as e:
