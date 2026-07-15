@@ -2,32 +2,32 @@
 "v": 1,
 "by_tenant": {
 "default": {
-"updated_at": 1784095960.997338,
+"updated_at": 1784118753.1498482,
 "total_open": 10,
 "active_tasks": [
 {
 "id": "7ed1d96f-ffb8-417c-ad29-8e2b8ec645c4",
 "description": "Room 181: Smoke detector beeping low battery",
 "property_name": "Manto Apartments",
-"status": "Pending"
+"status": "In_Progress"
 },
 {
 "id": "8c669822-1658-4ad2-8d36-75ee310e0a01",
 "description": "Room 404: Broken TV remote",
 "property_name": "Corfu Luxury Villa",
-"status": "Pending"
+"status": "In_Progress"
 },
 {
 "id": "95b06c5f-aac1-4cdd-8ac7-b14c8adf31d2",
 "description": "Room 147: Balcony door handle loose",
 "property_name": "Manto Apartments",
-"status": "Pending"
+"status": "In_Progress"
 },
 {
 "id": "8c701c34-f872-4751-9a17-fa1f4bc28e1e",
 "description": "Room 415: Dishwasher not completing cycle",
 "property_name": "Corfu Luxury Villa",
-"status": "Pending"
+"status": "In_Progress"
 },
 {
 "id": "a20edfda-ba0c-4945-8aef-88ed7f56ebb0",
