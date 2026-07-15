@@ -132,12 +132,20 @@ export async function checkPythonApiHealth() {
       let res = await _healthFetchOnce(`${API_URL}/health`, timeoutMs);
       let data = await res.json().catch(() => ({}));
       if (res.ok && (data.status === 'ok' || data.ok === true)) {
+        try {
+          const { applyAuthModeFromHealth } = await import('../utils/apiClient');
+          applyAuthModeFromHealth(data);
+        } catch { /* ignore */ }
         return { ok: true, data };
       }
       // /heartbeat as fallback (some deployments only expose that)
       res = await _healthFetchOnce(`${API_URL}/heartbeat`, timeoutMs);
       data = await res.json().catch(() => ({}));
       if (res.ok && (data.ok === true || typeof data.server_time === 'string')) {
+        try {
+          const { applyAuthModeFromHealth } = await import('../utils/apiClient');
+          applyAuthModeFromHealth(data);
+        } catch { /* ignore */ }
         return { ok: true, data };
       }
     } catch {
@@ -771,10 +779,7 @@ export const getPropertyTasks = async (options = {}) => {
   const offset = options.offset != null ? Number(options.offset) : 0;
   const paged = !unlimited && limit != null && Number.isFinite(limit) && limit > 0;
   let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    // No valid token — skip the request entirely so the backend doesn't return 401.
-    return paged ? { tasks: [], total: 0, hasMore: false } : [];
-  }
+  // Staging / AUTH_DISABLED: still fetch without Bearer — backend soft-auth returns data.
   const bust = Date.now();
   const fetchOpts = {
     method: 'GET',
@@ -794,11 +799,30 @@ export const getPropertyTasks = async (options = {}) => {
     qs.set('offset', String(Math.max(0, Math.floor(offset) || 0)));
   }
   const url = `${API_URL}/tasks?${qs.toString()}`;
-  const response = await fetch(url, fetchOpts);
+  let response = await fetch(url, fetchOpts);
+  if (response.status === 401 && headers.Authorization) {
+    try {
+      const { clearStaleAuthTokens, isAuthBypassedClient } = await import('../utils/apiClient');
+      clearStaleAuthTokens();
+      const retryHeaders = { ...headers };
+      delete retryHeaders.Authorization;
+      response = await fetch(url, { ...fetchOpts, headers: retryHeaders });
+      if (!response.ok && response.status === 401 && !isAuthBypassedClient() && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url, status: 401 } }));
+      }
+    } catch (_) { /* ignore */ }
+  }
   if (response.status === 204) return paged ? { tasks: [], total: 0, hasMore: false } : [];
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url, status: 401 } }));
+      try {
+        const { isAuthBypassedClient } = await import('../utils/apiClient');
+        if (!isAuthBypassedClient()) {
+          window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url, status: 401 } }));
+        }
+      } catch (_) {
+        window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url, status: 401 } }));
+      }
     }
     return paged ? { tasks: [], total: 0, hasMore: false } : [];
   }
@@ -820,16 +844,18 @@ export const getPropertyTasks = async (options = {}) => {
 /** GET /api/tasks/status-counts — DB-backed totals (aligns header counts with SQL, vs filtered GET payloads). */
 export const fetchTaskStatusCounts = async () => {
   let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-  if (!headers.Authorization) {
-    return { total: 0, pending: 0, in_progress: 0, done: 0 };
-  }
   const url = `${API_URL}/tasks/status-counts?t=${Date.now()}`;
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     method: 'GET',
     headers,
     credentials: 'include',
     cache: 'no-store',
   });
+  if (response.status === 401 && headers.Authorization) {
+    const retry = { ...headers };
+    delete retry.Authorization;
+    response = await fetch(url, { method: 'GET', headers: retry, credentials: 'include', cache: 'no-store' });
+  }
   if (!response.ok) {
     return { total: 0, pending: 0, in_progress: 0, done: 0 };
   }
@@ -1762,7 +1788,12 @@ export const uploadImages = async (files, propertyId = null) => {
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to upload images');
+    const msg = err.error || err.message || 'Failed to upload images';
+    // Local fallback is available — do not treat missing CDN as a hard failure.
+    if (/image storage is not configured|storage is not configured|אחסון תמונות/i.test(String(msg))) {
+      return { urls: [], storageFallback: true };
+    }
+    throw new Error(msg);
   }
   return await response.json();
 };

@@ -34,6 +34,7 @@ import { SUPPORTED_LANGS, isRtlLang } from './utils/languages';
 import { startBackendHeartbeat } from './services/backendHeartbeat';
 import { checkPythonApiHealth, flushTaskUpdateQueue } from './services/api';
 import { API_URL } from './config';
+import { isAuthBypassedClient } from './utils/apiClient';
 
 /**
  * Deep links (open in separate tabs while logged into the main app):
@@ -69,6 +70,7 @@ function MainApp() {
   const location = useLocation();
   const navigate = useNavigate();
   const isClockInRoute = location.pathname === '/clock-in';
+  const [authBypass, setAuthBypass] = useState(() => isAuthBypassedClient());
 
   const {
     lang,
@@ -368,7 +370,14 @@ function MainApp() {
     }
   };
 
-  const showLogin = hasHydrated && !authToken && !isClockInRoute;
+  const showLogin = hasHydrated && !authToken && !isClockInRoute && !authBypass && !isAuthBypassedClient();
+
+  useEffect(() => {
+    const sync = () => setAuthBypass(isAuthBypassedClient());
+    sync();
+    window.addEventListener('easyhost-heartbeat', sync);
+    return () => window.removeEventListener('easyhost-heartbeat', sync);
+  }, []);
 
   const handleWelcomeOwner = () => {
     sessionStorage.setItem('wc_passed', '1');
@@ -387,9 +396,9 @@ function MainApp() {
     }
   }, [authToken]);
 
-  /** Warm Flask — only runs when the user has a valid auth token. */
+  /** Warm Flask — runs with a valid token OR staging/AUTH_DISABLED soft-auth. */
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken && !authBypass && !isAuthBypassedClient()) return;
     let cancelled = false;
     const run = async () => {
       try {
@@ -412,11 +421,14 @@ function MainApp() {
     };
     run();
     return () => { cancelled = true; };
-  }, [authToken]);
+  }, [authToken, authBypass]);
 
-  /** When any protected API call returns 401, clear the stale token → show LoginPage. */
+  /** When any protected API call returns 401, clear the stale token → show LoginPage (unless staging soft-auth). */
   useEffect(() => {
-    const handle = () => setAuthToken(null);
+    const handle = () => {
+      if (isAuthBypassedClient()) return;
+      setAuthToken(null);
+    };
     window.addEventListener('easyhost-auth-required', handle);
     return () => window.removeEventListener('easyhost-auth-required', handle);
   }, [setAuthToken]);

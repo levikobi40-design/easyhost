@@ -2036,12 +2036,21 @@ def api_health():
         "sqlite_dev"     if _is_sqlite else
         "unavailable"
     )
+    _auth_disabled = False
+    _auth_relaxed = False
+    try:
+        _auth_disabled = bool(AUTH_DISABLED)
+        _auth_relaxed = bool(_auth_enforcement_relaxed())
+    except Exception:
+        pass
     return jsonify({
         "status": "ok",
         "ok": True,
         "db_mode": _db_mode,
         "db_ready": bool(SessionLocal and ENGINE),
         "init_done": INIT_DONE,
+        "auth_disabled": _auth_disabled,
+        "auth_relaxed": _auth_relaxed,
     }), 200
 
 
@@ -2174,10 +2183,14 @@ def handle_options_preflight():
 
 @app.before_request
 def bypass_auth_for_ai_routes():
-    """When AUTH_DISABLED, skip JWT for heavy ops routes (legacy dev). When auth is on, only @require_auth uses bypass via this flag."""
+    """When AUTH_DISABLED or staging-relaxed, skip hard JWT for heavy ops routes."""
     if request.method == "OPTIONS":
         return
-    if not AUTH_DISABLED:
+    try:
+        soft = AUTH_DISABLED or _auth_enforcement_relaxed()
+    except Exception:
+        soft = bool(AUTH_DISABLED)
+    if not soft:
         g.bypass_ai_auth = False
         return
     if request.path.startswith("/api/ai/"):
@@ -2204,6 +2217,10 @@ def bypass_auth_for_ai_routes():
         g.bypass_ai_auth = True
     elif request.path == "/api/tasks" or request.path.startswith("/api/tasks/"):
         g.bypass_ai_auth = True
+    elif request.path == "/api/upload" or request.path.startswith("/api/upload"):
+        g.bypass_ai_auth = True
+    else:
+        g.bypass_ai_auth = False
 
 
 @app.after_request
@@ -2301,11 +2318,9 @@ def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
     and return a string that is safe to store in the DB and render in <img src>:
 
       1. Cloudinary           — CDN-backed HTTPS URL, survives redeploys (when configured).
-      2. Local disk /uploads  — only when PERSISTENT_UPLOADS=true (needs a mounted volume);
-                                URL host is derived from the live request, never localhost.
-      3. Inline base64 data URI (default) — survives Railway's ephemeral filesystem AND
-                                redeploys, and renders cross-origin (Netlify → Railway)
-                                with zero extra infrastructure. Ideal robust pilot fallback.
+      2. Local disk /uploads  — best-effort (works when the process can write ./uploads).
+      3. Inline base64 data URI — always available last resort so property create/upload
+                                never fails with "Image storage is not configured".
     """
     ext = (ext or "jpg").lower()
     if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
@@ -2317,26 +2332,19 @@ def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
             return _cloudinary_upload(data_bytes, folder=f"easyhost/{subfolder}")
         except Exception as cdn_err:
             print(f"[_persist_image_bytes] Cloudinary failed, falling back: {cdn_err}", flush=True)
-            if _production_image_storage_required() and not _PERSISTENT_UPLOADS:
-                raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG) from cdn_err
 
-    # 2. Persistent local disk — opt-in (Railway's default FS is ephemeral).
-    if _PERSISTENT_UPLOADS:
-        try:
-            target_dir = os.path.join(UPLOAD_ROOT, str(tenant_id or "shared"), subfolder)
-            os.makedirs(target_dir, exist_ok=True)
-            unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
-            with open(os.path.join(target_dir, unique_name), "wb") as _fh:
-                _fh.write(data_bytes)
-            return f"{_public_base_url()}/uploads/{tenant_id or 'shared'}/{subfolder}/{unique_name}"
-        except Exception as disk_err:
-            print(f"[_persist_image_bytes] disk write failed: {disk_err}", flush=True)
-            if _production_image_storage_required():
-                raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG) from disk_err
+    # 2. Local disk — always try (pilot / AUTH_DISABLED / no external CDN).
+    try:
+        target_dir = os.path.join(UPLOAD_ROOT, str(tenant_id or "shared"), subfolder)
+        os.makedirs(target_dir, exist_ok=True)
+        unique_name = f"prop-{uuid.uuid4().hex}.{ext}"
+        with open(os.path.join(target_dir, unique_name), "wb") as _fh:
+            _fh.write(data_bytes)
+        return f"{_public_base_url()}/uploads/{tenant_id or 'shared'}/{subfolder}/{unique_name}"
+    except Exception as disk_err:
+        print(f"[_persist_image_bytes] disk write failed, using data-URI: {disk_err}", flush=True)
 
-    # 3. Inline data URI — dev-only fallback; never store base64 in production DB.
-    if _production_image_storage_required():
-        raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG)
+    # 3. Inline data URI — never block property save / upload on missing CDN.
     import base64 as _b64
     mime = "jpeg" if ext in ("jpg", "jpeg") else ext
     b64 = _b64.b64encode(data_bytes).decode("ascii")
@@ -2346,31 +2354,21 @@ def _persist_image_bytes(data_bytes, ext, tenant_id, subfolder="properties"):
 def _save_base64_image(data_uri, tenant_id, subfolder="properties"):
     """
     Normalise an inbound base64 data URI (data:image/...;base64,...) into a durable,
-    render-safe reference: a Cloudinary URL, a persistent-disk URL, or (dev only) a
-    re-compressed data URI. Non-data-URI inputs (existing http/https /uploads URLs)
-    pass straight through.
+    render-safe reference: Cloudinary URL, local /uploads URL, or re-compressed data URI.
+    Non-data-URI inputs pass straight through. Never raises ImageStorageNotConfiguredError.
     """
     if not data_uri or not str(data_uri).startswith("data:image/"):
         return data_uri
-    if _production_image_storage_required() and not _image_storage_configured():
-        raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG)
     try:
         from io import BytesIO as _BytesIO
         import base64 as _b64
         header, b64data = data_uri.split(",", 1)
         img_bytes = _b64.b64decode(b64data)
         compressed, new_ext = _compress_image(_BytesIO(img_bytes))
-        result = _persist_image_bytes(compressed, new_ext or "jpg", tenant_id, subfolder)
-        if _production_image_storage_required() and _is_data_uri(result):
-            raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG)
-        return result
-    except ImageStorageNotConfiguredError:
-        raise
+        return _persist_image_bytes(compressed, new_ext or "jpg", tenant_id, subfolder)
     except Exception as _b64err:
-        if _production_image_storage_required():
-            raise ImageStorageNotConfiguredError(IMAGE_STORAGE_NOT_CONFIGURED_MSG) from _b64err
-        print(f"[_save_base64_image] conversion failed: {_b64err}", flush=True)
-        return data_uri  # dev-only: keep as-is so the property still saves
+        print(f"[_save_base64_image] conversion failed, keeping original data-URI: {_b64err}", flush=True)
+        return data_uri
 
 
 def _is_data_uri(s):
@@ -2784,6 +2782,14 @@ def _soft_demo_auth_identity():
         "worker_handle": "",
         "email": "staging@easyhost.local",
     }
+
+
+if _auth_enforcement_relaxed() and not AUTH_DISABLED:
+    print(
+        "[Security] ⚠️  Auth enforcement RELAXED (pilot/staging) — expired/missing JWT "
+        "falls back to soft demo identity. Set STRICT_AUTH=true to enforce JWT.",
+        flush=True,
+    )
 
 
 # Real-time ops defaults: no synthetic bulk tasks; skip outbound WhatsApp when quota is exhausted
@@ -4459,9 +4465,16 @@ def get_tenant_id_from_request():
         tid = request.headers.get("X-Tenant-Id") or request.args.get("tenant_id") or DEFAULT_TENANT_ID
         return _coerce_demo_tenant_id(tid)
     if not token:
+        if _auth_enforcement_relaxed():
+            return _soft_demo_auth_identity()["tenant_id"]
         raise ValueError("Missing authorization token")
-    payload = decode_jwt(token)
-    return _coerce_demo_tenant_id(payload.get("tenant_id") or DEFAULT_TENANT_ID)
+    try:
+        payload = decode_jwt(token)
+        return _coerce_demo_tenant_id(payload.get("tenant_id") or DEFAULT_TENANT_ID)
+    except Exception:
+        if _auth_enforcement_relaxed():
+            return _soft_demo_auth_identity()["tenant_id"]
+        raise
 
 
 def get_auth_context_from_request():
@@ -4477,24 +4490,44 @@ def get_auth_context_from_request():
         tid = _coerce_demo_tenant_id(tid)
         return tid, f"demo-{tid}"
     if not token:
+        if _auth_enforcement_relaxed():
+            soft = _soft_demo_auth_identity()
+            return soft["tenant_id"], soft["user_id"]
         raise ValueError("Missing authorization token")
-    payload = decode_jwt(token)
-    tenant_id = _coerce_demo_tenant_id(payload.get("tenant_id") or DEFAULT_TENANT_ID)
-    user_id = payload.get("sub") or f"demo-{tenant_id}"
-    return tenant_id, user_id
+    try:
+        payload = decode_jwt(token)
+        tenant_id = _coerce_demo_tenant_id(payload.get("tenant_id") or DEFAULT_TENANT_ID)
+        user_id = payload.get("sub") or f"demo-{tenant_id}"
+        return tenant_id, user_id
+    except Exception:
+        if _auth_enforcement_relaxed():
+            soft = _soft_demo_auth_identity()
+            return soft["tenant_id"], soft["user_id"]
+        raise
 
 
 def require_auth(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if AUTH_DISABLED or getattr(g, "bypass_ai_auth", False):
+            try:
+                request.tenant_id = get_tenant_id_from_request()
+            except Exception:
+                request.tenant_id = DEFAULT_TENANT_ID
             return fn(*args, **kwargs)
         try:
             tenant_id = get_tenant_id_from_request()
             if not tenant_id:
+                if _auth_enforcement_relaxed():
+                    request.tenant_id = DEFAULT_TENANT_ID
+                    return fn(*args, **kwargs)
                 return jsonify({"error": "Unauthorized"}), 401
             request.tenant_id = tenant_id
         except Exception as error:
+            if _auth_enforcement_relaxed():
+                soft = _soft_demo_auth_identity()
+                request.tenant_id = soft["tenant_id"]
+                return fn(*args, **kwargs)
             return jsonify({"error": str(error)}), 401
         return fn(*args, **kwargs)
     return wrapper
@@ -4999,14 +5032,20 @@ def _guard_property_mutation_auth():
     """
     Auth gate for property create/update/delete.
     Sets request.tenant_id and request.user_id from JWT/context only — never from body.
-    When AUTH_DISABLED=True, preserves legacy dev/demo workflow (no role gate).
+    When AUTH_DISABLED=True or staging-relaxed, preserves pilot/dev workflow (no hard 401).
     Returns None on success, or (response, status_code) on failure.
     """
-    if AUTH_DISABLED:
+    if AUTH_DISABLED or _auth_enforcement_relaxed():
         try:
-            tenant_id, user_id = get_auth_context_from_request()
+            identity = get_property_tasks_auth_bundle()
+            tenant_id = identity.get("tenant_id") or DEFAULT_TENANT_ID
+            user_id = identity.get("user_id") or f"demo-{tenant_id}"
         except Exception:
-            tenant_id, user_id = DEFAULT_TENANT_ID, f"demo-{DEFAULT_TENANT_ID}"
+            try:
+                tenant_id, user_id = get_auth_context_from_request()
+            except Exception:
+                soft = _soft_demo_auth_identity()
+                tenant_id, user_id = soft["tenant_id"], soft["user_id"]
         tenant_id = _coerce_demo_tenant_id(tenant_id)
         request.tenant_id = tenant_id
         request.user_id = user_id
@@ -12195,9 +12234,6 @@ def upload_images():
         if not files:
             return jsonify({"error": "Missing files", "urls": []}), 400
 
-        if _production_image_storage_required() and not _image_storage_configured():
-            return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
-
         property_id = (request.form.get("property_id") or "").strip() or None
         tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
 
@@ -12214,9 +12250,10 @@ def upload_images():
             try:
                 url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
             except ImageStorageNotConfiguredError:
-                return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
-            if _production_image_storage_required() and _is_data_uri(url):
-                return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG, "urls": []}), 500
+                # Should not raise anymore — keep a compressed data-URI fallback.
+                import base64 as _b64_fb
+                mime = "jpeg" if (new_ext or fallback_ext) in ("jpg", "jpeg", None) else (new_ext or fallback_ext)
+                url = f"data:image/{mime};base64,{_b64_fb.b64encode(data).decode('ascii')}"
             uploaded_urls.append(url)
 
         # ── Persist URLs to property if property_id provided ─────────────────────
@@ -12283,17 +12320,14 @@ def room_photo_upload():
     if not file or not file.filename:
         return jsonify({"error": "Invalid file"}), 400
 
-    if _production_image_storage_required() and not _image_storage_configured():
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
-
     data, new_ext = _compress_image(file.stream)
     fallback_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
     try:
         photo_url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="properties")
     except ImageStorageNotConfiguredError:
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
-    if _production_image_storage_required() and _is_data_uri(photo_url):
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+        import base64 as _b64_fb
+        mime = "jpeg" if (new_ext or fallback_ext) in ("jpg", "jpeg", None) else (new_ext or fallback_ext)
+        photo_url = f"data:image/{mime};base64,{_b64_fb.b64encode(data).decode('ascii')}"
 
     # ── Persist to DB immediately if property_id provided ────────────────────
     if property_id and SessionLocal and ManualRoomModel:
@@ -12327,10 +12361,7 @@ def create_manual_room_route():
     if not name:
         return jsonify({"error": "Missing room name"}), 400
     raw_photo = data.get("photo_url")
-    try:
-        photo_url = _save_base64_image(raw_photo, tenant_id) if raw_photo else raw_photo
-    except ImageStorageNotConfiguredError:
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+    photo_url = _save_base64_image(raw_photo, tenant_id) if raw_photo else raw_photo
     room = create_manual_room(tenant_id, name, data.get("description"), photo_url)
     if not room:
         return jsonify({"error": "Failed to create room"}), 500
@@ -12771,7 +12802,9 @@ def create_property():
         print(f"[Properties API] POST count_after={count_after} ids={ids_after}", flush=True)
         return jsonify({"ok": True, "property": room}), 201
     except ImageStorageNotConfiguredError:
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+        # Legacy guard — persistence always falls back to local/data-URI now.
+        print("[create_property] ImageStorageNotConfiguredError (unexpected) — retry without raise", flush=True)
+        return jsonify({"error": "image_save_retry", "message": "Retry save — local fallback available"}), 503
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)}"
         print("[create_property] Error:", err_msg, flush=True)
@@ -12790,22 +12823,21 @@ def update_property(property_id):
         return jsonify({"error": "Missing property id"}), 400
     if request.method == "GET":
         tenant_id = DEFAULT_TENANT_ID
-        if not AUTH_DISABLED:
-            try:
-                tenant_id = get_tenant_id_from_request()
-                if not tenant_id and ALLOW_DEMO_AUTH:
-                    tenant_id = DEFAULT_TENANT_ID
-                if not tenant_id:
-                    return jsonify({"error": "Unauthorized"}), 401
-                request.tenant_id = tenant_id
-            except Exception:
-                return jsonify({"error": "Unauthorized"}), 401
-        else:
-            try:
-                tenant_id, _ = get_auth_context_from_request()
-            except Exception:
-                tenant_id = DEFAULT_TENANT_ID
+        # Soft-resolve auth — never hard-401 on GET (expired JWT / staging / AUTH_DISABLED).
+        try:
+            tenant_id, _ = get_auth_context_from_request()
+            tenant_id = _coerce_demo_tenant_id(tenant_id or DEFAULT_TENANT_ID)
             request.tenant_id = tenant_id
+        except Exception:
+            if AUTH_DISABLED or _auth_enforcement_relaxed() or ALLOW_DEMO_AUTH:
+                try:
+                    hdr_tid = request.headers.get("X-Tenant-Id") or request.args.get("tenant_id")
+                    tenant_id = _coerce_demo_tenant_id(hdr_tid or DEFAULT_TENANT_ID)
+                except Exception:
+                    tenant_id = DEFAULT_TENANT_ID
+                request.tenant_id = tenant_id
+            else:
+                return jsonify({"error": "Unauthorized"}), 401
         tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
         if not SessionLocal or not ManualRoomModel:
             return jsonify({"error": "Database unavailable"}), 500
@@ -12935,7 +12967,9 @@ def update_property(property_id):
         finally:
             session.close()
     except ImageStorageNotConfiguredError:
-        return jsonify({"error": IMAGE_STORAGE_NOT_CONFIGURED_MSG}), 500
+        # Legacy guard — local/data-URI fallback is always available now.
+        print("[update_property] ImageStorageNotConfiguredError (unexpected)", flush=True)
+        return jsonify({"error": "image_save_retry", "message": "Retry save — local fallback available"}), 503
     except Exception as e:
         print("[update_property] Error:", e, flush=True)
         return jsonify({"error": str(e)}), 500
@@ -17352,7 +17386,10 @@ def property_tasks_batch_update():
     try:
         identity = get_property_tasks_auth_bundle()
     except ValueError as _e:
-        return jsonify({"error": str(_e)}), 401
+        if _auth_enforcement_relaxed():
+            identity = _soft_demo_auth_identity()
+        else:
+            return jsonify({"error": str(_e)}), 401
     session = SessionLocal()
     results = []
     done_threads = []

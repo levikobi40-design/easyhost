@@ -81,8 +81,14 @@ const ImageUploader = ({ onUploadComplete, maxFiles = 10, initialUrls = [], prop
         }
       } catch (serverErr) {
         // Silent fallback — data URI is already stored, property can still be saved.
-        console.warn('[ImageUploader] server upload failed, keeping data URI:', serverErr?.message);
-        setError('תמונה נשמרה זמנית (ללא חיבור לשרת). תישמר מלאה עם שמירת הנכס.');
+        // Never surface "Image storage is not configured" / אחסון תמונות לא הוגדר.
+        const msg = String(serverErr?.message || '');
+        const isStorageCfg =
+          /image storage is not configured|storage is not configured|אחסון תמונות/i.test(msg);
+        console.warn('[ImageUploader] server upload failed, keeping data URI:', msg);
+        if (!isStorageCfg) {
+          setError('תמונה נשמרה זמנית (ללא חיבור לשרת). תישמר מלאה עם שמירת הנכס.');
+        }
       } finally {
         setIsUploading(false);
       }

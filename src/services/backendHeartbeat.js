@@ -1,4 +1,4 @@
-import { API_URL } from '../utils/apiClient';
+import { API_URL, applyAuthModeFromHealth } from '../utils/apiClient';
 
 const _fetchHealth = async (path, timeoutMs) => {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -24,10 +24,14 @@ export function startBackendHeartbeat(intervalMs = 30000) {
       let res = await _fetchHealth('/health', timeoutMs);
       let data = await res.json().catch(() => ({}));
       let alive = res.ok && (data.status === 'ok' || data.ok === true);
+      if (alive) {
+        applyAuthModeFromHealth(data);
+      }
       if (!alive) {
         res = await _fetchHealth('/heartbeat', timeoutMs);
         data = await res.json().catch(() => ({}));
         alive = res.ok && (data.ok === true || typeof data.server_time === 'string');
+        if (alive) applyAuthModeFromHealth(data);
       }
       if (alive) {
         window.__EASYHOST_HEARTBEAT_OK__ = true;

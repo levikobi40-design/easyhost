@@ -27,15 +27,99 @@ if (typeof window !== 'undefined') {
 
 // ── Auth helpers ────────────────────────────────────────────────────────────
 
+/** Decode JWT payload without verifying signature (client-side exp check only). */
+const _parseJwtPayload = (token) => {
+  try {
+    const part = String(token || '').split('.')[1];
+    if (!part) return null;
+    const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+    return JSON.parse(atob(normalized + pad));
+  } catch {
+    return null;
+  }
+};
+
+/** True when JWT is structurally valid and not past exp (60s clock skew). */
+const _isUnexpiredJwt = (t) => {
+  if (!_isRealJwtShape(t)) return false;
+  const payload = _parseJwtPayload(t);
+  if (!payload) return false;
+  const exp = Number(payload.exp);
+  if (!Number.isFinite(exp)) return true; // no exp claim → treat as usable
+  return Date.now() / 1000 < exp - 60;
+};
+
+/** Returns true only for real 3-part JWTs (not demo-offline-* placeholders). */
+const _isRealJwtShape = (t) =>
+  t && typeof t === 'string' && !t.startsWith('demo-offline-') && t.split('.').length === 3;
+
+const _isRealJwt = (t) => _isUnexpiredJwt(t);
+
+/** Clear expired / invalid tokens from all known stores so we stop sending 401 bait. */
+export const clearStaleAuthTokens = () => {
+  try {
+    const raw = localStorage.getItem('hotel-enterprise-storage');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const tok = parsed?.state?.authToken;
+      if (tok && !_isUnexpiredJwt(tok)) {
+        if (parsed.state) {
+          parsed.state.authToken = null;
+          localStorage.setItem('hotel-enterprise-storage', JSON.stringify(parsed));
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  try {
+    const loginRaw = localStorage.getItem('hotel-login-state');
+    if (loginRaw) {
+      const ls = JSON.parse(loginRaw);
+      if (ls?.token && !_isUnexpiredJwt(ls.token)) {
+        delete ls.token;
+        localStorage.setItem('hotel-login-state', JSON.stringify(ls));
+      }
+    }
+  } catch { /* ignore */ }
+  try {
+    const direct = localStorage.getItem('easyhost_auth_token');
+    if (direct && !_isUnexpiredJwt(direct)) {
+      localStorage.removeItem('easyhost_auth_token');
+    }
+  } catch { /* ignore */ }
+};
+
+/** Staging / AUTH_DISABLED: backend soft-auth — do not force login on 401. */
+export const isAuthBypassedClient = () => {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.__EASYHOST_AUTH_DISABLED__ ||
+    window.__EASYHOST_AUTH_RELAXED__ ||
+    localStorage.getItem('easyhost_auth_bypass') === '1'
+  );
+};
+
+export const applyAuthModeFromHealth = (data = {}) => {
+  if (typeof window === 'undefined') return;
+  const disabled = data.auth_disabled === true;
+  const relaxed = data.auth_relaxed === true;
+  window.__EASYHOST_AUTH_DISABLED__ = disabled;
+  window.__EASYHOST_AUTH_RELAXED__ = relaxed;
+  try {
+    if (disabled || relaxed) {
+      localStorage.setItem('easyhost_auth_bypass', '1');
+    } else {
+      localStorage.removeItem('easyhost_auth_bypass');
+    }
+  } catch { /* ignore */ }
+};
+
 /**
  * Returns true only when the stored token looks like a real JWT (3 base64url
- * parts separated by dots) and is not a demo-offline placeholder.
- * Demo-offline tokens (`demo-offline-<ts>`) are not valid JWTs and will
- * always be rejected by the backend when AUTH_DISABLED=false.
+ * parts separated by dots), is not a demo-offline placeholder, and is unexpired.
  */
 export const hasValidAuthToken = () => {
   try {
-    // Check all three storage keys — same priority order as getAuthHeaders()
     const raw = localStorage.getItem('hotel-enterprise-storage');
     const t1  = raw ? JSON.parse(raw)?.state?.authToken : null;
     if (_isRealJwt(t1)) return true;
@@ -49,12 +133,11 @@ export const hasValidAuthToken = () => {
   } catch { return false; }
 };
 
-/** Returns true only for real 3-part JWTs (not demo-offline-* placeholders). */
-const _isRealJwt = (t) =>
-  t && typeof t === 'string' && !t.startsWith('demo-offline-') && t.split('.').length === 3;
-
 export const getAuthHeaders = () => {
   try {
+    // Drop expired tokens first so we never send "Token expired" bait to the API.
+    clearStaleAuthTokens();
+
     // ── Primary: Zustand persisted store (hotel-enterprise-storage) ──────────
     const raw = localStorage.getItem('hotel-enterprise-storage');
     const parsed = raw ? JSON.parse(raw) : null;
@@ -67,8 +150,6 @@ export const getAuthHeaders = () => {
     }
 
     // ── Fallback 1: LoginPage stored state (hotel-login-state) ───────────────
-    // LoginPage.js calls saveLoginState() which writes here independently of
-    // the Zustand store. On iOS PWA the Zustand write sometimes silently fails.
     const loginRaw = localStorage.getItem('hotel-login-state');
     if (loginRaw) {
       const ls = JSON.parse(loginRaw);
@@ -85,6 +166,8 @@ export const getAuthHeaders = () => {
       return { Authorization: `Bearer ${direct}` };
     }
 
+    // Staging / AUTH_DISABLED: still send X-Tenant-Id when known (soft auth).
+    if (tenantId) return { 'X-Tenant-Id': tenantId };
     return {};
   } catch { return {}; }
 };
@@ -96,6 +179,17 @@ export const withAuthFetchInit = (init = {}) => {
   if (h.Authorization) headers.set('Authorization', h.Authorization);
   if (h['X-Tenant-Id']) headers.set('X-Tenant-Id', h['X-Tenant-Id']);
   return { ...init, headers };
+};
+
+const _emitAuthRequired = (url, status) => {
+  if (typeof window === 'undefined') return;
+  // Pilot/staging soft-auth: clear bad tokens but do not force LoginPage.
+  if (isAuthBypassedClient()) {
+    clearStaleAuthTokens();
+    return;
+  }
+  clearStaleAuthTokens();
+  window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url, status } }));
 };
 
 // ── Core fetch wrapper ───────────────────────────────────────────────────────
@@ -120,14 +214,21 @@ export const apiRequest = async (path, options = {}) => {
   }
 
   try {
-    const response = await fetch(url, { method, headers: finalHeaders, credentials: 'include', ...rest });
+    let response = await fetch(url, { method, headers: finalHeaders, credentials: 'include', ...rest });
+    // Expired JWT / redeploy secret mismatch: retry once without Authorization.
+    if (response.status === 401 && finalHeaders.Authorization) {
+      clearStaleAuthTokens();
+      const retryHeaders = { ...finalHeaders };
+      delete retryHeaders.Authorization;
+      response = await fetch(url, { method, headers: retryHeaders, credentials: 'include', ...rest });
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        return data;
+      }
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      if (response.status === 401 && typeof window !== 'undefined') {
-        // Signal the app that the stored token is no longer accepted.
-        // App.js listens for this event to clear auth state and show the login page.
-        window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url, status: 401 } }));
-      }
+      if (response.status === 401) _emitAuthRequired(url, 401);
       const err = new Error(data.error || data.message || `HTTP ${response.status}`);
       err.status = response.status;
       err.data   = data;
@@ -173,7 +274,7 @@ export const fetchWithRetry = async (url, options = {}, opts = {}) => {
     try {
       const res = await fetch(fullUrl, mergedOptions);
       if (res.status === 401 && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('easyhost-auth-required', { detail: { url: fullUrl, status: 401 } }));
+        _emitAuthRequired(fullUrl, 401);
       }
       const shouldRetry = res.status >= 500 || res.status === 429;
       if (!res.ok && !shouldRetry) {
