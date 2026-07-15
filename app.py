@@ -1888,31 +1888,38 @@ app = Flask(
 # Allow multi-image / base64 property uploads (default Werkzeug limit is too small → hard 413).
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
 
-# CORS — all routes (`/*` includes /api/health heartbeat → clears “Python Offline” when Flask is up)
+# CORS — open for pilot/staging; credentials require a concrete reflected Origin (not "*").
 _RAILWAY_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()  # e.g. "xyz.up.railway.app"
 _CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    # Railway production — explicit URL + any env-injected domain
+    "http://localhost:1000",
+    "http://127.0.0.1:1000",
+    # Railway production — explicit URLs + any env-injected domain
+    "https://easyhost-ai.up.railway.app",
     "https://energetic-consideration-production-6e7a.up.railway.app",
     *(["https://" + _RAILWAY_DOMAIN] if _RAILWAY_DOMAIN else []),
-    r"https://.*\.up\.railway\.app",
-    r"https://.*\.onrender\.com",
 ]
+# Flask-CORS: "*" + supports_credentials echoes the request Origin (browser-safe).
 _CORS_RESOURCE_KW = {
-    "origins": _CORS_ORIGINS,
+    "origins": "*",
     "supports_credentials": True,
     "allow_headers": [
         "Content-Type", "Authorization", "X-Tenant-Id",
         "Accept", "X-Requested-With", "Cache-Control",
     ],
     "methods": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    "expose_headers": ["Content-Type", "X-DB-Status", "X-Portfolio-Fallback",
-                       "X-Tasks-Total", "X-Tasks-Has-More"],
+    "expose_headers": [
+        "Content-Type", "X-DB-Status", "X-Portfolio-Fallback",
+        "X-Tasks-Total", "X-Tasks-Has-More", "X-Properties-Total",
+        "X-Properties-Has-More",
+    ],
 }
-CORS(app, resources={r"/*": _CORS_RESOURCE_KW})
+CORS(app, resources={r"/*": _CORS_RESOURCE_KW}, supports_credentials=True)
 
 
 def _cors_origin_allowed(origin):
@@ -1925,15 +1932,18 @@ def _cors_origin_allowed(origin):
         from urllib.parse import urlparse as _up
         u = _up(origin)
         h = (u.hostname or "").lower()
-        if u.scheme == "https" and (
-            h.endswith(".up.railway.app") or h.endswith(".onrender.com") or h == _RAILWAY_DOMAIN
+        if u.scheme in ("http", "https") and (
+            h.endswith(".up.railway.app")
+            or h.endswith(".onrender.com")
+            or (_RAILWAY_DOMAIN and h == _RAILWAY_DOMAIN.lower())
+            or h in ("localhost", "127.0.0.1")
         ):
             return True
     except Exception:
         pass
     return False
 
-# ── Socket.IO (same port as Flask — localhost:1000 in dev) ───────────────────
+# ── Socket.IO (same port as Flask — :1000 local / Railway public URL in prod) ─
 try:
     from flask_socketio import SocketIO, emit as _socketio_emit
 except ImportError:
@@ -1948,6 +1958,8 @@ socketio = (
         path="/socket.io",
         logger=False,
         engineio_logger=False,
+        # Allow cookie/credentialed browser clients from any allowed origin.
+        manage_session=False,
     )
     if SocketIO
     else None
@@ -2168,39 +2180,25 @@ def api_heartbeat():
 
 
 def _cors_allow_origin_for_request():
-    """Reflect dev origins so fetch(..., credentials: 'include') succeeds (localhost + LAN React).
-    Also reflects Railway / Render production origins so credentialed requests succeed in production."""
+    """Reflect request Origin for credentialed fetch (browsers reject * + credentials)."""
     origin = (request.headers.get("Origin") or "").strip()
-    dev_origins = (
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    )
-    if origin in dev_origins:
-        return origin
-    # Railway and Render production origins — reflect so credentials work
+    if not origin:
+        return "*"
     if origin in _CORS_ORIGINS or _cors_origin_allowed(origin):
         return origin
-    try:
-        from urllib.parse import urlparse as _up
-        u = _up(origin)
-        h = (u.hostname or "").lower()
-        # Any *.up.railway.app or *.onrender.com origin is always a production deployment
-        if u.scheme == "https" and (h.endswith(".up.railway.app") or h.endswith(".onrender.com")):
-            return origin
-    except Exception:
-        pass
-    # http://192.168.x.x:3000 etc. — browsers require a concrete origin with credentials (not *)
     try:
         from urllib.parse import urlparse
 
         u = urlparse(origin)
-        _dev_ports = set(range(3000, 3020)) | set(range(5173, 5190)) | {4173, 4280, 8080}
-        if u.scheme in ("http", "https") and u.port in _dev_ports:
-            h = (u.hostname or "").lower()
+        h = (u.hostname or "").lower()
+        # Any Railway / Render HTTPS deployment
+        if u.scheme == "https" and (
+            h.endswith(".up.railway.app") or h.endswith(".onrender.com")
+        ):
+            return origin
+        # Local / LAN Vite or CRA ports
+        _dev_ports = set(range(3000, 3020)) | set(range(5173, 5190)) | {1000, 4173, 4280, 8080}
+        if u.scheme in ("http", "https") and (u.port in _dev_ports or u.port is None):
             if h in ("localhost", "127.0.0.1"):
                 return origin
             parts = h.split(".")
@@ -2214,7 +2212,8 @@ def _cors_allow_origin_for_request():
                     return origin
     except Exception:
         pass
-    if any(origin.startswith(p) for p in dev_origins):
+    # Pilot default: reflect unknown Origin so credentialed API calls still work
+    if origin.startswith("http://") or origin.startswith("https://"):
         return origin
     return "*"
 
@@ -2228,7 +2227,10 @@ def handle_options_preflight():
         if allow != "*":
             resp.headers["Access-Control-Allow-Credentials"] = "true"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Tenant-Id"
+        resp.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, Authorization, X-Tenant-Id, Accept, X-Requested-With, Cache-Control"
+        )
+        resp.headers["Access-Control-Max-Age"] = "86400"
         return resp
 
 
@@ -2281,7 +2283,13 @@ def add_cors_headers(response):
     if allow != "*":
         response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Tenant-Id"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization, X-Tenant-Id, Accept, X-Requested-With, Cache-Control"
+    )
+    # Avoid caching CORS preflight mismatches across origins
+    vary = response.headers.get("Vary", "")
+    if "Origin" not in vary:
+        response.headers["Vary"] = f"{vary}, Origin".lstrip(", ").strip()
     return response
 
 

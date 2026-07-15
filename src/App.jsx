@@ -33,7 +33,6 @@ import { resolveNavTier, isDashboardAdmin, isOperationRole } from './utils/dashb
 import { SUPPORTED_LANGS, isRtlLang } from './utils/languages';
 import { startBackendHeartbeat } from './services/backendHeartbeat';
 import { checkPythonApiHealth, flushTaskUpdateQueue } from './services/api';
-import { API_URL } from './config';
 import { isAuthBypassedClient } from './utils/apiClient';
 
 /**
@@ -486,6 +485,12 @@ function restoreUserFromLocalStorage() {
 /** No red banner until this long after load — backend + network can be slow on first paint. */
 const PYTHON_HEALTH_GRACE_MS = 50000;
 
+const _isLocalPage = () => {
+  if (typeof window === 'undefined') return true;
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+};
+
 export default function App() {
   const [pythonOffline, setPythonOffline] = useState(false);
   const healthGraceRef = useRef(
@@ -493,8 +498,10 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.__EASYHOST_API_URL__ && window.__EASYHOST_API_URL__ !== API_URL) {
-      console.warn('[App] API_URL mismatch — config:', API_URL, 'vs window:', window.__EASYHOST_API_URL__);
+    if (typeof window === 'undefined') return;
+    const live = window.__EASYHOST_API_URL__;
+    if (live && live.includes('localhost') && !_isLocalPage()) {
+      console.warn('[App] Ignoring baked localhost API URL on production host — using same-origin /api');
     }
   }, []);
 
@@ -579,9 +586,16 @@ export default function App() {
             boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           }}
         >
-          Python Offline — השרת לא מגיב. הפעל את ה-backend:{' '}
-          <code style={{ background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: 4 }}>python app.py</code>{' '}
-          (פורט 1000, CORS מופעל).
+          Python Offline — השרת לא מגיב.{' '}
+          {_isLocalPage() ? (
+            <>
+              הפעל את ה-backend:{' '}
+              <code style={{ background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: 4 }}>python app.py</code>
+              {' '}(פורט 1000).
+            </>
+          ) : (
+            <>השירות עולה — רענן בעוד כמה שניות. אם זה נמשך, בדוק את Railway.</>
+          )}
         </div>
       )}
       <Routes>

@@ -6,10 +6,14 @@ const FLASK_TARGET = process.env.REACT_APP_PROXY_TARGET || 'http://127.0.0.1:100
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), ['REACT_APP_', 'VITE_']);
+  // Never bake localhost into a production bundle — Railway serves Flask+SPA same-origin.
+  const rawApiUrl = String(env.REACT_APP_API_URL || '').trim();
+  const apiUrlForDefine =
+    mode === 'production' && /localhost|127\.0\.0\.1/i.test(rawApiUrl) ? '' : rawApiUrl;
   const processEnvDefine = Object.fromEntries(
     [
       ['NODE_ENV', mode],
-      ['REACT_APP_API_URL', env.REACT_APP_API_URL || ''],
+      ['REACT_APP_API_URL', apiUrlForDefine],
       ['REACT_APP_PROXY_TARGET', env.REACT_APP_PROXY_TARGET || FLASK_TARGET],
       ['REACT_APP_MARKET', env.REACT_APP_MARKET || ''],
       ['REACT_APP_CURRENCY', env.REACT_APP_CURRENCY || ''],

@@ -123,13 +123,14 @@ const _healthFetchOnce = async (url, ms) => {
 export async function checkPythonApiHealth() {
   const timeouts = [6000, 10000];   // attempt 1: 6 s, attempt 2: 10 s
   const baseDelay = 1200;           // wait 1.2 s between retries (cold-start grace)
+  const apiRoot = getAPIUrl();
   for (let i = 0; i < timeouts.length; i += 1) {
     try {
       if (i > 0) {
         await new Promise((r) => setTimeout(r, baseDelay));
       }
       const timeoutMs = timeouts[i];
-      let res = await _healthFetchOnce(`${API_URL}/health`, timeoutMs);
+      let res = await _healthFetchOnce(`${apiRoot}/health`, timeoutMs);
       let data = await res.json().catch(() => ({}));
       if (res.ok && (data.status === 'ok' || data.ok === true)) {
         try {
@@ -139,7 +140,7 @@ export async function checkPythonApiHealth() {
         return { ok: true, data };
       }
       // /heartbeat as fallback (some deployments only expose that)
-      res = await _healthFetchOnce(`${API_URL}/heartbeat`, timeoutMs);
+      res = await _healthFetchOnce(`${apiRoot}/heartbeat`, timeoutMs);
       data = await res.json().catch(() => ({}));
       if (res.ok && (data.ok === true || typeof data.server_time === 'string')) {
         try {
@@ -1310,7 +1311,12 @@ export const getProperties = async (opts = {}) => {
   }
   const query = pq.toString();
   const urls = [`${API_URL}/properties?${query}`];
-  if (typeof window !== 'undefined' && !API_URL.startsWith('http')) {
+  // Local-only fallback when the Vite proxy is down — never from Railway / production hosts.
+  if (
+    typeof window !== 'undefined' &&
+    !API_URL.startsWith('http') &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
     urls.push(`http://127.0.0.1:1000/api/properties?${query}`);
   }
   const fetchOnce = async (fetchUrl, hdrs) => {

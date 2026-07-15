@@ -2,7 +2,7 @@
  * Real-time: Socket.IO → Flask via CRA proxy (/socket.io) + in-window pub/sub fallback.
  */
 import { io } from 'socket.io-client';
-import { SOCKET_IO_URL, API_BASE_URL } from '../config.js';
+import { getSocketUrl } from '../config.js';
 
 const _local = new Map();
 function _addLocal(event, cb) {
@@ -28,7 +28,7 @@ let _connectStarted = false;
 function shouldUseSocket() {
   if (typeof window === 'undefined') return false;
   const port = String(window.location.port || '');
-  // Dev HMR belongs on :3000; never open Socket.IO (or /ws probes) against Flask :1000.
+  // Dev HMR belongs on Vite :5173 / CRA :3000; never open Socket.IO against Flask :1000 page.
   if (process.env.NODE_ENV === 'development' && port === '1000') return false;
   return true;
 }
@@ -36,9 +36,7 @@ function shouldUseSocket() {
 function resolveSocketUrl() {
   if (typeof window === 'undefined') return '';
   if (!shouldUseSocket()) return '';
-  if (!API_BASE_URL) return window.location.origin.replace(/\/+$/, '');
-  if (SOCKET_IO_URL) return SOCKET_IO_URL.replace(/\/+$/, '');
-  return API_BASE_URL.replace(/\/+$/, '');
+  return getSocketUrl();
 }
 
 function _startClientPulse() {

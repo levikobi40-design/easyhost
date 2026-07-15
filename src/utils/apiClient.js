@@ -1,5 +1,5 @@
 /**
- * apiClient.js — fetch helpers; base URL from config.js (localhost:1000).
+ * apiClient.js — fetch helpers; base URL from config.js (same-origin /api in production).
  */
 import {
   API_BASE_URL,
@@ -7,20 +7,24 @@ import {
   SOCKET_IO_URL,
   BASE_URL,
   getAPIUrl,
+  getSocketUrl,
 } from '../config.js';
 
-export { API_BASE_URL, API_URL, SOCKET_IO_URL, BASE_URL, getAPIUrl };
+export { API_BASE_URL, API_URL, SOCKET_IO_URL, BASE_URL, getAPIUrl, getSocketUrl };
 
 const _isLocalhost =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
+// Prefer live host resolution so a mis-baked REACT_APP_API_URL=localhost never wins in prod.
+const _resolvedApiUrl = typeof window !== 'undefined' ? getAPIUrl() : API_URL;
+
 // Log + global for debugging (“why is the dashboard empty?”)
 if (typeof window !== 'undefined') {
-  window.__EASYHOST_API_URL__ = API_URL;
-  window.__EASYHOST_BASE_URL__ = API_BASE_URL;
+  window.__EASYHOST_API_URL__ = _resolvedApiUrl;
+  window.__EASYHOST_BASE_URL__ = API_BASE_URL || window.location.origin;
   console.log(
-    `%c[EasyHost] API → ${API_URL}  (${_isLocalhost ? 'local dev' : 'hardcoded'})`,
+    `%c[EasyHost] API → ${_resolvedApiUrl}  (${_isLocalhost ? 'local' : 'same-origin / configured'})`,
     'color:#6366f1;font-weight:bold',
   );
 }
@@ -194,7 +198,8 @@ const _emitAuthRequired = (url, status) => {
 
 // ── Core fetch wrapper ───────────────────────────────────────────────────────
 export const apiRequest = async (path, options = {}) => {
-  const url = path.startsWith('http') ? path : `${API_URL}${path}`;
+  const apiRoot = typeof window !== 'undefined' ? getAPIUrl() : API_URL;
+  const url = path.startsWith('http') ? path : `${apiRoot}${path.startsWith('/') ? path : `/${path}`}`;
   const { method = 'GET', body, headers = {}, ...rest } = options;
 
   const finalHeaders = {
@@ -239,10 +244,10 @@ export const apiRequest = async (path, options = {}) => {
     if (error.status) throw error; // already a structured API error
     // Network error — give a clear message
     const netErr = new Error(
-      `Cannot reach server at ${API_URL}. ` +
+      `Cannot reach server at ${apiRoot}. ` +
       (_isLocalhost
         ? 'Make sure the Python backend is running: python app.py'
-        : 'The Render service may be starting up — try again in 30 seconds.')
+        : 'The service may be starting up — try again in 30 seconds.')
     );
     netErr.isNetworkError = true;
     console.error('[EasyHost] Network error:', url, error.message);
@@ -257,7 +262,8 @@ export const apiRequest = async (path, options = {}) => {
  * Auth headers are injected automatically (same as apiRequest).
  */
 export const fetchWithRetry = async (url, options = {}, opts = {}) => {
-  const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+  const apiRoot = typeof window !== 'undefined' ? getAPIUrl() : API_URL;
+  const fullUrl = url.startsWith('http') ? url : `${apiRoot}${url.startsWith('/') ? url : `/${url}`}`;
   const { maxRetries = 3, baseDelayMs = 1000 } = opts;
 
   // Inject auth headers unless the caller already provides Authorization

@@ -1,10 +1,11 @@
-import { API_URL, applyAuthModeFromHealth } from '../utils/apiClient';
+import { API_URL, applyAuthModeFromHealth, getAPIUrl } from '../utils/apiClient';
 
 const _fetchHealth = async (path, timeoutMs) => {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const id = ctrl ? window.setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  const root = getAPIUrl();
   try {
-    return await fetch(`${API_URL}${path}`, {
+    return await fetch(`${root}${path}`, {
       credentials: 'include',
       cache: 'no-store',
       signal: ctrl ? ctrl.signal : undefined,
