@@ -6,15 +6,17 @@ const FLASK_TARGET = process.env.REACT_APP_PROXY_TARGET || 'http://127.0.0.1:100
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), ['REACT_APP_', 'VITE_']);
-  // Never bake localhost into a production bundle — Railway serves Flask+SPA same-origin.
+  // Production builds: never bake an absolute API URL — SPA + Flask share one Railway host.
+  // Localhost :1000 is only for the Vite proxy (server.proxy), not process.env in the bundle.
   const rawApiUrl = String(env.REACT_APP_API_URL || '').trim();
-  const apiUrlForDefine =
-    mode === 'production' && /localhost|127\.0\.0\.1/i.test(rawApiUrl) ? '' : rawApiUrl;
+  // Production: always empty → runtime uses window.location.origin (no :1000).
+  const apiUrlForDefine = mode === 'production' ? '' : rawApiUrl;
   const processEnvDefine = Object.fromEntries(
     [
       ['NODE_ENV', mode],
       ['REACT_APP_API_URL', apiUrlForDefine],
-      ['REACT_APP_PROXY_TARGET', env.REACT_APP_PROXY_TARGET || FLASK_TARGET],
+      // Do not expose proxy target to the browser bundle in production
+      ['REACT_APP_PROXY_TARGET', mode === 'production' ? '' : (env.REACT_APP_PROXY_TARGET || FLASK_TARGET)],
       ['REACT_APP_MARKET', env.REACT_APP_MARKET || ''],
       ['REACT_APP_CURRENCY', env.REACT_APP_CURRENCY || ''],
       ['REACT_APP_GUEST_MANAGER_WHATSAPP', env.REACT_APP_GUEST_MANAGER_WHATSAPP || ''],

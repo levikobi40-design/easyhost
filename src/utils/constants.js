@@ -1,11 +1,20 @@
-// API URL — from config.js → http://localhost:1000 (Flask).
-import { API_URL, API_BASE_URL, BASE_URL } from './apiClient';
-export { API_URL, API_BASE_URL, BASE_URL };
+// API URL — live resolver from config.js (same-origin in production; :1000 local only).
+import { API_URL, API_BASE_URL, BASE_URL, getAPIUrl, getAPIBaseUrl } from './apiClient';
+export { API_URL, API_BASE_URL, BASE_URL, getAPIUrl, getAPIBaseUrl };
+
 export const FORCED_BACKEND_URL = API_URL;
 
-// SSE Stream URLs
-export const SSE_STREAM_URL = `${API_URL}/stream/bookings`;
-export const SSE_LEADS_URL = `${API_URL}/stream/leads`;
+// SSE Stream URLs — resolved at access time via live API_URL proxy
+export const SSE_STREAM_URL = {
+  toString() { return `${getAPIUrl()}/stream/bookings`; },
+  valueOf() { return `${getAPIUrl()}/stream/bookings`; },
+  [Symbol.toPrimitive]() { return `${getAPIUrl()}/stream/bookings`; },
+};
+export const SSE_LEADS_URL = {
+  toString() { return `${getAPIUrl()}/stream/leads`; },
+  valueOf() { return `${getAPIUrl()}/stream/leads`; },
+  [Symbol.toPrimitive]() { return `${getAPIUrl()}/stream/leads`; },
+};
 
 // Frontend URLs
 // AI Assistant External URL - Opens in new tab
@@ -50,14 +59,15 @@ export const POLL_INTERVAL = 5000;
 export const SSE_RECONNECT_DELAY = 3000;
 
 const CONSTANTS = {
-  API_URL,
-  API_BASE_URL,
-  SSE_STREAM_URL,
-  SSE_LEADS_URL,
+  get API_URL() { return getAPIUrl(); },
+  get API_BASE_URL() { return getAPIBaseUrl(); },
+  get SSE_STREAM_URL() { return `${getAPIUrl()}/stream/bookings`; },
+  get SSE_LEADS_URL() { return `${getAPIUrl()}/stream/leads`; },
   AI_ASSISTANT_URL,
   ROLES,
   LANGUAGES,
   SERVICES,
+  FEATURES,
   POLL_INTERVAL,
   SSE_RECONNECT_DELAY,
 };

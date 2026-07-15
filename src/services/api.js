@@ -23,7 +23,8 @@ export const MAYA_OFFLINE_FALLBACK_HE =
 
 const getBase = () => (typeof window !== 'undefined' ? getAPIUrl() : API_URL);
 
-console.log('[EasyHost AI API] Using backend URL:', API_URL);
+console.log('[EasyHost AI API] Using backend URL:', typeof window !== 'undefined' ? getAPIUrl() : String(API_URL));
+
 
 // Debug helper - logs all API requests
 const logRequest = (method, url, payload) => {

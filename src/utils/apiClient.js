@@ -1,5 +1,5 @@
 /**
- * apiClient.js — fetch helpers; base URL from config.js (same-origin /api in production).
+ * apiClient.js — fetch helpers; base URL from config.js (live same-origin in production).
  */
 import {
   API_BASE_URL,
@@ -7,24 +7,29 @@ import {
   SOCKET_IO_URL,
   BASE_URL,
   getAPIUrl,
+  getAPIBaseUrl,
   getSocketUrl,
 } from '../config.js';
 
-export { API_BASE_URL, API_URL, SOCKET_IO_URL, BASE_URL, getAPIUrl, getSocketUrl };
+export {
+  API_BASE_URL,
+  API_URL,
+  SOCKET_IO_URL,
+  BASE_URL,
+  getAPIUrl,
+  getAPIBaseUrl,
+  getSocketUrl,
+};
 
 const _isLocalhost =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-// Prefer live host resolution so a mis-baked REACT_APP_API_URL=localhost never wins in prod.
-const _resolvedApiUrl = typeof window !== 'undefined' ? getAPIUrl() : API_URL;
-
-// Log + global for debugging (“why is the dashboard empty?”)
 if (typeof window !== 'undefined') {
-  window.__EASYHOST_API_URL__ = _resolvedApiUrl;
-  window.__EASYHOST_BASE_URL__ = API_BASE_URL || window.location.origin;
+  window.__EASYHOST_API_URL__ = getAPIUrl();
+  window.__EASYHOST_BASE_URL__ = getAPIBaseUrl() || window.location.origin;
   console.log(
-    `%c[EasyHost] API → ${_resolvedApiUrl}  (${_isLocalhost ? 'local' : 'same-origin / configured'})`,
+    `%c[EasyHost] API → ${getAPIUrl()}  (${_isLocalhost ? 'local' : 'same-origin'})`,
     'color:#6366f1;font-weight:bold',
   );
 }
