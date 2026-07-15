@@ -241,6 +241,104 @@
   text-transform: uppercase;
 }
 
+/* Desktop pills visible by default; mobile dropdown hidden */
+.lang-selector--desktop { display: flex; }
+.lang-selector--mobile { display: none; }
+
+.lang-dropdown {
+  position: relative;
+  padding: 0;
+}
+
+.lang-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 36px;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.lang-dropdown-trigger:hover,
+.lang-dropdown-trigger[aria-expanded="true"] {
+  background: rgba(0, 255, 136, 0.12);
+  border-color: rgba(0, 255, 136, 0.35);
+}
+
+.lang-dropdown-globe {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.lang-dropdown-code {
+  min-width: 1.4em;
+  text-align: center;
+}
+
+.lang-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1300;
+  min-width: 148px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0b1120;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+[dir="rtl"] .lang-dropdown-menu {
+  right: auto;
+  left: 0;
+}
+
+.lang-dropdown-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: start;
+}
+
+.lang-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.lang-dropdown-item.active {
+  background: rgba(0, 255, 136, 0.14);
+  color: #fff;
+}
+
+.lang-dropdown-item-code {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  min-width: 1.6em;
+}
+
+.lang-dropdown-item-name {
+  opacity: 0.7;
+  font-size: 0.72rem;
+}
+
 /* ── User menu ──────────────────────────────────────────────── */
 .user-menu {
   display: flex;
@@ -481,8 +579,8 @@
   .breadcrumb { display: none; }
   .user-info  { display: none; }
   .tenant-selector { display: none; }
-  .lang-label { display: none; }
-  .lang-btn   { padding: 0 0.35rem; }
+  .lang-selector--desktop { display: none !important; }
+  .lang-selector--mobile { display: block; }
   .top-bar-end { gap: 0.5rem; }
   .topbar-logo-text { display: none; }
   .topbar-logo { padding: 0.3rem 0.5rem; }

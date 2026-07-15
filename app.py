@@ -1843,6 +1843,39 @@ def _frontend_build_diagnostics():
         print("[frontend] ⚠️  build/index.html has no /assets/* script tags", flush=True)
 
 
+def _spa_path_is_backend(path):
+    """True for API / uploads / realtime paths that must never get index.html."""
+    p = (path or "").lstrip("/")
+    return (
+        p.startswith("api/")
+        or p == "api"
+        or p.startswith("uploads/")
+        or p == "uploads"
+        or p.startswith("socket.io")
+        or p.startswith("whatsapp")
+    )
+
+
+def _serve_spa_index():
+    """Return React index.html for client-side routes (mobile refresh / deep links)."""
+    build_index = os.path.join(_BUILD_DIR, "index.html")
+    public_index = os.path.join(_PUBLIC_DIR, "index.html")
+    if os.path.isfile(build_index):
+        resp = send_from_directory(_BUILD_DIR, "index.html")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+    if os.path.isfile(public_index):
+        resp = send_from_directory(_PUBLIC_DIR, "index.html")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+    return (
+        "<h2>Maya Hotel AI</h2>"
+        "<p>Run <code>npm run build</code> inside the project folder, "
+        "then restart the server.</p>",
+        200,
+    )
+
+
 _frontend_build_diagnostics()
 
 app = Flask(
@@ -1985,7 +2018,7 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 
 @app.errorhandler(HTTPException)
 def _handle_http_exception(e):
-    """API routes always return JSON (no HTML error pages)."""
+    """API routes always return JSON. SPA routes: serve index.html on 404 (mobile refresh)."""
     if request.path.startswith("/api/"):
         return jsonify({
             "ok": False,
@@ -1993,7 +2026,25 @@ def _handle_http_exception(e):
             "code": e.code,
             "message": e.description or str(e),
         }), e.code
+    # Flask static_url_path="" 404s unknown paths like /properties before the
+    # catch-all runs — fall back to the React shell so deep links / refresh work.
+    if getattr(e, "code", None) == 404 and not _spa_path_is_backend(request.path):
+        return _serve_spa_index()
     return e
+
+
+@app.errorhandler(404)
+def _handle_not_found(e):
+    """Wildcard SPA fallback for /properties, /tasks, /worker/…, etc."""
+    if request.path.startswith("/api/") or _spa_path_is_backend(request.path):
+        if request.path.startswith("/api/"):
+            return jsonify({
+                "ok": False,
+                "error": "not_found",
+                "message": e.description or "Not found",
+            }), 404
+        return e
+    return _serve_spa_index()
 
 
 @app.errorhandler(413)
@@ -22374,40 +22425,28 @@ def _do_startup_init():
         INIT_DONE = True
 
 
-# SPA catch-all — registered LAST so /api/* and /uploads/* are never shadowed (fixes false 404).
-@app.route("/")
+# SPA catch-all — registered LAST so explicit /api/* and /uploads/* rules win first.
+# Also paired with @app.errorhandler(404): Flask's static_url_path="" returns 404 for
+# unknown paths like /properties before this rule runs; the 404 handler serves index.html.
+@app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path=""):
-    """Serve the React SPA. Unknown /api/* hits this catch-all only when no API rule matched -> 404 JSON elsewhere."""
-    if path.startswith("api/") or path.startswith("whatsapp"):
+    """Serve static build files when they exist; otherwise index.html for React Router."""
+    if _spa_path_is_backend(path):
         from flask import abort
         abort(404)
 
-    static_file = os.path.join(_static_dir, path)
-    if path and os.path.isfile(static_file):
-        return send_from_directory(_static_dir, path)
+    # Prefer real files from the Vite/CRA build (assets, favicon, manifest, …).
+    if path:
+        static_file = os.path.join(_static_dir, path)
+        if os.path.isfile(static_file):
+            return send_from_directory(_static_dir, path)
+        # Also check build/ explicitly when _static_dir fell back to public/
+        build_file = os.path.join(_BUILD_DIR, path)
+        if os.path.isfile(build_file):
+            return send_from_directory(_BUILD_DIR, path)
 
-    build_index = os.path.join(_BUILD_DIR, "index.html")
-    public_index = os.path.join(_PUBLIC_DIR, "index.html")
-
-    print(f"[frontend] _BASE_DIR={_BASE_DIR}", flush=True)
-    print(f"[frontend] _BUILD_DIR={_BUILD_DIR} exists={os.path.isfile(build_index)}", flush=True)
-    print(f"[frontend] _PUBLIC_DIR={_PUBLIC_DIR} exists={os.path.isfile(public_index)}", flush=True)
-
-    if os.path.isfile(build_index):
-        resp = send_from_directory(_BUILD_DIR, "index.html")
-        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        return resp
-
-    if os.path.isfile(public_index):
-        return send_from_directory(_PUBLIC_DIR, "index.html")
-
-    return (
-        "<h2>Maya Hotel AI</h2>"
-        "<p>Run <code>npm run build</code> inside the project folder, "
-        "then restart the server.</p>",
-        200,
-    )
+    return _serve_spa_index()
 
 
 

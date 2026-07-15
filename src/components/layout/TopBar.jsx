@@ -31,15 +31,44 @@ const TopBar = () => {
   const [missionSyncing, setMissionSyncing] = useState(false);
 
   const [menuOpen,   setMenuOpen]   = useState(false);
+  const [langOpen,   setLangOpen]   = useState(false);
   const [simLoading, setSimLoading] = useState(false);
   const [simDone,    setSimDone]    = useState(false);
   const orbRef = useRef(null);
+  const langMenuRef = useRef(null);
 
   const languages = PILOT_LANGUAGE_OPTIONS.map((o) => ({
     code: o.code,
     label: o.label,
+    name: o.name,
     flag: o.code === 'he' ? '🇮🇱' : o.code === 'el' ? '🇬🇷' : o.code === 'ar' ? '🇸🇦' : '🇺🇸',
   }));
+  const currentLang = languages.find((l) => l.code === lang) || languages[0];
+  const currentLangCode = String(currentLang?.code || lang || 'he').toUpperCase();
+
+  const applyLang = useCallback((code) => {
+    setLang(code);
+    i18n.changeLanguage(code);
+    setLangOpen(false);
+  }, [setLang]);
+
+  useEffect(() => {
+    if (!langOpen) return undefined;
+    const onDoc = (e) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target)) {
+        setLangOpen(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setLangOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [langOpen]);
 
   const normalise = (r) => {
     const map = { owner: 'host', manager: 'admin', host: 'host', staff: 'field', worker: 'field', operator: 'operator' };
@@ -151,14 +180,13 @@ const TopBar = () => {
             </div>
           )}
 
-          <div className="lang-selector lang-pill" role="group" aria-label="Language selector">
+          {/* Desktop: inline language pills */}
+          <div className="lang-selector lang-pill lang-selector--desktop" role="group" aria-label="Language selector">
             {languages.map((l) => (
               <button
                 key={l.code}
-                onClick={() => {
-                  setLang(l.code);            // update Zustand store
-                  i18n.changeLanguage(l.code); // fire immediately — no async delay
-                }}
+                type="button"
+                onClick={() => applyLang(l.code)}
                 className={`lang-btn${lang === l.code ? ' active' : ''}`}
                 title={l.label}
                 aria-pressed={lang === l.code}
@@ -167,6 +195,39 @@ const TopBar = () => {
                 <span className="lang-label">{l.label}</span>
               </button>
             ))}
+          </div>
+
+          {/* Mobile: compact globe + current code dropdown */}
+          <div className="lang-selector lang-dropdown lang-selector--mobile" ref={langMenuRef}>
+            <button
+              type="button"
+              className="lang-dropdown-trigger"
+              onClick={() => setLangOpen((o) => !o)}
+              aria-label={`Language: ${currentLangCode}`}
+              aria-expanded={langOpen}
+              aria-haspopup="listbox"
+              title={currentLang?.name || currentLang?.label || currentLangCode}
+            >
+              <span className="lang-dropdown-globe" aria-hidden="true">🌐</span>
+              <span className="lang-dropdown-code">{currentLangCode}</span>
+            </button>
+            {langOpen && (
+              <ul className="lang-dropdown-menu" role="listbox" aria-label="Choose language">
+                {languages.map((l) => (
+                  <li key={l.code} role="option" aria-selected={lang === l.code}>
+                    <button
+                      type="button"
+                      className={`lang-dropdown-item${lang === l.code ? ' active' : ''}`}
+                      onClick={() => applyLang(l.code)}
+                    >
+                      <span className="lang-flag">{l.flag}</span>
+                      <span className="lang-dropdown-item-code">{String(l.code).toUpperCase()}</span>
+                      <span className="lang-dropdown-item-name">{l.name || l.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <NotificationCenter />

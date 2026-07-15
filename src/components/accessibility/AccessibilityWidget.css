@@ -24,8 +24,22 @@
 
 @media (max-width: 768px) {
   .a11y-widget {
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
-    left: 10px !important;
+    /* Bottom-left corner — clear of Maya FAB (bottom-right) and home indicator */
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 12px !important;
+    right: auto !important;
+    z-index: 1200;
+  }
+
+  .a11y-trigger {
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
+    box-shadow: 0 3px 12px rgba(7, 94, 84, 0.45);
+  }
+
+  .a11y-panel {
+    width: min(240px, calc(100vw - 24px));
   }
 }
 

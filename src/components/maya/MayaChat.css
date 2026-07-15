@@ -1107,26 +1107,38 @@
     max-width: none !important;
   }
 
-  /* ── FAB: LTR — stays bottom-right, but shifted left enough
-     to clear the accessibility widget and any right-edge nav ── */
-  .maya-root:not(.maya-root--voice-dock) {
-    bottom: 16px !important;
-    right: 16px !important;
-    left: auto !important;
-  }
-
-  /* ── FAB: RTL — move to BOTTOM-LEFT so it never overlaps the
-     right-side sidebar drawer or navigation elements ────────── */
+  /* FAB always bottom-RIGHT on mobile (LTR + RTL) so it never overlaps
+     the accessibility widget (bottom-left). Shrink + lift for safe area. */
+  .maya-root:not(.maya-root--voice-dock),
   [dir="rtl"] .maya-root:not(.maya-root--voice-dock) {
-    right: auto !important;
-    left: 16px !important;
-    bottom: 16px !important;
-    align-items: flex-start;   /* flip panel anchor to open left */
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 12px !important;
+    left: auto !important;
+    align-items: flex-end !important;
+    gap: 8px;
   }
 
-  /* ── Chat panel: use dvh so height shrinks when keyboard opens ──
-     dvh = dynamic viewport height (reacts to virtual keyboard).
-     The 72vh fallback is used by older browsers that don't support dvh. */
+  .maya-root:not(.maya-root--voice-dock) .maya-fab {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    box-shadow: 0 4px 16px rgba(37, 211, 102, 0.35);
+  }
+
+  .maya-root:not(.maya-root--voice-dock) .maya-fab-ring {
+    inset: -4px;
+  }
+
+  .maya-root:not(.maya-root--voice-dock) .maya-fab--orb {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Chat panel: use dvh so height shrinks when keyboard opens.
+     dvh = dynamic viewport height (reacts to virtual keyboard). */
   .maya-phone {
     width: calc(100vw - 32px);
     max-width: 380px;
@@ -1138,9 +1150,10 @@
     max-height: min(40vh, 400px);
   }
 
-  /* ── In RTL the panel opens to the right from the left FAB ── */
+  /* Panel opens upward from the right-side FAB (LTR + RTL on mobile) */
+  .maya-phone,
   [dir="rtl"] .maya-phone {
-    align-self: flex-start;
+    align-self: flex-end;
   }
 
   /* ── Prevent iOS/Android auto-zoom on input focus ──────────── */
