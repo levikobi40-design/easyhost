@@ -3629,6 +3629,69 @@ if create_engine and sessionmaker and declarative_base:
         finally:
             session.close()
 
+    def ensure_default_tenant_row():
+        """
+        Guarantee tenants.id = DEFAULT_TENANT_ID ('default') exists.
+
+        manual_rooms (and other tables) FK to tenants.id; production often uses
+        tenant_id='default' while SEED_DEMO_DATA is off, so this must run on
+        every boot — SQLite and PostgreSQL/Supabase alike.
+        """
+        if not ENGINE or not text:
+            return False
+        tenant_id = (DEFAULT_TENANT_ID or "default").strip() or "default"
+        created_at = datetime.now(timezone.utc).isoformat()
+        try:
+            with ENGINE.begin() as connection:
+                connection.execute(
+                    text(
+                        "INSERT INTO tenants (id, name, created_at) "
+                        "VALUES (:id, :name, :created_at) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {
+                        "id": tenant_id,
+                        "name": "Default Demo Tenant",
+                        "created_at": created_at,
+                    },
+                )
+            print(f"[ensure_default_tenant] ✅ tenant id={tenant_id!r} present", flush=True)
+            return True
+        except Exception as _edt_err:
+            # Fallback: ORM path (e.g. older SQLite without ON CONFLICT)
+            if SessionLocal and TenantModel:
+                session = SessionLocal()
+                try:
+                    if not session.query(TenantModel).filter_by(id=tenant_id).first():
+                        session.add(TenantModel(
+                            id=tenant_id,
+                            name="Default Demo Tenant",
+                            created_at=created_at,
+                        ))
+                        session.commit()
+                        print(
+                            f"[ensure_default_tenant] ✅ tenant id={tenant_id!r} "
+                            f"inserted via ORM fallback",
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"[ensure_default_tenant] ✅ tenant id={tenant_id!r} already present",
+                            flush=True,
+                        )
+                    return True
+                except Exception as _orm_err:
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
+                    print(f"[ensure_default_tenant] ⚠️  {_orm_err}", flush=True)
+                    return False
+                finally:
+                    session.close()
+            print(f"[ensure_default_tenant] ⚠️  {_edt_err}", flush=True)
+            return False
+
     def init_db():
         """
         Create all ORM-mapped tables (CREATE TABLE IF NOT EXISTS) and run
@@ -3642,6 +3705,8 @@ if create_engine and sessionmaker and declarative_base:
         print(f"[init_db] Initialising schema on {db_label}…")
         try:
             Base.metadata.create_all(ENGINE)
+            # Must run before any seed/insert into FK-dependent tables (manual_rooms, etc.)
+            ensure_default_tenant_row()
             ensure_property_tasks_table()
             try:
                 _seed_out = seed_active_properties(DEFAULT_TENANT_ID)
@@ -4061,6 +4126,10 @@ if ENGINE and Base:
         )
         print(f"[app.py] ⚡ Eager schema init on {_db_label_eager}…")
         Base.metadata.create_all(ENGINE)
+        try:
+            ensure_default_tenant_row()
+        except Exception as _edt_e:
+            print(f"[app.py] ensure_default_tenant (non-fatal): {_edt_e}", flush=True)
         ensure_staff_schema()
         try:
             ensure_manual_rooms_occupancy_column()
@@ -10159,6 +10228,18 @@ def load_leads_from_db():
 
 
 def ensure_default_tenants():
+    """
+    Always ensure the primary DEFAULT_TENANT_ID row exists (FK parent for
+    manual_rooms). Optional pilot tenants are only seeded when SEED_DEMO_DATA.
+    """
+    try:
+        if ensure_default_tenant_row:
+            ensure_default_tenant_row()
+    except NameError:
+        pass
+    except Exception as _e:
+        print(f"[ensure_default_tenants] default row note: {_e}", flush=True)
+
     if not SEED_DEMO_DATA:
         return
     if not SessionLocal or not TenantModel:
@@ -10166,7 +10247,7 @@ def ensure_default_tenants():
     session = SessionLocal()
     try:
         defaults = [
-            {"id": DEFAULT_TENANT_ID, "name": "Demo Hotels"},
+            {"id": DEFAULT_TENANT_ID, "name": "Default Demo Tenant"},
             {"id": "pilot-1", "name": "Pilot Group 1"},
             {"id": "pilot-2", "name": "Pilot Group 2"},
         ]
@@ -22359,8 +22440,8 @@ def _do_startup_init():
                         print(f"[startup] Christos pilot seed: {_boot_seed}", flush=True)
                     except Exception as _bs_e:
                         print(f"[startup] Christos pilot seed note: {_bs_e}", flush=True)
-                if SEED_DEMO_DATA:
-                    ensure_default_tenants()
+                # Always ensure tenants.id='default' (FK parent) — not gated on SEED_DEMO_DATA
+                ensure_default_tenants()
                 ensure_demo_user()
                 ensure_admin_from_env()
             except Exception as _db_err:
