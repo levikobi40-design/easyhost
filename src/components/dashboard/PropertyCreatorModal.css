@@ -220,3 +220,136 @@
     min-height: 180px;
   }
 }
+
+/* ── Quantity steppers (guests / rooms / beds / baths) ───────── */
+.property-qty-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 0.85rem;
+}
+
+.property-qty-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.property-qty-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.property-qty-label-icon {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.property-qty-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 4px;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  box-sizing: border-box;
+  /* Keep − left / + right even inside RTL property forms */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.property-qty-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #1a1a1a;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.property-qty-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.property-qty-btn:active:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.property-qty-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.property-qty-value {
+  flex: 1 1 auto;
+  min-width: 2rem;
+  text-align: center;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+@media (min-width: 769px) {
+  .property-qty-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .property-qty-stepper {
+    min-height: 44px;
+  }
+
+  .property-qty-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 768px) {
+  .property-qty-grid {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
+  .property-qty-stepper {
+    min-height: 52px;
+    padding: 4px 6px;
+  }
+
+  .property-qty-btn {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  .property-qty-value {
+    font-size: 1.25rem;
+  }
+}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  X, Home, DollarSign, Users, BedDouble, Bath,
+  X, Home, DollarSign, Users, BedDouble, Bath, Minus, Plus,
   Wifi, UtensilsCrossed, Shirt, Waves, Car, Tv, Monitor, AirVent, Wind,
   ShieldAlert, Heart, Baby, ChefHat,
 } from 'lucide-react';
@@ -89,6 +89,42 @@ const InputWithIcon = ({ Icon, placeholder, value, onChange, type = 'text', min 
     />
   </div>
 );
+
+/** Touch-friendly − / value / + stepper (mobile-first; also fine on desktop). */
+const QuantityStepper = ({ label, Icon, value, onChange, min = 1, max = 99 }) => {
+  const n = Math.max(min, Math.min(max, Number(value) || min));
+  const dec = () => onChange(Math.max(min, n - 1));
+  const inc = () => onChange(Math.min(max, n + 1));
+  return (
+    <div className="property-qty-field">
+      <label className="property-qty-label">
+        {Icon ? <Icon size={14} className="property-qty-label-icon" aria-hidden /> : null}
+        {label}
+      </label>
+      <div className="property-qty-stepper" role="group" aria-label={label}>
+        <button
+          type="button"
+          className="property-qty-btn"
+          onClick={dec}
+          disabled={n <= min}
+          aria-label={`${label}: הפחת`}
+        >
+          <Minus size={18} strokeWidth={2.5} aria-hidden />
+        </button>
+        <span className="property-qty-value" aria-live="polite">{n}</span>
+        <button
+          type="button"
+          className="property-qty-btn"
+          onClick={inc}
+          disabled={n >= max}
+          aria-label={`${label}: הוסף`}
+        >
+          <Plus size={18} strokeWidth={2.5} aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initialProperty }) {
   const [name, setName] = useState('');
@@ -406,63 +442,39 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
             />
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-[#4b5563]">
-                <Users size={14} className="text-[#6b7280]" />
-                אורחים
-              </label>
-              <InputWithIcon
-                Icon={Users}
-                placeholder="2"
-                value={maxGuests}
-                onChange={(e) => setMaxGuests(Number(e.target.value) || 2)}
-                type="number"
-                min={1}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-[#4b5563]">
-                <BedDouble size={14} className="text-[#6b7280]" />
-                חדרים
-              </label>
-              <InputWithIcon
-                Icon={BedDouble}
-                placeholder="1"
-                value={bedrooms}
-                onChange={(e) => setBedrooms(Number(e.target.value) || 1)}
-                type="number"
-                min={1}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-[#4b5563]">
-                <BedDouble size={14} className="text-[#6b7280]" />
-                מיטות
-              </label>
-              <InputWithIcon
-                Icon={BedDouble}
-                placeholder="1"
-                value={beds}
-                onChange={(e) => setBeds(Number(e.target.value) || 1)}
-                type="number"
-                min={1}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-[#4b5563]">
-                <Bath size={14} className="text-[#6b7280]" />
-                אמבטיות
-              </label>
-              <InputWithIcon
-                Icon={Bath}
-                placeholder="1"
-                value={bathrooms}
-                onChange={(e) => setBathrooms(Number(e.target.value) || 1)}
-                type="number"
-                min={1}
-              />
-            </div>
+          <div className="property-qty-grid">
+            <QuantityStepper
+              label="אורחים"
+              Icon={Users}
+              value={maxGuests}
+              onChange={setMaxGuests}
+              min={1}
+              max={50}
+            />
+            <QuantityStepper
+              label="חדרים"
+              Icon={BedDouble}
+              value={bedrooms}
+              onChange={setBedrooms}
+              min={1}
+              max={30}
+            />
+            <QuantityStepper
+              label="מיטות"
+              Icon={BedDouble}
+              value={beds}
+              onChange={setBeds}
+              min={1}
+              max={50}
+            />
+            <QuantityStepper
+              label="אמבטיות"
+              Icon={Bath}
+              value={bathrooms}
+              onChange={setBathrooms}
+              min={1}
+              max={20}
+            />
           </div>
 
           {/* Amenities — 60x60px, icon on top, 5 cols desktop / 4 mobile */}
