@@ -7,7 +7,7 @@
    ════════════════════════════════════════════════════════════════ */
 
 const APP_NAME    = 'easyhost-ai';
-const CACHE_VER   = 'v6';                          // bump: Maya home-screen logo
+const CACHE_VER   = 'v7';                          // bump: Maya photo home-screen icons
 const SHELL_CACHE = `${APP_NAME}-shell-${CACHE_VER}`;
 const DATA_CACHE  = `${APP_NAME}-data-${CACHE_VER}`;
 
@@ -16,7 +16,11 @@ const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/maya-logo.svg',
+  '/maya_source.jpg',
+  '/maya-icon.png',
+  '/maya-icon-180.png',
+  '/maya-icon-192.png',
+  '/maya-icon-512.png',
   '/icon.svg',
   '/icon-maskable.svg',
   '/favicon.ico',
@@ -167,8 +171,8 @@ self.addEventListener('push', event => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'EasyHost AI', {
       body:    data.body  || '⚡ Mission update',
-      icon:    '/maya-logo.svg',
-      badge:   '/maya-logo.svg',
+      icon:    '/maya-icon-192.png',
+      badge:   '/maya-icon-192.png',
       tag:     data.tag   || 'easyhost-notif',
       renotify: true,
       vibrate: [100, 50, 100],
