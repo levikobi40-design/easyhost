@@ -908,15 +908,16 @@ def _purge_legacy_demo_properties(tenant_id=DEFAULT_TENANT_ID):
 
 
 def _christos_pilot_seed_needed(tenant_id=DEFAULT_TENANT_ID):
-    """True when any of the 3 Christos Corfu pilot properties are missing for this tenant."""
+    """True when any Christos Corfu pilot property id is missing (PK is global on manual_rooms.id)."""
     if not SessionLocal or not ManualRoomModel:
         return False
-    tid = _coerce_demo_tenant_id(tenant_id)
     session = SessionLocal()
     try:
         existing = {
             str(r[0])
-            for r in session.query(ManualRoomModel.id).filter_by(tenant_id=tid).all()
+            for r in session.query(ManualRoomModel.id)
+            .filter(ManualRoomModel.id.in_(list(CHRISTOS_PROPERTY_IDS)))
+            .all()
             if r and r[0]
         }
         return not set(CHRISTOS_PROPERTY_IDS).issubset(existing)
@@ -924,6 +925,94 @@ def _christos_pilot_seed_needed(tenant_id=DEFAULT_TENANT_ID):
         return False
     finally:
         session.close()
+
+
+def _upsert_christos_manual_room(session, row, tenant_id):
+    """
+    Insert-or-update a Christos pilot property by primary key ``id``.
+
+    Existence must be checked by ``id`` alone (not tenant_id): manual_rooms_pkey is
+    global, so a row owned by another/default tenant still blocks INSERT.
+    Uses PostgreSQL/SQLite ON CONFLICT when available; falls back to select+merge.
+    """
+    rid = (row.get("id") or "").strip()
+    if not rid:
+        return False
+    payload = {
+        "id": rid,
+        "tenant_id": tenant_id,
+        "owner_id": None,
+        "name": row.get("name") or rid,
+        "description": row.get("description") or "",
+        "photo_url": (row.get("photo_url") or row.get("image_url") or "").strip(),
+        "amenities": json.dumps(row.get("amenities") or []),
+        "status": "active",
+        "created_at": row.get("created_at") or now_iso(),
+        "max_guests": int(row.get("max_guests") or 2),
+        "bedrooms": int(row.get("bedrooms") or 1),
+        "beds": int(row.get("beds") or 1),
+        "bathrooms": int(row.get("bathrooms") or 1),
+        "occupancy_rate": float(row.get("occupancy_rate") or 80),
+    }
+    update_cols = {
+        "tenant_id": tenant_id,
+        "name": payload["name"],
+        "status": "active",
+        "description": payload["description"],
+        "photo_url": payload["photo_url"],
+        "amenities": payload["amenities"],
+        "max_guests": payload["max_guests"],
+        "bedrooms": payload["bedrooms"],
+        "beds": payload["beds"],
+        "bathrooms": payload["bathrooms"],
+        "occupancy_rate": payload["occupancy_rate"],
+    }
+
+    # Prefer dialect UPSERT (safe under concurrent boot seeds).
+    try:
+        bind = session.get_bind() if hasattr(session, "get_bind") else session.bind
+        dialect = (bind.dialect.name if bind is not None else "") or ""
+    except Exception:
+        dialect = ""
+
+    if dialect == "postgresql" and text:
+        try:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            stmt = pg_insert(ManualRoomModel.__table__).values(**payload)
+            stmt = stmt.on_conflict_do_update(index_elements=["id"], set_=update_cols)
+            session.execute(stmt)
+            return True
+        except Exception as _pg_up:
+            print(f"[seed_active_properties] pg upsert fallback for {rid}: {_pg_up}", flush=True)
+    elif dialect == "sqlite" and text:
+        try:
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+            stmt = sqlite_insert(ManualRoomModel.__table__).values(**payload)
+            stmt = stmt.on_conflict_do_update(index_elements=["id"], set_=update_cols)
+            session.execute(stmt)
+            return True
+        except Exception as _sq_up:
+            print(f"[seed_active_properties] sqlite upsert fallback for {rid}: {_sq_up}", flush=True)
+
+    # ORM fallback: select by PK, then update or insert (savepoint-safe).
+    existing = session.query(ManualRoomModel).filter_by(id=rid).first()
+    if existing:
+        for k, v in update_cols.items():
+            setattr(existing, k, v)
+        return False
+    try:
+        with session.begin_nested():
+            session.add(ManualRoomModel(**payload))
+            session.flush()
+        return True
+    except IntegrityError:
+        existing = session.query(ManualRoomModel).filter_by(id=rid).first()
+        if existing:
+            for k, v in update_cols.items():
+                setattr(existing, k, v)
+        return False
 
 
 def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
@@ -940,9 +1029,12 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
 
     session = SessionLocal()
     try:
+        # PK-level set — not filtered by tenant_id (avoids UniqueViolation on re-seed).
         existing_ids = {
             r[0]
-            for r in session.query(ManualRoomModel.id).filter_by(tenant_id=tenant_id).all()
+            for r in session.query(ManualRoomModel.id)
+            .filter(ManualRoomModel.id.in_(list(christos_ids)))
+            .all()
         }
         for row in _christos_corfu_portfolio_seed():
             if not isinstance(row, dict):
@@ -950,32 +1042,18 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
             rid = row.get("id")
             if not rid or rid not in christos_ids:
                 continue
-            if rid not in existing_ids:
-                session.add(
-                    ManualRoomModel(
-                        id=rid,
-                        tenant_id=tenant_id,
-                        owner_id=None,
-                        name=row["name"],
-                        description=row.get("description") or "",
-                        photo_url=(row.get("photo_url") or row.get("image_url") or "").strip(),
-                        amenities=json.dumps(row.get("amenities") or []),
-                        status="active",
-                        created_at=row.get("created_at") or now_iso(),
-                        max_guests=int(row.get("max_guests") or 2),
-                        bedrooms=int(row.get("bedrooms") or 1),
-                        beds=int(row.get("beds") or 1),
-                        bathrooms=int(row.get("bathrooms") or 1),
-                        occupancy_rate=float(row.get("occupancy_rate") or 80),
-                    )
-                )
-                props_added += 1
-                existing_ids.add(rid)
-            else:
-                ob = session.query(ManualRoomModel).filter_by(id=rid, tenant_id=tenant_id).first()
-                if ob:
-                    ob.name = row["name"]
-                    ob.status = "active"
+            was_new = rid not in existing_ids
+            try:
+                _upsert_christos_manual_room(session, row, tenant_id)
+                if was_new:
+                    props_added += 1
+                    existing_ids.add(rid)
+            except Exception as _row_e:
+                print(f"[seed_active_properties] upsert {rid}: {_row_e}", flush=True)
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
         session.commit()
     except Exception as e:
         session.rollback()
@@ -1950,11 +2028,21 @@ except ImportError:
     SocketIO = None  # type: ignore[misc, assignment]
     _socketio_emit = None
 
+def _socketio_async_mode():
+    """Prefer eventlet under Gunicorn; fall back to threading for local/dev."""
+    try:
+        import eventlet  # noqa: F401
+
+        return "eventlet"
+    except ImportError:
+        return "threading"
+
+
 socketio = (
     SocketIO(
         app,
         cors_allowed_origins="*",
-        async_mode="threading",
+        async_mode=_socketio_async_mode(),
         path="/socket.io",
         logger=False,
         engineio_logger=False,
