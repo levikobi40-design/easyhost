@@ -7,7 +7,7 @@
    ════════════════════════════════════════════════════════════════ */
 
 const APP_NAME    = 'easyhost-ai';
-const CACHE_VER   = 'v5';                          // bump: force drop bundles that pointed at :1000
+const CACHE_VER   = 'v6';                          // bump: Maya home-screen logo
 const SHELL_CACHE = `${APP_NAME}-shell-${CACHE_VER}`;
 const DATA_CACHE  = `${APP_NAME}-data-${CACHE_VER}`;
 
@@ -16,6 +16,7 @@ const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/maya-logo.svg',
   '/icon.svg',
   '/icon-maskable.svg',
   '/favicon.ico',
@@ -166,8 +167,8 @@ self.addEventListener('push', event => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'EasyHost AI', {
       body:    data.body  || '⚡ Mission update',
-      icon:    '/icon.svg',
-      badge:   '/icon.svg',
+      icon:    '/maya-logo.svg',
+      badge:   '/maya-logo.svg',
       tag:     data.tag   || 'easyhost-notif',
       renotify: true,
       vibrate: [100, 50, 100],
