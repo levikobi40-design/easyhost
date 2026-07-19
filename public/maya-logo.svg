@@ -1,94 +1,153 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Maya - Your Personal Host">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 580" role="img" aria-label="Maya - Your Personal Host">
   <defs>
-    <radialGradient id="mayaBg" cx="32%" cy="22%" r="82%">
-      <stop offset="0%" stop-color="#0d1b2a"/>
-      <stop offset="100%" stop-color="#060a14"/>
-    </radialGradient>
-    <linearGradient id="mayaGreen" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00ff88"/>
-      <stop offset="100%" stop-color="#00c875"/>
+    <linearGradient id="mlHouse" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2ec4b6"/>
+      <stop offset="55%" stop-color="#1fa8a0"/>
+      <stop offset="100%" stop-color="#3d8fd4"/>
     </linearGradient>
-    <linearGradient id="mayaSkin" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#f6d7c3"/>
-      <stop offset="100%" stop-color="#e8b89a"/>
+    <linearGradient id="mlSkin" x1="0%" y1="0%" x2="20%" y2="100%">
+      <stop offset="0%" stop-color="#ffd2ad"/>
+      <stop offset="100%" stop-color="#f0b085"/>
     </linearGradient>
-    <linearGradient id="mayaHair" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2a1a12"/>
-      <stop offset="100%" stop-color="#1a100c"/>
+    <linearGradient id="mlLid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f4f6f8"/>
+      <stop offset="100%" stop-color="#d8dee6"/>
     </linearGradient>
-    <linearGradient id="mayaBlush" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#f4a7a0" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="#f4a7a0" stop-opacity="0"/>
+    <linearGradient id="mlBlazer" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d3558"/>
+      <stop offset="100%" stop-color="#06243d"/>
     </linearGradient>
-    <filter id="mayaGlow" x="-25%" y="-25%" width="150%" height="150%">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="mayaSoft" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="16" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <clipPath id="mayaRound">
-      <rect width="512" height="512" rx="112" ry="112"/>
+    <clipPath id="mlBadgeClip">
+      <circle cx="256" cy="210" r="168"/>
     </clipPath>
   </defs>
 
-  <g clip-path="url(#mayaRound)">
-    <rect width="512" height="512" fill="url(#mayaBg)"/>
-    <circle cx="120" cy="90" r="160" fill="#6366f1" opacity="0.08"/>
-    <circle cx="400" cy="420" r="190" fill="#00c875" opacity="0.10"/>
+  <!-- Transparent / white canvas -->
+  <rect width="512" height="580" fill="#ffffff"/>
 
-    <circle cx="256" cy="210" r="118" fill="#00c875" opacity="0.12" filter="url(#mayaSoft)"/>
-    <circle cx="256" cy="210" r="96" fill="none" stroke="url(#mayaGreen)" stroke-width="2.5" opacity="0.55"/>
+  <!-- Blue circular badge -->
+  <circle cx="256" cy="210" r="168" fill="#3581bf"/>
 
-    <ellipse cx="256" cy="390" rx="118" ry="52" fill="#0f766e" opacity="0.95"/>
-    <path d="M150 360 C170 300 210 278 256 278 C302 278 342 300 362 360 L362 430 C330 455 282 470 256 470 C230 470 182 455 150 430 Z" fill="#115e59"/>
-    <path d="M210 318 C230 300 282 300 302 318 L286 340 C270 326 242 326 226 340 Z" fill="url(#mayaGreen)" opacity="0.85" filter="url(#mayaGlow)"/>
+  <g clip-path="url(#mlBadgeClip)">
+    <!-- Soft highlight on badge -->
+    <ellipse cx="200" cy="120" rx="90" ry="60" fill="#4a96d4" opacity="0.35"/>
 
-    <ellipse cx="256" cy="168" rx="92" ry="98" fill="url(#mayaHair)"/>
-    <ellipse cx="168" cy="210" rx="34" ry="70" fill="url(#mayaHair)"/>
-    <ellipse cx="344" cy="210" rx="34" ry="70" fill="url(#mayaHair)"/>
+    <!-- Hair back / bun mass -->
+    <ellipse cx="256" cy="118" rx="78" ry="72" fill="#1a2f45"/>
+    <ellipse cx="256" cy="78" rx="36" ry="30" fill="#152838"/>
+    <!-- Bun highlight ring -->
+    <ellipse cx="256" cy="74" rx="22" ry="18" fill="none" stroke="#243f5c" stroke-width="4"/>
 
-    <rect x="232" y="268" width="48" height="36" rx="14" fill="url(#mayaSkin)"/>
+    <!-- Side hair -->
+    <path d="M178 150 C168 190 170 230 182 268 C190 220 192 180 200 150 Z" fill="#1a2f45"/>
+    <path d="M334 150 C344 190 342 230 330 268 C322 220 320 180 312 150 Z" fill="#1a2f45"/>
 
-    <ellipse cx="256" cy="200" rx="78" ry="88" fill="url(#mayaSkin)"/>
+    <!-- Neck -->
+    <path d="M232 250 C236 278 240 292 256 294 C272 292 276 278 280 250 Z" fill="url(#mlSkin)"/>
 
-    <path d="M178 188 C180 120 210 95 256 92 C302 95 332 120 334 188 C318 150 292 138 256 136 C220 138 194 150 178 188 Z" fill="url(#mayaHair)"/>
-    <path d="M190 150 C210 128 240 120 256 120 C272 120 302 128 322 150 C300 142 278 148 256 148 C234 148 212 142 190 150 Z" fill="#3a2418"/>
+    <!-- Face -->
+    <ellipse cx="256" cy="188" rx="68" ry="78" fill="url(#mlSkin)"/>
 
-    <ellipse cx="205" cy="220" rx="16" ry="9" fill="url(#mayaBlush)"/>
-    <ellipse cx="307" cy="220" rx="16" ry="9" fill="url(#mayaBlush)"/>
+    <!-- Side-swept fringe -->
+    <path d="M188 168 C190 110 220 88 256 86 C292 88 322 110 324 168
+             C308 128 286 118 256 116 C226 118 204 128 188 168 Z" fill="#1a2f45"/>
+    <path d="M200 140 C220 118 245 112 268 114 C290 116 310 130 318 152
+             C296 136 274 132 252 134 C230 136 212 140 200 140 Z" fill="#152838"/>
+    <!-- Fringe sweep to right -->
+    <path d="M230 120 C250 108 280 112 305 138 C285 128 260 126 235 132 Z" fill="#1f364f"/>
 
-    <ellipse cx="224" cy="198" rx="11" ry="13" fill="#1a1a1a"/>
-    <ellipse cx="288" cy="198" rx="11" ry="13" fill="#1a1a1a"/>
-    <circle cx="227" cy="194" r="3.5" fill="#ffffff" opacity="0.9"/>
-    <circle cx="291" cy="194" r="3.5" fill="#ffffff" opacity="0.9"/>
+    <!-- Ears -->
+    <ellipse cx="188" cy="198" rx="12" ry="16" fill="#f0b085"/>
+    <ellipse cx="324" cy="198" rx="12" ry="16" fill="#f0b085"/>
+    <!-- Pearl studs -->
+    <circle cx="188" cy="210" r="4.5" fill="#ffffff"/>
+    <circle cx="324" cy="210" r="4.5" fill="#ffffff"/>
 
-    <path d="M208 178 Q224 168 240 176" fill="none" stroke="#2a1a12" stroke-width="4" stroke-linecap="round"/>
-    <path d="M272 176 Q288 168 304 178" fill="none" stroke="#2a1a12" stroke-width="4" stroke-linecap="round"/>
+    <!-- Brows -->
+    <path d="M214 168 Q232 158 248 166" fill="none" stroke="#2a4058" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M264 166 Q280 158 298 168" fill="none" stroke="#2a4058" stroke-width="3.2" stroke-linecap="round"/>
 
-    <path d="M256 208 L250 228 Q256 232 262 228 Z" fill="#d9a888" opacity="0.7"/>
+    <!-- Eyes -->
+    <ellipse cx="230" cy="188" rx="9" ry="10" fill="#2c3e50"/>
+    <ellipse cx="282" cy="188" rx="9" ry="10" fill="#2c3e50"/>
+    <circle cx="233" cy="185" r="2.8" fill="#ffffff" opacity="0.95"/>
+    <circle cx="285" cy="185" r="2.8" fill="#ffffff" opacity="0.95"/>
 
-    <path d="M230 242 Q256 262 282 242" fill="none" stroke="#c46b6b" stroke-width="4.5" stroke-linecap="round"/>
+    <!-- Nose -->
+    <path d="M256 196 L250 214 Q256 218 262 214 Z" fill="#e8a87a" opacity="0.85"/>
 
-    <path d="M338 170 C360 190 364 230 348 258" fill="none" stroke="url(#mayaGreen)" stroke-width="6" stroke-linecap="round" filter="url(#mayaGlow)"/>
-    <circle cx="346" cy="268" r="9" fill="url(#mayaGreen)" filter="url(#mayaGlow)"/>
-    <circle cx="346" cy="268" r="4" fill="#060a14"/>
+    <!-- Smile -->
+    <path d="M232 228 Q256 246 280 228" fill="none" stroke="#c45c5c" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Soft blush -->
+    <ellipse cx="214" cy="214" rx="12" ry="7" fill="#f2a090" opacity="0.35"/>
+    <ellipse cx="298" cy="214" rx="12" ry="7" fill="#f2a090" opacity="0.35"/>
 
-    <g fill="url(#mayaGreen)" filter="url(#mayaGlow)" opacity="0.95">
-      <circle cx="360" cy="130" r="4"/>
-      <circle cx="378" cy="148" r="2.5"/>
-      <circle cx="150" cy="140" r="3"/>
+    <!-- Teal round-neck top -->
+    <path d="M210 286 C220 268 240 260 256 260 C272 260 292 268 302 286
+             L318 340 L194 340 Z" fill="#1f9a96"/>
+    <ellipse cx="256" cy="268" rx="28" ry="10" fill="#178f8b"/>
+
+    <!-- Deep navy / teal blazer -->
+    <path d="M140 300 C150 250 190 240 210 250 L226 300 L200 380 L120 380 Z" fill="url(#mlBlazer)"/>
+    <path d="M372 300 C362 250 322 240 302 250 L286 300 L312 380 L392 380 Z" fill="url(#mlBlazer)"/>
+    <!-- Lapels -->
+    <path d="M210 250 L236 292 L218 310 L198 278 Z" fill="#0a2d4d"/>
+    <path d="M302 250 L276 292 L294 310 L314 278 Z" fill="#0a2d4d"/>
+    <!-- Blazer body lower -->
+    <path d="M198 300 L226 292 L256 310 L286 292 L314 300 L330 390 L182 390 Z" fill="#0c3356"/>
+    <!-- Lapel highlights -->
+    <path d="M214 256 L232 288" stroke="#1a4a72" stroke-width="2" opacity="0.5"/>
+    <path d="M298 256 L280 288" stroke="#1a4a72" stroke-width="2" opacity="0.5"/>
+
+    <!-- Open laptop (lid facing viewer) -->
+    <g transform="translate(256,318)">
+      <!-- Lid -->
+      <path d="M-108 -8 L-96 -78 L96 -78 L108 -8 Z" fill="url(#mlLid)" stroke="#b8c0cc" stroke-width="2"/>
+      <!-- Lid inner bevel -->
+      <path d="M-90 -70 L90 -70 L98 -14 L-98 -14 Z" fill="#e8edf2"/>
+      <!-- Base / keyboard deck -->
+      <path d="M-118 0 L118 0 L128 28 L-128 28 Z" fill="#eef1f5" stroke="#c5ccd6" stroke-width="1.5"/>
+      <rect x="-100" y="6" width="200" height="14" rx="2" fill="#d5dbe3"/>
+      <!-- Trackpad hint -->
+      <rect x="-28" y="10" width="56" height="8" rx="1.5" fill="#c8d0da"/>
+
+      <!-- Geometric house / AI icon on lid -->
+      <g transform="translate(0,-44) scale(0.92)">
+        <!-- House outline -->
+        <path d="M0 -34 L28 -10 L28 22 L-28 22 L-28 -10 Z"
+              fill="none" stroke="url(#mlHouse)" stroke-width="5.5" stroke-linejoin="round"/>
+        <!-- Roof peak accent -->
+        <path d="M-4 -30 L0 -36 L4 -30" fill="none" stroke="url(#mlHouse)" stroke-width="4" stroke-linecap="round"/>
+        <!-- Circuit / node inside -->
+        <circle cx="0" cy="2" r="7" fill="none" stroke="#2ec4b6" stroke-width="3.5"/>
+        <circle cx="0" cy="2" r="2.5" fill="#2ec4b6"/>
+        <line x1="0" y1="-5" x2="0" y2="-18" stroke="#3d8fd4" stroke-width="3" stroke-linecap="round"/>
+        <line x1="-6" y1="6" x2="-16" y2="14" stroke="#2ec4b6" stroke-width="3" stroke-linecap="round"/>
+        <line x1="6" y1="6" x2="16" y2="14" stroke="#3d8fd4" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="0" cy="-18" r="2.2" fill="#3d8fd4"/>
+        <circle cx="-16" cy="14" r="2.2" fill="#2ec4b6"/>
+        <circle cx="16" cy="14" r="2.2" fill="#3d8fd4"/>
+      </g>
     </g>
 
-    <rect x="36" y="400" width="440" height="84" rx="20" fill="rgba(6,10,20,0.72)"/>
-    <text x="256" y="434" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="22" font-weight="800" letter-spacing="0.2" fill="#ffffff">Maya - Your Personal Host</text>
-    <text x="256" y="464" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="14" font-weight="600" letter-spacing="0.4" fill="#00c875">Smart &amp; Personal Property Management</text>
+    <!-- Hands on keyboard -->
+    <ellipse cx="196" cy="348" rx="28" ry="14" fill="url(#mlSkin)" transform="rotate(-12 196 348)"/>
+    <ellipse cx="316" cy="348" rx="28" ry="14" fill="url(#mlSkin)" transform="rotate(12 316 348)"/>
+    <!-- Fingers suggestion -->
+    <path d="M178 346 C186 340 198 340 208 346" fill="none" stroke="#e8a87a" stroke-width="2" opacity="0.7"/>
+    <path d="M304 346 C314 340 326 340 334 346" fill="none" stroke="#e8a87a" stroke-width="2" opacity="0.7"/>
   </g>
+
+  <!-- Badge rim (crisp edge over clipped content) -->
+  <circle cx="256" cy="210" r="168" fill="none" stroke="#2f74b0" stroke-width="1" opacity="0.35"/>
+
+  <!-- English vector text (replaces EasyHost AI / Hebrew) -->
+  <text x="256" y="430" text-anchor="middle"
+        font-family="Montserrat, Lato, Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="28" font-weight="800" fill="#0a2f56"
+        letter-spacing="-0.3">Maya - Your Personal Host</text>
+  <text x="256" y="468" text-anchor="middle"
+        font-family="Montserrat, Lato, Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="15" font-weight="500" fill="#1f9a96"
+        letter-spacing="0.2">Smart &amp; Personal Property Management</text>
 </svg>
