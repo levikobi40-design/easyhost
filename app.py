@@ -5000,7 +5000,11 @@ def _maya_invalidate_stale_caches(tenant_id):
 
 
 def _maya_active_property_ids(session, tenant_id):
-    """Step 1 — IDs of properties that still exist in manual_rooms (not soft-deleted)."""
+    """Step 1 — IDs of properties that still exist in manual_rooms (not soft-deleted).
+
+    Returns every live property for the tenant (Christos + user-created), so tasks
+    for arbitrary rooms/units are not dropped when Christos seeds are present.
+    """
     if not ManualRoomModel:
         return []
     _inactive = frozenset(("deleted", "removed", "archived", "inactive"))
@@ -5017,9 +5021,10 @@ def _maya_active_property_ids(session, tenant_id):
         if st in _inactive:
             continue
         ids.append(pid)
-    christos = [i for i in ids if i in CHRISTOS_PROPERTY_IDS]
-    if christos:
-        return christos
+    # Always include Christos pilot IDs even if a seed row is momentarily missing
+    for cid in CHRISTOS_PROPERTY_IDS:
+        if cid not in ids:
+            ids.append(cid)
     return ids
 
 
@@ -5043,15 +5048,21 @@ def _property_tasks_query_for_maya(session, tenant_id):
 
 
 def _christos_dashboard_tasks_query(session, tenant_id):
-    """GET /api/tasks — Christos properties + persisted maya/manual rows."""
+    """GET /api/tasks — all live properties + maya/manual/booking rows (any property_id)."""
     q = _property_tasks_query_for_tenant(session, tenant_id)
     if q is None:
         return None
-    christos_list = list(CHRISTOS_PROPERTY_IDS)
+    active_ids = list(_maya_active_property_ids(session, tenant_id) or [])
+    if not active_ids:
+        active_ids = list(CHRISTOS_PROPERTY_IDS)
     return q.filter(
         or_(
-            PropertyTaskModel.property_id.in_(christos_list),
-            PropertyTaskModel.source.in_([TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL]),
+            PropertyTaskModel.property_id.in_(active_ids),
+            PropertyTaskModel.source.in_([
+                TASK_SOURCE_MAYA,
+                TASK_SOURCE_MANUAL,
+                TASK_SOURCE_BOOKING,
+            ]),
         )
     )
 
@@ -16497,10 +16508,11 @@ def _is_worker_open_task_status(raw_status):
 
 
 def _query_worker_portal_tasks(session, tenant_id, worker_filter=None, active_only=False):
-    """Open tasks — Greece Corfu pilot scope (same property IDs as manager TaskCalendar)."""
-    valid_ids = set(CHRISTOS_PROPERTY_IDS)
+    """Open tasks for any live property / room unit (not hard-locked to Christos IDs)."""
     rooms = list_manual_rooms(tenant_id, owner_id=f"demo-{tenant_id}")
     room_map = {r.get("id"): r for r in rooms if isinstance(r, dict) and r.get("id")}
+    valid_ids = set(room_map.keys()) | set(CHRISTOS_PROPERTY_IDS)
+    # Also accept plain room numbers used as property_id (e.g. "100") when present on tasks
     staff_cache = {}
     if PropertyStaffModel:
         for pid in valid_ids:
@@ -16528,7 +16540,13 @@ def _query_worker_portal_tasks(session, tenant_id, worker_filter=None, active_on
         if (raw_status or "").strip().lower() == "archived":
             continue
         pid = (getattr(r, "property_id", None) or "").strip()
-        if not pid or pid not in valid_ids:
+        # Keep tasks for live properties OR free-form room/unit ids (digits / unit labels)
+        if pid and pid not in valid_ids:
+            if not (pid.isdigit() or re.match(r"^(room|חדר|unit|יחידה)[-_]?\d+$", pid, re.I)):
+                src = (getattr(r, "source", None) or "").strip().lower()
+                if src not in (TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL, TASK_SOURCE_BOOKING, "guest"):
+                    continue
+        if not pid:
             continue
         prop = room_map.get(pid) if pid else None
         ctx = build_property_context(prop)
@@ -16555,14 +16573,16 @@ def _query_worker_portal_tasks(session, tenant_id, worker_filter=None, active_on
             desc_val = ttype_raw if ttype_raw else ""
         ttype = (getattr(r, "task_type", None) or "").strip() or desc_val
         esc, pri_f, wnotes = _task_escalation_fields(r)
+        room_num = _task_room_number_from_text(raw_desc, wnotes)
+        room_label_display = f"חדר {room_num}" if room_num else room_label
         all_open.append({
             "id": r.id,
             "property_id": pid,
             "property_name": room_label,
             "title": desc_val,
             "room_id": pid,
-            "room": room_label,
-            "room_number": room_label,
+            "room": room_label_display,
+            "room_number": room_num or room_label_display,
             "task_type": ttype,
             "assigned_to": assigned_to,
             "description": desc_val,
@@ -16810,8 +16830,9 @@ def property_tasks_api():
                 # Fetch tasks for this tenant — do NOT filter by room_ids because manual /test-task
                 # tasks use plain room numbers ("302") that are never in the UUID room_ids
                 # list, which caused them to be silently dropped.
-                _portfolio = (request.args.get("portfolio") or "").strip().lower()
-                if raw_get and not worker_filter and _portfolio != "all":
+                # Default: all tenant tasks. Optional portfolio=corfu keeps Christos-scoped view.
+                _portfolio = (request.args.get("portfolio") or "all").strip().lower()
+                if raw_get and not worker_filter and _portfolio in ("corfu", "christos", "greece", "pilot"):
                     _pq = _christos_dashboard_tasks_query(session, tenant_id)
                 else:
                     _pq = _property_tasks_query_for_tenant(session, tenant_id)
@@ -17101,9 +17122,6 @@ def property_tasks_api():
             prop_i18n = _christos_property_i18n_ref(property_id)
             if prop_i18n and not (property_name or "").strip():
                 property_name = prop_i18n
-        if property_id == "bazaar-jaffa-hotel" and "cleaning" in task_type.lower() and "יחידה" not in full_desc:
-            u = (abs(hash(task_id)) % 10) + 1
-            full_desc = f"{full_desc} — unit {u}/10"
         priority = (data.get("priority") or "normal").strip().lower()
         if priority not in ("normal", "high"):
             priority = "normal"
@@ -18410,7 +18428,8 @@ def api_worker_tasks_compat():
     )
     worker_filter = _apply_staff_task_scope(identity, worker_filter)
     active_only = (request.args.get("active_only") or "").strip().lower() in ("1", "true", "yes")
-    portfolio = (request.args.get("portfolio") or "corfu").strip().lower()
+    # Default "all" so tasks for any live property / room unit are not dropped.
+    portfolio = (request.args.get("portfolio") or "all").strip().lower()
 
     if not SessionLocal or not PropertyTaskModel:
         merged = _merge_initial_and_memory_tasks()
@@ -18426,6 +18445,7 @@ def api_worker_tasks_compat():
         tasks = _query_worker_portal_tasks(
             session, tenant_id, worker_filter=worker_filter, active_only=active_only
         )
+        # Optional Corfu-only view. portfolio=all|active keeps every live property / room unit.
         if portfolio in ("corfu", "christos", "greece", "pilot"):
             tasks = [
                 t for t in tasks

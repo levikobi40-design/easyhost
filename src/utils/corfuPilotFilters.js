@@ -25,7 +25,15 @@ export function filterCorfuPilotTasks(tasks) {
   return tasks.filter((row) => {
     if (!row || typeof row !== 'object') return false;
     if ((row.status || '').toLowerCase() === 'archived') return false;
-    return isChristosCorfuTask(row);
+    // Keep Christos pilot tasks and any other live property / room-unit task.
+    // Only drop known demo portfolio rows (Bazaar / Leonardo / WeWork seeds).
+    if (isChristosCorfuTask(row)) return true;
+    const pid = String(row?.property_id || '').trim();
+    if (!pid) return false;
+    if (isDemoPropertyRow({ id: pid, name: row?.property_name || row?.propertyName })) {
+      return false;
+    }
+    return true;
   });
 }
 

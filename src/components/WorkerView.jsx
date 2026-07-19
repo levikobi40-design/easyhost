@@ -1253,7 +1253,7 @@ export default function WorkerView() {
     if (!silent) setLoading(true);
     setSpin(true);
     try {
-      const url = `${API_URL}/worker/tasks?worker_id=${encodeURIComponent(workerName)}&portfolio=corfu`;
+      const url = `${API_URL}/worker/tasks?worker_id=${encodeURIComponent(workerName)}&portfolio=all`;
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 20000);
       const res = await fetch(url, { signal: ctrl.signal });

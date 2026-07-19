@@ -36,7 +36,8 @@ export default function TaskCalendar() {
   } = useMission();
   const { properties } = useProperties();
   const [filter, setFilter] = useState('all'); // 'all' | 'pending' | 'completed'
-  const [managerPortfolioFilter, setManagerPortfolioFilter] = useState(PORTFOLIO_CORFU);
+  // Default to all active properties so tasks for any property/room unit stay visible.
+  const [managerPortfolioFilter, setManagerPortfolioFilter] = useState(PORTFOLIO_ACTIVE);
   const [propertyFilter, setPropertyFilter] = useState('all'); // 'all' | property name
   const [reportLoading, setReportLoading] = useState(false);
   const [managementLoading, setManagementLoading] = useState(false);
