@@ -69,9 +69,12 @@ export function buildMayaPersonaWelcomeHe(guestName, mode, hotelName) {
     }
     return `היי ${g}, ברוך הבא ל-ROOMS. צריכים משהו לחדר הישיבות?`;
   }
-  const h = (hotelName || '').trim() || 'המלון';
+  const h = (hotelName || '').trim();
   if (/בזאר|bazaar/i.test(h)) {
     return `ברוך הבא ${g}, איך אני יכולה לעזור לך במלון בזאר?`;
   }
-  return `ברוך הבא ${g}, איך אני יכולה לעזור לך ב${h}?`;
+  if (h) {
+    return `ברוך הבא ${g}, איך אני יכולה לעזור לך ב${h}?`;
+  }
+  return `ברוך הבא ${g}, מאיה והצוות לשירותך — איך אפשר לעזור?`;
 }

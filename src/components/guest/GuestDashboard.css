@@ -132,6 +132,133 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
+/* Maya AI hero — primary guest assistant surface */
+.guest-maya-hero {
+  width: 100%;
+  max-width: min(520px, 100%);
+  margin: 0 auto 14px;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(15, 118, 110, 0.78));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  box-sizing: border-box;
+}
+
+.guest-maya-hero-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.guest-maya-hero-avatar {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #06243d;
+  background: linear-gradient(145deg, #5eead4, #38bdf8);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+}
+
+.guest-maya-hero-copy {
+  min-width: 0;
+  flex: 1;
+  text-align: start;
+}
+
+.guest-maya-hero-title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.guest-maya-hero-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.guest-maya-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.guest-maya-chip {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s;
+}
+
+.guest-maya-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.guest-maya-chip:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.guest-maya-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.guest-maya-hero-cta {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  background: #25d366;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(37, 211, 102, 0.35);
+}
+
+.guest-maya-hero-cta:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.guest-maya-hero-cta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.guest-services-heading {
+  width: 100%;
+  max-width: min(720px, 100%);
+  margin: 0 auto 10px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
+  letter-spacing: 0.02em;
+}
+
 /* Guest grid — base (StaffDashboard & shared) */
 .guest-grid {
   display: grid;

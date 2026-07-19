@@ -265,7 +265,13 @@ function GuestDashboard({ roomId }) {
   const effectivePropertyId = fromBookingPid || resolvedRoomPropertyId;
   const guestDisplayName = (bookingCtx?.guest_name || '').trim();
   const roomNumberForMaya = (bookingCtx?.room_number || '').trim() || guestRoomNumberLabel(room);
-  const hotelLabel = (bookingCtx?.hotel_name || 'קיסריה').trim();
+  // Property / hotel label from live booking or room — never hardcode a pilot site (e.g. Caesarea).
+  const hotelLabel = (
+    bookingCtx?.hotel_name
+    || bookingCtx?.property_name
+    || room?.name
+    || ''
+  ).trim();
 
   const guestViewMode = useMemo(
     () => inferGuestViewMode({ bookingCtx, room, slugFromUrl }),
@@ -737,7 +743,8 @@ function GuestDashboard({ roomId }) {
   const orderSpaWhatsApp = useCallback(
     (item) => {
       if (!item?.labelHe) return;
-      const head = `${hotelLabel} — ${guestDisplayName || 'אורח'} — חדר ${roomNumberForMaya || room.name || ''}`;
+      const place = hotelLabel || room.name || 'הנכס';
+      const head = `${place} — ${guestDisplayName || 'אורח'} — חדר ${roomNumberForMaya || room.name || ''}`;
       const msg = `בקשת ספא: ${item.labelHe}\n${head}`;
       const ok = openGuestManagerWhatsAppPrefilled(msg);
       if (!ok) {
@@ -755,9 +762,53 @@ function GuestDashboard({ roomId }) {
   );
 
   const roomDisplay = room.name || effectivePropertyId || slugForFetch || '';
-  const headerWelcome = guestDisplayName
-    ? `ברוך הבא, ${guestDisplayName} — חדר ${roomNumberForMaya || roomDisplay}`
-    : `ברוך הבא לחדר ${roomDisplay}!`;
+  const headerWelcome = useMemo(() => {
+    const roomPart = roomNumberForMaya || roomDisplay;
+    if (guestDisplayName && roomPart) {
+      return `ברוך הבא, ${guestDisplayName} — חדר ${roomPart}`;
+    }
+    if (guestDisplayName && hotelLabel) {
+      return `ברוך הבא, ${guestDisplayName} — ${hotelLabel}`;
+    }
+    if (guestDisplayName) {
+      return `ברוך הבא, ${guestDisplayName}`;
+    }
+    if (roomPart) {
+      return `ברוך הבא לחדר ${roomPart}`;
+    }
+    if (hotelLabel) {
+      return `ברוך הבא ל${hotelLabel}`;
+    }
+    return 'ברוך הבא';
+  }, [guestDisplayName, roomNumberForMaya, roomDisplay, hotelLabel]);
+
+  /** Clean team line — property name only when known; never a hardcoded pilot locale. */
+  const teamWelcomeLine = hotelLabel
+    ? `מאיה והצוות ב${hotelLabel} לשירותך`
+    : 'מאיה והצוות לשירותך';
+
+  const mayaSuggestChips = useMemo(() => {
+    if (guestViewMode === 'workspace') {
+      return [
+        { id: 'av', label: 'ציוד לחדרי ישיבות', prompt: 'צריך עזרה עם ציוד או הגדרת חדר ישיבות' },
+        { id: 'coffee', label: 'קפה וכיבוד', prompt: 'אשמח להמלצה על קפה וכיבוד באזור' },
+        { id: 'print', label: 'הדפסה / סריקה', prompt: 'איפה אפשר להדפיס או לסרוק?' },
+        { id: 'area', label: 'מה בסביבה', prompt: 'מה כדאי לעשות ליד הנכס?' },
+      ];
+    }
+    return [
+      { id: 'tours', label: 'סיורים וטיולים', prompt: 'אשמח להמלצות על סיורים וטיולים באזור' },
+      { id: 'attractions', label: 'אטרקציות', prompt: 'מה האטרקציות המומלצות ליד המלון?' },
+      { id: 'dining', label: 'אוכל בחדר', prompt: 'אשמח המלצות לאוכל בחדר / דיינינג' },
+      { id: 'spa', label: 'ספא וטיפולים', prompt: 'אשמח לשמוע על טיפולי ספא זמינים' },
+    ];
+  }, [guestViewMode]);
+
+  const openMayaWithPrompt = useCallback((prompt) => {
+    const text = String(prompt || '').trim();
+    if (text) setMayaInput(text);
+    setGuestChatOpen(true);
+  }, []);
 
   useEffect(() => {
     if (guestChatOpen && guestChatPanelRef.current) {
@@ -794,7 +845,7 @@ function GuestDashboard({ roomId }) {
           </div>
           <div className="guest-welcome">
             <p className="guest-welcome-line1">{headerWelcome}</p>
-            <p className="guest-welcome-line2">מאיה והצוות {hotelLabel} לשירותך</p>
+            <p className="guest-welcome-line2">{teamWelcomeLine}</p>
           </div>
         </header>
 
@@ -877,13 +928,55 @@ function GuestDashboard({ roomId }) {
                 <strong>חדר:</strong> {roomNumberForMaya || roomDisplay || '—'}
               </p>
               <p style={{ margin: 0 }}>
-                <strong>מלון:</strong> {hotelLabel}
+                <strong>נכס:</strong> {hotelLabel || roomDisplay || '—'}
               </p>
             </div>
           </div>
         ) : (
           <>
             <div className="guest-home-center">
+              <section className="guest-maya-hero" aria-labelledby="guest-maya-hero-title">
+                <div className="guest-maya-hero-top">
+                  <div className="guest-maya-hero-avatar" aria-hidden>
+                    <MessageCircle size={26} strokeWidth={2.2} />
+                  </div>
+                  <div className="guest-maya-hero-copy">
+                    <h2 id="guest-maya-hero-title" className="guest-maya-hero-title">
+                      מאיה — העוזרת האישית שלך
+                    </h2>
+                    <p className="guest-maya-hero-sub">
+                      {guestViewMode === 'workspace'
+                        ? 'שאלו את מאיה על ציוד, כיבוד, הדפסה והמלצות מקומיות לחלל שלכם.'
+                        : 'מאיה ממליצה על סיורים, אטרקציות, אוכל בחדר וטיפולי ספא — מותאם לשהייה שלכם.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="guest-maya-chips" role="list">
+                  {mayaSuggestChips.map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      role="listitem"
+                      className="guest-maya-chip"
+                      onClick={() => openMayaWithPrompt(chip.prompt)}
+                      disabled={guestContextLoading || !effectivePropertyId}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="guest-maya-hero-cta"
+                  onClick={() => setGuestChatOpen(true)}
+                  disabled={guestContextLoading || !effectivePropertyId}
+                >
+                  <MessageCircle size={18} strokeWidth={2.2} aria-hidden />
+                  דברו עם מאיה
+                </button>
+              </section>
+
+              <p className="guest-services-heading">שירותים מהירים לחדר</p>
               <div className="guest-unified-grid-wrap guest-unified-grid-wrap--solo">
                 <div
                   className="guest-grid guest-grid--responsive"
@@ -982,8 +1075,8 @@ function GuestDashboard({ roomId }) {
                   </div>
                   <p className="guest-unified-chat-hint">
                     {guestViewMode === 'workspace'
-                      ? 'מאיה כאן — בחרו שירות לחדר הישיבות או כתבו הודעה.'
-                      : 'מאיה כאן — כתבו הודעה או בחרו שירות מהרשת. אין צורך לציין מספר חדר.'}
+                      ? 'מאיה כאן — ציוד, כיבוד, הדפסה והמלצות מקומיות. כתבו חופשי או בחרו הצעה מהמסך.'
+                      : 'מאיה כאן — סיורים, אטרקציות, אוכל בחדר וספא. כתבו חופשי או בחרו הצעה מהמסך. אין צורך לציין מספר חדר.'}
                   </p>
                   <div className="guest-maya-scroll">
                     {mayaMessages.length === 0 && (
