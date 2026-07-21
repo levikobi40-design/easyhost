@@ -42,6 +42,29 @@ try:
 except Exception as _dot_e:
     print(f"[dotenv] Failed to load .env: {_dot_e}", flush=True)
 
+# ── Eventlet: cooperative sockets under Gunicorn --worker-class eventlet ─────
+# Gunicorn's eventlet worker usually monkey-patches before import; we still patch
+# lightly if needed so long Gemini/DB I/O can yield. Disable with EVENTLET_NO_MONKEY_PATCH=1.
+def _maybe_eventlet_monkey_patch():
+    if os.getenv("EVENTLET_NO_MONKEY_PATCH", "").strip().lower() in ("1", "true", "yes", "on"):
+        return
+    try:
+        import eventlet
+
+        if getattr(eventlet, "_easyhost_monkey_patched", False):
+            return
+        # thread=False — keep real OS threads for tpool (Gemini HTTP must not block the hub)
+        eventlet.monkey_patch(socket=True, select=True, time=True, thread=False, os=False)
+        eventlet._easyhost_monkey_patched = True
+        print("[eventlet] monkey_patch applied (socket/select/time; thread=False for tpool)", flush=True)
+    except ImportError:
+        pass
+    except Exception as _ev_e:
+        print(f"[eventlet] monkey_patch skipped: {_ev_e}", flush=True)
+
+
+_maybe_eventlet_monkey_patch()
+
 print(
     f'SYSTEM CHECK: Key found = {bool((os.getenv("GEMINI_API_KEY") or "").strip())}',
     flush=True,
@@ -1618,9 +1641,30 @@ def _safe_gemini_chunk_text(chunk, label: str = "") -> str:
         return ""
 
 
+def _eventlet_run_blocking(fn, *args, **kwargs):
+    """
+    Run blocking HTTP/SDK work (Gemini, etc.) off the eventlet hub.
+
+    With gunicorn --worker-class eventlet -w 1, a synchronous generate_content()
+    otherwise freezes Socket.IO + all other requests until the LLM returns (504s).
+    eventlet.tpool uses real OS threads so the hub keeps serving health/socket traffic.
+    """
+    try:
+        from eventlet import tpool
+
+        return tpool.execute(fn, *args, **kwargs)
+    except ImportError:
+        return fn(*args, **kwargs)
+    except Exception as _tp_e:
+        # If tpool is unavailable mid-flight, fall back rather than failing Maya.
+        print(f"[eventlet] tpool.execute fallback: {_tp_e}", flush=True)
+        return fn(*args, **kwargs)
+
+
 def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> str:
     """
     Maya unified LLM: **Gemini** (google-generativeai). Same MAYA_SYSTEM_INSTRUCTION / LIVE DATA.
+    Blocking SDK calls run via eventlet.tpool so the single eventlet worker is not stalled.
     """
     import traceback as _tb
 
@@ -1654,12 +1698,14 @@ def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> 
                 max_output_tokens=768,
             ),
         )
-        resp = model.generate_content(prompt)
+        # Honour timeout when the transport supports request_options
+        _req_opts = {"timeout": int(timeout)} if timeout else {}
+        try:
+            resp = model.generate_content(prompt, request_options=_req_opts)
+        except TypeError:
+            resp = model.generate_content(prompt)
         text = _safe_gemini_text(resp, label=model_name)
         if not text:
-            # _safe_gemini_text already logged the real failure mode.
-            # Raise so the for-loop treats this the same as an API error
-            # and we fall through to the last_exc / RuntimeError path.
             _cands = getattr(resp, "candidates", None) or []
             _fr = str(getattr(_cands[0], "finish_reason", "none")) if _cands else "no_candidates"
             raise ValueError(
@@ -1672,8 +1718,8 @@ def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> 
     for model_name in _gemini_model_candidates():
         try:
             print("--- API CALL START ---")
-            print(f"[Gemini] → calling {model_name} …")
-            text = _call_model(model_name)
+            print(f"[Gemini] → calling {model_name} (tpool/non-blocking hub) …")
+            text = _eventlet_run_blocking(_call_model, model_name)
             print(f"[Gemini] ✅ {model_name} responded ({len(text)} chars)")
             return text
         except Exception as e:
@@ -1734,7 +1780,11 @@ def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: 
                 max_output_tokens=768,
             ),
         )
-        stream = model.generate_content(prompt, stream=True)
+        _req_opts = {"timeout": int(timeout)} if timeout else {}
+        try:
+            stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
+        except TypeError:
+            stream = model.generate_content(prompt, stream=True)
         parts = []
         for chunk in stream:
             piece = _safe_gemini_chunk_text(chunk, label=model_name).strip()
@@ -1745,7 +1795,7 @@ def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: 
     last_exc = None
     for model_name in _gemini_model_candidates():
         try:
-            text = _stream_one(model_name)
+            text = _eventlet_run_blocking(_stream_one, model_name)
             if text:
                 return text
         except Exception as e:
@@ -1779,7 +1829,12 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
     """
     Yield incremental text fragments from Gemini (stream=True).
     Used for SSE maya-command so the UI can render tokens before the full JSON is ready.
+
+    The blocking SDK stream runs on a real OS thread so eventlet's single worker hub
+    keeps serving /health, Socket.IO, and other API calls (avoids Railway 504s).
     """
+    import queue
+    import threading
     import traceback as _tb
 
     if not _USE_NEW_GENAI:
@@ -1804,24 +1859,58 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
                 max_output_tokens=768,
             ),
         )
-        # Apply a hard wall-clock timeout so the call never hangs silently.
-        # request_options is honoured by the google-generativeai gRPC/HTTP transport.
         _req_opts = {"timeout": int(timeout)} if timeout else {}
-        stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
+        try:
+            stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
+        except TypeError:
+            stream = model.generate_content(prompt, stream=True)
         for chunk in stream:
             piece = _safe_gemini_chunk_text(chunk, label=model_name)
             if piece:
                 yield piece
 
+    def _hub_sleep():
+        try:
+            import eventlet
+
+            eventlet.sleep(0)
+        except ImportError:
+            pass
+
     last_exc = None
     for model_name in _gemini_model_candidates():
+        q = queue.Queue()
+
+        def _worker(name=model_name):
+            try:
+                for piece in _stream_one(name):
+                    q.put(("ok", piece))
+                q.put(("done", None))
+            except Exception as ex:
+                q.put(("err", ex))
+
+        th = threading.Thread(target=_worker, name=f"gemini-stream-{model_name}", daemon=True)
+        th.start()
         try:
-            for piece in _stream_one(model_name):
-                yield piece
-            return
+            while True:
+                _hub_sleep()
+                try:
+                    kind, payload = q.get(timeout=0.25)
+                except queue.Empty:
+                    if not th.is_alive():
+                        last_exc = last_exc or RuntimeError("[Gemini] stream worker exited without done")
+                        break
+                    continue
+                if kind == "done":
+                    return
+                if kind == "err":
+                    raise payload
+                yield payload
+            continue
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
+            _tb.print_exc()
             if any(
                 x in err_str
                 for x in (
