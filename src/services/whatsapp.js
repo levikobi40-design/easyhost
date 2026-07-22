@@ -3,7 +3,7 @@
  * Uses Twilio or Meta Cloud API for sending messages
  */
 
-import { API_BASE_URL } from '../utils/constants';
+import { API_URL } from '../utils/apiClient';
 
 class WhatsAppService {
   constructor() {
@@ -80,7 +80,7 @@ class WhatsAppService {
    */
   async sendViaTwilio(to, message) {
     try {
-      const response = await fetch(`${API_BASE_URL}/whatsapp/send`, {
+      const response = await fetch(`${API_URL}/whatsapp/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +110,7 @@ class WhatsAppService {
    */
   async sendViaMeta(to, message, templateName = null) {
     try {
-      const response = await fetch(`${API_BASE_URL}/whatsapp/send`, {
+      const response = await fetch(`${API_URL}/whatsapp/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

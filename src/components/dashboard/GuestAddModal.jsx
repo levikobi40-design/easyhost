@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { addManualGuest } from '../../services/api';
 import { useProperties } from '../../context/PropertiesContext';
+import useStore from '../../store/useStore';
+import { isRtlLang, normalizeLang } from '../../utils/languages';
 import './GuestAddModal.css';
 
+/** Stable API values (legacy Hebrew ids kept for backend compatibility). */
 const ROOM_COMPOSITIONS = [
-  { id: 'זוג', label: 'זוג' },
-  { id: 'זוג+1', label: 'זוג+1' },
-  { id: 'בודד', label: 'בודד' },
-  { id: 'משפחה', label: 'משפחה' },
-  { id: 'קבוצה', label: 'קבוצה' },
+  { id: 'זוג', key: 'couple' },
+  { id: 'זוג+1', key: 'couplePlus1' },
+  { id: 'בודד', key: 'single' },
+  { id: 'משפחה', key: 'family' },
+  { id: 'קבוצה', key: 'group' },
 ];
 
 function formatDateForInput(d) {
@@ -22,6 +26,11 @@ function formatDateForInput(d) {
 }
 
 export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
+  const { t } = useTranslation();
+  const lang = normalizeLang(useStore((s) => s.lang) || 'en');
+  const tr = useCallback((key, opts) => t(key, { ...(opts || {}), lng: lang }), [t, lang]);
+  const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
+
   const { properties } = useProperties();
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
@@ -40,15 +49,15 @@ export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
     e.preventDefault();
     setError(null);
     if (!guestName.trim()) {
-      setError('נא להזין שם אורח');
+      setError(tr('guestAddModal.errorName'));
       return;
     }
     if (!checkIn) {
-      setError('נא להזין תאריך צ\'ק-אין');
+      setError(tr('guestAddModal.errorCheckIn'));
       return;
     }
     if (!propertyId && !selectedProp?.name) {
-      setError('נא לבחור נכס');
+      setError(tr('guestAddModal.errorProperty'));
       return;
     }
     setLoading(true);
@@ -76,7 +85,7 @@ export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
       setPropertyId('');
     } catch (err) {
       console.error('[GuestAddModal] Server error:', err?.status ?? 'N/A', err?.data ?? err?.message, err);
-      setError(err?.message || 'שגיאה ביצירת הזמנה');
+      setError(err?.message || tr('guestAddModal.errorCreate'));
     } finally {
       setLoading(false);
     }
@@ -86,46 +95,56 @@ export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
 
   return (
     <div className="guest-add-modal-backdrop" onClick={onClose}>
-      <div className="guest-add-modal" onClick={(e) => e.stopPropagation()} dir="rtl" style={{ fontFamily: "'Heebo', sans-serif" }}>
+      <div
+        key={lang}
+        className="guest-add-modal"
+        onClick={(e) => e.stopPropagation()}
+        dir={dir}
+      >
         <div className="guest-add-modal-header">
-          <h2>הוספת אורח</h2>
-          <button type="button" className="guest-add-modal-close" onClick={onClose} aria-label="סגור">
+          <h2>{tr('guestAddModal.title')}</h2>
+          <button
+            type="button"
+            className="guest-add-modal-close"
+            onClick={onClose}
+            aria-label={tr('guestAddModal.close')}
+          >
             <X size={24} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="guest-add-modal-form">
           <div className="guest-add-field">
-            <label>שם האורח</label>
+            <label>{tr('guestAddModal.guestName')}</label>
             <input
               type="text"
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
-              placeholder="שם מלא"
+              placeholder={tr('guestAddModal.guestNamePlaceholder')}
               required
             />
           </div>
           <div className="guest-add-field">
-            <label>טלפון (לשליחת הודעות)</label>
+            <label>{tr('guestAddModal.phone')}</label>
             <input
               type="tel"
               value={guestPhone}
               onChange={(e) => setGuestPhone(e.target.value)}
-              placeholder="050-1234567"
+              placeholder={tr('guestAddModal.phonePlaceholder')}
             />
           </div>
           <div className="guest-add-field">
-            <label>אימייל (אופציונלי)</label>
+            <label>{tr('guestAddModal.email')}</label>
             <input
               type="email"
               name="email"
               value={guestEmail}
               onChange={(e) => setGuestEmail(e.target.value)}
-              placeholder="guest@example.com"
+              placeholder={tr('guestAddModal.emailPlaceholder')}
             />
           </div>
           <div className="guest-add-row">
             <div className="guest-add-field">
-              <label>צ'ק-אין</label>
+              <label>{tr('guestAddModal.checkIn')}</label>
               <input
                 type="date"
                 value={checkIn}
@@ -134,7 +153,7 @@ export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
               />
             </div>
             <div className="guest-add-field">
-              <label>צ'ק-אאוט</label>
+              <label>{tr('guestAddModal.checkOut')}</label>
               <input
                 type="date"
                 value={checkOut}
@@ -143,26 +162,26 @@ export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
             </div>
           </div>
           <div className="guest-add-field">
-            <label>הרכב חדר</label>
+            <label>{tr('guestAddModal.roomComposition')}</label>
             <select
               value={roomComposition}
               onChange={(e) => setRoomComposition(e.target.value)}
             >
               {ROOM_COMPOSITIONS.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.label}
+                  {tr(`guestAddModal.composition.${c.key}`)}
                 </option>
               ))}
             </select>
           </div>
           <div className="guest-add-field">
-            <label>שיוך לנכס</label>
+            <label>{tr('guestAddModal.property')}</label>
             <select
               value={propertyId}
               onChange={(e) => setPropertyId(e.target.value)}
               required
             >
-              <option value="">בחר נכס...</option>
+              <option value="">{tr('guestAddModal.selectProperty')}</option>
               {propsList.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -176,14 +195,14 @@ export default function GuestAddModal({ isOpen, onClose, onSuccess }) {
               {loading ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span className="guest-add-loader" aria-hidden />
-                  שומר...
+                  {tr('guestAddModal.saving')}
                 </span>
               ) : (
-                'הוסף אורח'
+                tr('guestAddModal.submit')
               )}
             </button>
             <button type="button" onClick={onClose} className="guest-add-btn secondary">
-              ביטול
+              {tr('guestAddModal.cancel')}
             </button>
           </div>
         </form>

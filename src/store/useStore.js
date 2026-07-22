@@ -63,19 +63,29 @@ export const useStore = create(
       langUserSet: false,
       setLang: (lang, opts = {}) => {
         const nextLang = normalizeLang(lang);
-        i18n.changeLanguage(nextLang);
-        if (typeof window !== 'undefined') {
-          try { localStorage.setItem('easyhost_lang', nextLang); } catch (_) {}
+        // Keep i18n + store + localStorage in lockstep (avoids TopBar EN + Hebrew body).
+        const apply = () => {
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem('easyhost_lang', nextLang); } catch (_) {}
+          }
+          if (typeof document !== 'undefined') {
+            const dir = isRtlLang(nextLang) ? 'rtl' : 'ltr';
+            document.documentElement.dir = dir;
+            document.body.dir = dir;
+            document.documentElement.lang = nextLang;
+          }
+          set(opts.auto ? { lang: nextLang } : { lang: nextLang, langUserSet: true });
+        };
+        try {
+          const ret = i18n.changeLanguage(nextLang);
+          if (ret && typeof ret.then === 'function') {
+            ret.then(apply).catch(apply);
+          } else {
+            apply();
+          }
+        } catch (_) {
+          apply();
         }
-        if (typeof document !== 'undefined') {
-          const dir = isRtlLang(nextLang) ? 'rtl' : 'ltr';
-          document.documentElement.dir = dir;
-          document.body.dir = dir;
-          document.documentElement.lang = nextLang;
-        }
-        // opts.auto = true for automatic detection (IP geo) — does NOT flip the
-        // user-set flag, so a later explicit choice still wins and persists.
-        set(opts.auto ? { lang: nextLang } : { lang: nextLang, langUserSet: true });
       },
       
       // UI State — sidebar starts closed on mobile so it doesn't block the content
@@ -367,9 +377,21 @@ export const useStore = create(
 if (typeof useStore?.persist?.onFinishHydration === 'function') {
   useStore.persist.onFinishHydration(() => {
     const s = useStore.getState();
+    const nextLang = normalizeLang(s.lang);
+    try {
+      i18n.changeLanguage(nextLang);
+      if (typeof document !== 'undefined') {
+        const dir = isRtlLang(nextLang) ? 'rtl' : 'ltr';
+        document.documentElement.dir = dir;
+        document.body.dir = dir;
+        document.documentElement.lang = nextLang;
+      }
+      try { localStorage.setItem('easyhost_lang', nextLang); } catch (_) {}
+    } catch (_) { /* ignore */ }
     useStore.setState({
       hasHydrated: true,
       isAuthenticated: Boolean(s.authToken),
+      lang: nextLang,
     });
   });
 }

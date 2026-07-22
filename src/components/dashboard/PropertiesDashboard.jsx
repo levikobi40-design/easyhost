@@ -23,7 +23,7 @@ import {
 } from '../../utils/massImportEngine';
 import { persistPropertyImageOverrideFromItem } from '../../utils/propertyImagePersistence';
 import { useTranslation } from 'react-i18next';
-import { isRtlLang } from '../../utils/languages';
+import { isRtlLang, normalizeLang } from '../../utils/languages';
 import './PropertiesDashboard.css';
 
 const PAGE_SIZE = 20;
@@ -33,9 +33,17 @@ const EASYHOST_BLUE_HOVER = '#1d4ed8';
 
 export default function PropertiesDashboard() {
   const { t, i18n } = useTranslation();
-  const storeLang = useStore((s) => s.lang) || 'en';
-  const lang = i18n.language || storeLang;
+  // Store is source of truth for TopBar language; never prefer a stale i18n.language.
+  const lang = normalizeLang(useStore((s) => s.lang) || 'en');
   const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
+  const tr = useCallback((key, opts) => t(key, { ...(opts || {}), lng: lang }), [t, lang]);
+
+  // Keep i18n instance aligned with the store on every lang change.
+  useEffect(() => {
+    if (normalizeLang(i18n.language) !== lang) {
+      i18n.changeLanguage(lang);
+    }
+  }, [i18n, lang]);
   const {
     properties,
     loading,
@@ -107,8 +115,8 @@ export default function PropertiesDashboard() {
   const occOptions = useMemo(() => [], []);
 
   const branchOptions = useMemo(
-    () => [{ id: 'all', label: t('propertiesPage.allBranches') }],
-    [t, lang],
+    () => [{ id: 'all', label: tr('propertiesPage.allBranches') }],
+    [tr, lang],
   );
 
   const suitesData = useMemo(
@@ -208,7 +216,7 @@ export default function PropertiesDashboard() {
       }
       refresh(true);
     } catch (err) {
-      window.alert(err?.message || t('propertiesPage.importFailed'));
+      window.alert(err?.message || tr('propertiesPage.importFailed'));
     } finally {
       setMassImportBusy(false);
     }
@@ -257,7 +265,7 @@ export default function PropertiesDashboard() {
       });
     }
     if (isNew && activeTenantId === 'BAZAAR_JAFFA') {
-      const mayaLine = t('propertiesPage.mayaSortConfirm');
+      const mayaLine = tr('propertiesPage.mayaSortConfirm');
       addMayaMessage({ role: 'assistant', content: mayaLine });
       speakMayaReply(mayaLine, role, {});
       window.requestAnimationFrame(() => {
@@ -273,7 +281,7 @@ export default function PropertiesDashboard() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm(t('propertiesPage.deleteConfirm'))) return;
+    if (!window.confirm(tr('propertiesPage.deleteConfirm'))) return;
     const idStr = id != null ? String(id) : '';
     if (!idStr) return;
     try {
@@ -281,7 +289,7 @@ export default function PropertiesDashboard() {
       refresh();
       window.dispatchEvent(new Event('properties-refresh'));
     } catch (e) {
-      window.alert(e?.message || t('propertiesPage.deleteError'));
+      window.alert(e?.message || tr('propertiesPage.deleteError'));
     }
   };
 
@@ -304,13 +312,13 @@ export default function PropertiesDashboard() {
   }
 
   return (
-    <div className="properties-dashboard p-10 bg-[#eef2f7] min-h-screen" dir={dir}>
+    <div key={lang} className="properties-dashboard p-10 bg-[#eef2f7] min-h-screen" dir={dir}>
       <div className="flex justify-between items-center mb-12 properties-header-section pb-6 -mx-2 px-2 rounded-xl">
         <div>
-          <h1 className="text-4xl font-black text-gray-900">{t('propertiesPage.title')}</h1>
+          <h1 className="text-4xl font-black text-gray-900">{tr('propertiesPage.title')}</h1>
           <p className="text-gray-600 mt-1">
-            {t('propertiesPage.subtitle', { count: filteredProperties.length })}
-            {branchFilter !== 'all' ? t('propertiesPage.subtitleBranch') : ''}.
+            {tr('propertiesPage.subtitle', { count: filteredProperties.length })}
+            {branchFilter !== 'all' ? tr('propertiesPage.subtitleBranch') : ''}.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -326,10 +334,10 @@ export default function PropertiesDashboard() {
             disabled={massImportBusy}
             onClick={() => massInputRef.current?.click()}
             className="props-add-btn"
-            title={t('propertiesPage.importTitle')}
+            title={tr('propertiesPage.importTitle')}
           >
             {massImportBusy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            <span className="mr-1">{t('propertiesPage.importEnterprise')}</span>
+            <span className="mr-1">{tr('propertiesPage.importEnterprise')}</span>
           </button>
           <button
             type="button"
@@ -337,7 +345,7 @@ export default function PropertiesDashboard() {
             className="props-add-btn"
           >
             <Plus size={16} className="props-add-icon" />
-            {t('propertiesPage.addGuest')}
+            {tr('propertiesPage.addGuest')}
           </button>
           <button
             type="button"
@@ -345,7 +353,7 @@ export default function PropertiesDashboard() {
             className="props-add-btn"
           >
             <Plus size={16} className="props-add-icon" />
-            {t('propertiesPage.addProperty')}
+            {tr('propertiesPage.addProperty')}
           </button>
         </div>
       </div>
@@ -354,7 +362,7 @@ export default function PropertiesDashboard() {
         className="mb-6 max-w-5xl rounded-2xl px-5 py-4 shadow-sm"
         style={{ backgroundColor: '#f8f9fa', border: '1px solid #e0e0e0' }}
       >
-        <h3 className="text-sm font-black text-gray-900 mb-3">{t('propertiesPage.searchFilter')}</h3>
+        <h3 className="text-sm font-black text-gray-900 mb-3">{tr('propertiesPage.searchFilter')}</h3>
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch mb-3">
           <div className="relative flex-1 min-w-[200px] sm:order-1">
             <Search size={16} className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-slate-500`} />
@@ -363,7 +371,7 @@ export default function PropertiesDashboard() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && applyFiltersViewResults()}
-              placeholder={t('propertiesPage.searchPlaceholder')}
+              placeholder={tr('propertiesPage.searchPlaceholder')}
               className={`w-full h-12 rounded-xl border border-slate-300 bg-white py-2.5 ${dir === 'rtl' ? 'pr-10 pl-3' : 'pl-10 pr-3'} text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/70`}
             />
           </div>
@@ -375,7 +383,7 @@ export default function PropertiesDashboard() {
             onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = EASYHOST_BLUE_HOVER; }}
             onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = EASYHOST_BLUE; }}
           >
-            {t('propertiesPage.viewResults')}
+            {tr('propertiesPage.viewResults')}
           </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-stretch">
@@ -384,7 +392,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setCityFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">{t('propertiesPage.allCities')}</option>
+            <option value="all">{tr('propertiesPage.allCities')}</option>
             {cityOptions.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
@@ -394,7 +402,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setBrandFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">{t('propertiesPage.allBrands')}</option>
+            <option value="all">{tr('propertiesPage.allBrands')}</option>
             {brandOptions.map((b) => (
               <option key={b} value={b}>{b}</option>
             ))}
@@ -404,7 +412,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setPropertyTypeFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">{t('propertiesPage.allPropertyTypes')}</option>
+            <option value="all">{tr('propertiesPage.allPropertyTypes')}</option>
             {typeOptions.map((tp) => (
               <option key={tp} value={tp}>{tp}</option>
             ))}
@@ -414,7 +422,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setOccupancyFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">{t('propertiesPage.allOccupancy')}</option>
+            <option value="all">{tr('propertiesPage.allOccupancy')}</option>
             {occOptions.map((o) => (
               <option key={o} value={o}>{o}</option>
             ))}
@@ -422,7 +430,7 @@ export default function PropertiesDashboard() {
         </div>
         <div className="mt-3">
           <label htmlFor="rooms-branch-select" className="sr-only">
-            {t('propertiesPage.branch')}
+            {tr('propertiesPage.branch')}
           </label>
           <select
             id="rooms-branch-select"
@@ -438,7 +446,7 @@ export default function PropertiesDashboard() {
           </select>
         </div>
         <p className="text-xs text-slate-600 mt-3">
-          {t('propertiesPage.showingCount', {
+          {tr('propertiesPage.showingCount', {
             visible: visibleProperties.length,
             total: filteredProperties.length,
           })}
@@ -452,7 +460,7 @@ export default function PropertiesDashboard() {
         <div id="properties-dashboard-grid" className="properties-grid">
           {!loading && filteredProperties.length === 0 && (
             <div className="col-span-full text-center py-16 text-gray-500 rounded-2xl border border-dashed border-gray-200 bg-white/80">
-              {t('propertiesPage.emptyFilter')}
+              {tr('propertiesPage.emptyFilter')}
             </div>
           )}
           {visibleProperties.map((p) => (
@@ -478,7 +486,7 @@ export default function PropertiesDashboard() {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors bg-indigo-50/80 group-hover:bg-indigo-100/90">
               <Plus className="props-add-tile-icon" size={32} />
             </div>
-            <p className="props-add-tile-text">{t('propertiesPage.addAnotherProperty')}</p>
+            <p className="props-add-tile-text">{tr('propertiesPage.addAnotherProperty')}</p>
           </div>
         </div>
         {(visibleCount < filteredProperties.length || hasMoreProperties) && (
@@ -490,10 +498,10 @@ export default function PropertiesDashboard() {
               className="px-10 py-3.5 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-800 shadow-lg disabled:opacity-60"
             >
               {loadingMoreProperties
-                ? t('propertiesPage.loadMoreLoading')
-                : t('propertiesPage.loadMore', {
+                ? tr('propertiesPage.loadMoreLoading')
+                : tr('propertiesPage.loadMore', {
                     local: Math.max(0, filteredProperties.length - visibleCount),
-                    server: hasMoreProperties ? t('propertiesPage.loadMoreServer') : '',
+                    server: hasMoreProperties ? tr('propertiesPage.loadMoreServer') : '',
                   })}
             </button>
           </div>
@@ -507,7 +515,7 @@ export default function PropertiesDashboard() {
           onAddSuite={() => setShowPropertyModal(true)}
         />
         <p className="text-xs text-gray-500 mt-2 text-center" dir={dir}>
-          {t('propertiesPage.suitesCount', { count: `${suitesData.length} / ${filteredProperties.length}` })}
+          {tr('propertiesPage.suitesCount', { count: `${suitesData.length} / ${filteredProperties.length}` })}
         </p>
       </div>
 
@@ -531,7 +539,7 @@ export default function PropertiesDashboard() {
                 type="button"
                 onClick={() => setBazaarPolicyOpen(false)}
                 className="p-2 rounded-lg hover:bg-gray-100 shrink-0"
-                aria-label={t('propertiesPage.close')}
+                aria-label={tr('propertiesPage.close')}
               >
                 <X size={22} />
               </button>
@@ -548,7 +556,7 @@ export default function PropertiesDashboard() {
               onClick={() => setBazaarPolicyOpen(false)}
               className="mt-6 w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm hover:bg-gray-800"
             >
-              {t('propertiesPage.close')}
+              {tr('propertiesPage.close')}
             </button>
           </div>
         </div>

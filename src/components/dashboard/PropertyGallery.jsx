@@ -4,15 +4,18 @@ import {
   buildPropertyGalleryImages,
 } from '../../utils/propertyGallery';
 import useTranslations from '../../hooks/useTranslations';
-import { isRtlLang } from '../../utils/languages';
+import useStore from '../../store/useStore';
+import { isRtlLang, normalizeLang } from '../../utils/languages';
 import './PropertyGallery.css';
 
 /**
  * PropertyGallery — renders backend pictures only (deduped by URL).
  */
 export default function PropertyGallery({ property, className = '' }) {
-  const { t, i18n } = useTranslations();
-  const dir = isRtlLang(i18n?.language) ? 'rtl' : 'ltr';
+  const { t } = useTranslations();
+  const lang = normalizeLang(useStore((s) => s.lang) || 'en');
+  const tr = (key, opts) => t(key, { ...(opts || {}), lng: lang });
+  const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
   const allImages = useMemo(
     () => buildPropertyGalleryImages(property),
     [property?.id, property?.pictures, property?.images, property?.mainImage, property?.cover_image, property?.photo_url],
@@ -25,7 +28,7 @@ export default function PropertyGallery({ property, className = '' }) {
       <div className={`property-gallery property-gallery--empty ${className}`.trim()} dir={dir}>
         <div className="property-gallery-placeholder">
           <ImageOff size={32} />
-          <span>{t('propertyGallery.noPhotos')}</span>
+          <span>{tr('propertyGallery.noPhotos')}</span>
         </div>
       </div>
     );
@@ -38,7 +41,7 @@ export default function PropertyGallery({ property, className = '' }) {
       <div className={`property-gallery property-gallery--empty ${className}`.trim()} dir={dir}>
         <div className="property-gallery-placeholder">
           <ImageOff size={32} />
-          <span>{t('propertyGallery.noPhotos')}</span>
+          <span>{tr('propertyGallery.noPhotos')}</span>
         </div>
       </div>
     );
@@ -57,7 +60,7 @@ export default function PropertyGallery({ property, className = '' }) {
     });
   };
 
-  const propertyName = property?.name || t('propertyGallery.propertyFallback');
+  const propertyName = property?.name || tr('propertyGallery.propertyFallback');
 
   return (
     <div className={`property-gallery ${className}`.trim()} dir={dir}>
@@ -68,11 +71,11 @@ export default function PropertyGallery({ property, className = '' }) {
             type="button"
             className="property-gallery-thumb"
             onClick={() => openLightbox(idx)}
-            aria-label={t('propertyGallery.imageN', { n: idx + 1 })}
+            aria-label={tr('propertyGallery.imageN', { n: idx + 1 })}
           >
             <img
               src={src}
-              alt={t('propertyGallery.imageAlt', { name: propertyName, n: idx + 1 })}
+              alt={tr('propertyGallery.imageAlt', { name: propertyName, n: idx + 1 })}
               loading="lazy"
               onError={() => markBroken(src)}
             />
@@ -85,14 +88,14 @@ export default function PropertyGallery({ property, className = '' }) {
           className="property-gallery-lightbox"
           role="dialog"
           aria-modal="true"
-          aria-label={t('propertyGallery.gallery')}
+          aria-label={tr('propertyGallery.gallery')}
           onClick={closeLightbox}
         >
           <button
             type="button"
             className="property-gallery-lightbox-close"
             onClick={closeLightbox}
-            aria-label={t('propertyGallery.close')}
+            aria-label={tr('propertyGallery.close')}
           >
             <X size={24} />
           </button>
@@ -100,14 +103,14 @@ export default function PropertyGallery({ property, className = '' }) {
             type="button"
             className="property-gallery-lightbox-prev"
             onClick={(e) => { e.stopPropagation(); goPrev(); }}
-            aria-label={t('propertyGallery.prev')}
+            aria-label={tr('propertyGallery.prev')}
           >
             <ChevronRight size={28} />
           </button>
           <div className="property-gallery-lightbox-img-wrap" onClick={(e) => e.stopPropagation()}>
             <img
               src={visibleImages[lightboxIndex]}
-              alt={t('propertyGallery.imageAlt', { name: propertyName, n: lightboxIndex + 1 })}
+              alt={tr('propertyGallery.imageAlt', { name: propertyName, n: lightboxIndex + 1 })}
               onError={() => markBroken(visibleImages[lightboxIndex])}
             />
           </div>
@@ -115,7 +118,7 @@ export default function PropertyGallery({ property, className = '' }) {
             type="button"
             className="property-gallery-lightbox-next"
             onClick={(e) => { e.stopPropagation(); goNext(); }}
-            aria-label={t('propertyGallery.next')}
+            aria-label={tr('propertyGallery.next')}
           >
             <ChevronLeft size={28} />
           </button>

@@ -7,7 +7,7 @@
    ════════════════════════════════════════════════════════════════ */
 
 const APP_NAME    = 'easyhost-ai';
-const CACHE_VER   = 'v8';                          // bump: Maya icon tight crop / zoom
+const CACHE_VER   = 'v9';                          // bump: i18n lang sync + status badges
 const SHELL_CACHE = `${APP_NAME}-shell-${CACHE_VER}`;
 const DATA_CACHE  = `${APP_NAME}-data-${CACHE_VER}`;
 

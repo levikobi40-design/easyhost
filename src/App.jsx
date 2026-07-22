@@ -136,12 +136,15 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    i18n.changeLanguage(lang);
+    const next = normalizeLang(lang);
+    if (normalizeLang(i18n.language) !== next) {
+      i18n.changeLanguage(next);
+    }
     if (typeof document !== 'undefined') {
       const dir = isRTL ? 'rtl' : 'ltr';
       document.documentElement.dir = dir;
       document.body.dir = dir;
-      document.documentElement.lang = lang;
+      document.documentElement.lang = next;
     }
   }, [i18n, isRTL, lang]);
 

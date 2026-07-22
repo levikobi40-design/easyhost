@@ -1,34 +1,37 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Home, DollarSign, Users, BedDouble, Bath, Minus, Plus,
   Wifi, UtensilsCrossed, Shirt, Waves, Car, Tv, Monitor, AirVent, Wind,
   ShieldAlert, Heart, Baby, ChefHat,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { createProperty, updateProperty, getPropertyById } from '../../services/api';
 import { persistPropertyImageOverrideFromItem, clearPropertyImageOverride } from '../../utils/propertyImagePersistence';
 import { dedupePropertyGalleryUrls, buildPropertyGalleryImages, buildPropertyImageUpdatePayload } from '../../utils/propertyGallery';
 import ImageUploader from '../ui/ImageUploader';
+import useStore from '../../store/useStore';
+import { isRtlLang, normalizeLang } from '../../utils/languages';
 import './PropertyCreatorModal.css';
 
 const AMENITY_CONFIG = [
-  { key: 'Wi-Fi', label: 'Wi-Fi', Icon: Wifi },
-  { key: 'Kitchen', label: 'Kitchen', Icon: UtensilsCrossed },
-  { key: 'Washer', label: 'Washer', Icon: Shirt },
-  { key: 'Pool', label: 'Pool', Icon: Waves },
-  { key: 'Parking', label: 'Parking', Icon: Car },
-  { key: 'TV', label: 'TV', Icon: Tv },
-  { key: 'Workspace', label: 'Workspace', Icon: Monitor },
-  { key: 'AC', label: 'AC', Icon: AirVent },
-  { key: 'Dryer', label: 'Dryer', Icon: Wind },
-  { key: 'Smoke detector', label: 'Smoke detector', Icon: ShieldAlert },
-  { key: 'First aid kit', label: 'First aid kit', Icon: Heart },
-  { key: 'Crib', label: 'Crib', Icon: Baby },
-  { key: 'Basic kitchen', label: 'Basic kitchen', Icon: ChefHat },
+  { key: 'Wi-Fi', slug: 'wifi', Icon: Wifi },
+  { key: 'Kitchen', slug: 'kitchen', Icon: UtensilsCrossed },
+  { key: 'Washer', slug: 'washer', Icon: Shirt },
+  { key: 'Pool', slug: 'pool', Icon: Waves },
+  { key: 'Parking', slug: 'parking', Icon: Car },
+  { key: 'TV', slug: 'tv', Icon: Tv },
+  { key: 'Workspace', slug: 'workspace', Icon: Monitor },
+  { key: 'AC', slug: 'ac', Icon: AirVent },
+  { key: 'Dryer', slug: 'dryer', Icon: Wind },
+  { key: 'Smoke detector', slug: 'smokeDetector', Icon: ShieldAlert },
+  { key: 'First aid kit', slug: 'firstAidKit', Icon: Heart },
+  { key: 'Crib', slug: 'crib', Icon: Baby },
+  { key: 'Basic kitchen', slug: 'basicKitchen', Icon: ChefHat },
 ];
 
 const AMENITIES = AMENITY_CONFIG.map((a) => a.key);
 
-/** Map legacy amenity keys (from DB) to new keys */
+/** Map legacy amenity keys (from DB) to new keys — data matching only */
 const AMENITY_LEGACY_MAP = {
   'מטבח': 'Kitchen',
   'מכונת כביסה': 'Washer',
@@ -38,11 +41,9 @@ const AMENITY_LEGACY_MAP = {
   'Dedicated Workspace': 'Workspace',
   'Carbon Monoxide Alarm': 'Smoke detector',
   'First Aid Kit': 'First aid kit',
-  'Crib': 'Crib',
+  Crib: 'Crib',
   'Cooking basics': 'Basic kitchen',
 };
-
-const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&auto=format&fit=crop';
 
 /** True when the backend/CDN storage warning should be ignored (local upload fallback). */
 function isImageStorageConfigError(msg) {
@@ -91,7 +92,7 @@ const InputWithIcon = ({ Icon, placeholder, value, onChange, type = 'text', min 
 );
 
 /** Touch-friendly − / value / + stepper (mobile-first; also fine on desktop). */
-const QuantityStepper = ({ label, Icon, value, onChange, min = 1, max = 99 }) => {
+const QuantityStepper = ({ label, Icon, value, onChange, min = 1, max = 99, decreaseLabel, increaseLabel }) => {
   const n = Math.max(min, Math.min(max, Number(value) || min));
   const dec = () => onChange(Math.max(min, n - 1));
   const inc = () => onChange(Math.min(max, n + 1));
@@ -107,7 +108,7 @@ const QuantityStepper = ({ label, Icon, value, onChange, min = 1, max = 99 }) =>
           className="property-qty-btn"
           onClick={dec}
           disabled={n <= min}
-          aria-label={`${label}: הפחת`}
+          aria-label={`${label}: ${decreaseLabel}`}
         >
           <Minus size={18} strokeWidth={2.5} aria-hidden />
         </button>
@@ -117,7 +118,7 @@ const QuantityStepper = ({ label, Icon, value, onChange, min = 1, max = 99 }) =>
           className="property-qty-btn"
           onClick={inc}
           disabled={n >= max}
-          aria-label={`${label}: הוסף`}
+          aria-label={`${label}: ${increaseLabel}`}
         >
           <Plus size={18} strokeWidth={2.5} aria-hidden />
         </button>
@@ -127,6 +128,11 @@ const QuantityStepper = ({ label, Icon, value, onChange, min = 1, max = 99 }) =>
 };
 
 export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initialProperty }) {
+  const { t } = useTranslation();
+  const lang = normalizeLang(useStore((s) => s.lang) || 'en');
+  const tr = useCallback((key, opts) => t(key, { ...(opts || {}), lng: lang }), [t, lang]);
+  const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
+
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [maxGuests, setMaxGuests] = useState(2);
@@ -140,20 +146,11 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Track which property ID was last initialised so background reference changes
-  // (e.g. parent re-render after property list refresh) don't re-run the reset
-  // and wipe freshly-uploaded photos that haven't been submitted yet.
   const initializedForRef = useRef(null);
-
-  // Stable ID for the editing session — set ONCE when the modal opens for an
-  // existing property and never re-read from the live prop.  This prevents any
-  // parent re-render (triggered by a background properties-refresh) from
-  // silently changing which record gallery-saves and form-submits target.
   const editPropertyIdRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) {
-      // Modal closed — clear both session trackers.
       initializedForRef.current = null;
       editPropertyIdRef.current = null;
       return;
@@ -161,13 +158,8 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
 
     const incomingId = initialProperty?.id != null ? String(initialProperty.id).trim() : '';
     const sessionKey = incomingId || 'new';
-    // Only initialise once per open-session (same property ID).
-    // This prevents a background properties-list refresh from resetting
-    // photoUrls while the user is uploading inside the open modal.
     if (initializedForRef.current === sessionKey) return;
     initializedForRef.current = sessionKey;
-
-    // Pin the property ID for this entire modal session.
     editPropertyIdRef.current = incomingId || null;
 
     if (initialProperty) {
@@ -201,7 +193,6 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
     setAmenities((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  /** After upload/remove: persist gallery to backend (edit mode only). */
   const handlePhotoUrlsComplete = async (urls) => {
     const list = dedupePropertyGalleryUrls(Array.isArray(urls) ? urls.filter(Boolean) : []);
     setPhotoUrls(list);
@@ -250,20 +241,19 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
       }
       window.dispatchEvent(new CustomEvent('properties-refresh', { detail: { force: true, silent: true } }));
     } catch (e) {
-      // Local/data-URI fallback — do not block editing when CDN is missing.
       if (isImageStorageConfigError(e?.message)) {
         setPhotoUrls(list);
         setError(null);
         return;
       }
-      setError(e?.message || 'שמירת תמונות נכשלה — התמונה מוצגת אך ייתכן שלא נשמרה');
+      setError(e?.message || tr('propertyCreatorModal.errorGallerySave'));
     } finally {
       setIsGallerySaving(false);
     }
   };
 
   const handleSubmit = async () => {
-    const trimmedName = (name || '').trim() || 'Unnamed Property';
+    const trimmedName = (name || '').trim() || tr('propertyCreatorModal.unnamed');
 
     setIsSubmitting(true);
     setError(null);
@@ -276,8 +266,8 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
       const amenityList = (selectedAmenities || []).join(', ');
       const descParts = [];
       if (price) descParts.push(`Price per night: $${price}`);
-      if (amenityList) descParts.push(`אמצעים: ${amenityList}`);
-      const description = descParts.join(' | ') || 'נכס שנוצר ידנית';
+      if (amenityList) descParts.push(tr('propertyCreatorModal.descAmenities', { list: amenityList }));
+      const description = descParts.join(' | ') || tr('propertyCreatorModal.descManual');
 
       const priceNum = price !== '' && price != null ? Number(price) : null;
       const payload = {
@@ -298,8 +288,6 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
         beds: Math.max(1, parseInt(beds, 10) || 1),
         bathrooms: Math.max(1, parseInt(bathrooms, 10) || 1),
       };
-      // Use the ID pinned at modal-open time so the correct record is always
-      // targeted even if the parent re-renders while the modal is open.
       const editId = editPropertyIdRef.current;
       const result = editId
         ? await updateProperty(editId, payload)
@@ -307,11 +295,9 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
       let property = result?.property || result;
       const savedId = property?.id || editId;
       if (!editId && !savedId) {
-        throw new Error('השרת לא החזיר מזהה נכס — הנכס לא נשמר');
+        throw new Error(tr('propertyCreatorModal.errorNoId'));
       }
 
-      // Extract confirmed pictures from the save response first; fall back to
-      // a fresh GET only if the response is missing picture data.
       const responseFromServer =
         Array.isArray(property?.pictures) && property.pictures.length > 0
           ? property.pictures.filter(Boolean)
@@ -320,10 +306,8 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
             : [];
 
       if (responseFromServer.length > 0) {
-        if (images.length > 0) setPhotoUrls(responseFromServer);
-        else setPhotoUrls(responseFromServer);
+        setPhotoUrls(responseFromServer);
       } else if (savedId) {
-        // Response missing pictures — do a single GET to verify persistence.
         try {
           const fresh = await getPropertyById(savedId);
           property = { ...property, ...fresh };
@@ -334,7 +318,6 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
                 ? [fresh.mainImage || fresh.photo_url].filter(Boolean)
                 : [];
           if (images.length > 0 && !fromServer.length) {
-            // Keep local images — backend local fallback may still be syncing.
             setPhotoUrls(images);
           } else if (fromServer.length > 0) {
             setPhotoUrls(fromServer);
@@ -345,8 +328,6 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
         }
       }
 
-      // Persist confirmed images to localStorage so subsequent background list
-      // refreshes don't wipe the hero image from property cards.
       if (savedId && images.length > 0) {
         persistPropertyImageOverrideFromItem({
           id: savedId,
@@ -358,7 +339,7 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
       }
 
       typeof onSuccess === 'function' && onSuccess(property);
-      setSuccessMessage('הנכס נוצר בהצלחה');
+      setSuccessMessage(tr('propertyCreatorModal.successCreated'));
       setTimeout(() => {
         setSuccessMessage(null);
         onClose();
@@ -373,11 +354,10 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
       }, 2000);
     } catch (e) {
       if (isImageStorageConfigError(e?.message)) {
-        // Should not happen after backend local fallback — never block the form.
         setError(null);
         console.warn('[PropertyCreatorModal] ignored storage warning:', e?.message);
       } else {
-        const errMsg = e?.message || 'אירעה שגיאה. נסה שוב.';
+        const errMsg = e?.message || tr('propertyCreatorModal.errorGeneric');
         setError(errMsg);
         console.error('[Create Property] Request failed:', e);
       }
@@ -388,34 +368,37 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
 
   if (!isOpen) return null;
 
+  const decreaseLabel = tr('propertyCreatorModal.decrease');
+  const increaseLabel = tr('propertyCreatorModal.increase');
+
   return (
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/40"
       onClick={onClose}
     >
       <div
+        key={lang}
         className="property-creator-modal-panel w-full max-w-[480px] max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
         onClick={(e) => e.stopPropagation()}
-        dir="rtl"
-        style={{ fontFamily: "'Heebo', sans-serif", direction: 'rtl', unicodeBidi: 'isolate' }}
+        dir={dir}
       >
-        {/* Header — 32px bottom spacing */}
         <div className="flex items-center justify-between p-6 pb-0">
           <h2 className="text-xl font-bold text-[#1a1a1a]">
-            {initialProperty ? 'עריכת נכס' : 'הקמת נכס חדש'}
+            {initialProperty
+              ? tr('propertyCreatorModal.titleEdit')
+              : tr('propertyCreatorModal.titleCreate')}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="flex items-center justify-center w-10 h-10 rounded-xl border border-[#e5e7eb] bg-white text-[#1a1a1a] hover:bg-[#f5f5f5] hover:border-[#d1d5db] transition-colors"
-            aria-label="סגור"
+            aria-label={tr('propertyCreatorModal.close')}
           >
             <X size={20} />
           </button>
         </div>
 
         <div className="p-6 pt-6 space-y-6">
-          {/* Image Gallery */}
           <ImageUploader
             key={initialProperty?.id ?? 'new'}
             variant="airbnb"
@@ -425,17 +408,16 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
             initialUrls={Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : []}
           />
 
-          {/* Form inputs — premium spacing */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <InputWithIcon
               Icon={Home}
-              placeholder="שם הנכס"
+              placeholder={tr('propertyCreatorModal.namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
             <InputWithIcon
               Icon={DollarSign}
-              placeholder="מחיר ללילה (₪)"
+              placeholder={tr('propertyCreatorModal.pricePlaceholder')}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               type="number"
@@ -444,47 +426,58 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
 
           <div className="property-qty-grid">
             <QuantityStepper
-              label="אורחים"
+              label={tr('propertyCreatorModal.guests')}
               Icon={Users}
               value={maxGuests}
               onChange={setMaxGuests}
               min={1}
               max={50}
+              decreaseLabel={decreaseLabel}
+              increaseLabel={increaseLabel}
             />
             <QuantityStepper
-              label="חדרים"
+              label={tr('propertyCreatorModal.rooms')}
               Icon={BedDouble}
               value={bedrooms}
               onChange={setBedrooms}
               min={1}
               max={30}
+              decreaseLabel={decreaseLabel}
+              increaseLabel={increaseLabel}
             />
             <QuantityStepper
-              label="מיטות"
+              label={tr('propertyCreatorModal.beds')}
               Icon={BedDouble}
               value={beds}
               onChange={setBeds}
               min={1}
               max={50}
+              decreaseLabel={decreaseLabel}
+              increaseLabel={increaseLabel}
             />
             <QuantityStepper
-              label="אמבטיות"
+              label={tr('propertyCreatorModal.baths')}
               Icon={Bath}
               value={bathrooms}
               onChange={setBathrooms}
               min={1}
               max={20}
+              decreaseLabel={decreaseLabel}
+              increaseLabel={increaseLabel}
             />
           </div>
 
-          {/* Amenities — 60x60px, icon on top, 5 cols desktop / 4 mobile */}
           <div>
-            <p className="text-sm font-semibold text-[#1a1a1a] mb-3">אמצעים ואפשרויות</p>
+            <p className="text-sm font-semibold text-[#1a1a1a] mb-3">
+              {tr('propertyCreatorModal.amenitiesTitle')}
+            </p>
             <div className="grid grid-cols-5 sm:grid-cols-5 max-sm:grid-cols-4 gap-2">
-              {AMENITY_CONFIG.map(({ key, label, Icon }) => (
-                <label
-                  key={key}
-                  className={`
+              {AMENITY_CONFIG.map(({ key, slug, Icon }) => {
+                const label = tr(`propertyCreatorModal.amenities.${slug}`);
+                return (
+                  <label
+                    key={key}
+                    className={`
                     amenity-tile flex flex-col items-center justify-center w-[60px] h-[60px] rounded-xl border cursor-pointer
                     transition-all duration-200 select-none
                     ${amenities[key]
@@ -492,34 +485,46 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
                       : 'border-[#e5e5e5] bg-white text-[#6b7280] hover:scale-[1.03] hover:border-[#d4d4d4]'
                     }
                   `}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!amenities[key]}
-                    onChange={() => toggleAmenity(key)}
-                    className="sr-only"
-                  />
-                  <Icon
-                    size={20}
-                    className={`mb-1 flex-shrink-0 ${amenities[key] ? 'text-[#222222]' : 'text-[#6b7280]'}`}
-                    strokeWidth={1.5}
-                  />
-                  <span
-                    className={`text-[10px] font-semibold text-center leading-tight px-0.5 truncate w-full max-w-[52px] ${amenities[key] ? 'text-[#222222]' : 'text-[#6b7280]'}`}
                   >
-                    {label}
-                  </span>
-                </label>
-              ))}
+                    <input
+                      type="checkbox"
+                      checked={!!amenities[key]}
+                      onChange={() => toggleAmenity(key)}
+                      className="sr-only"
+                    />
+                    <Icon
+                      size={20}
+                      className={`mb-1 flex-shrink-0 ${amenities[key] ? 'text-[#222222]' : 'text-[#6b7280]'}`}
+                      strokeWidth={1.5}
+                    />
+                    <span
+                      className={`text-[10px] font-semibold text-center leading-tight px-0.5 truncate w-full max-w-[52px] ${amenities[key] ? 'text-[#222222]' : 'text-[#6b7280]'}`}
+                    >
+                      {label}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
-          {/* Customer options (optional section) */}
           <div className="p-4 rounded-xl border border-[#e5e7eb] bg-[#fafafa] space-y-2">
-            <p className="text-sm font-semibold text-[#1a1a1a]">אפשרויות לקוח</p>
+            <p className="text-sm font-semibold text-[#1a1a1a]">
+              {tr('propertyCreatorModal.customerOptions')}
+            </p>
             <div className="space-y-1 text-xs text-[#4b5563]">
-              <p><span className="font-medium text-[#1a1a1a]">מדיניות ביטול:</span> גמישה — החזר מלא עד 24 שעות</p>
-              <p><span className="font-medium text-[#1a1a1a]">פרטי תשלום:</span> אשראי / העברה / דמי ניקוי</p>
+              <p>
+                <span className="font-medium text-[#1a1a1a]">
+                  {tr('propertyCreatorModal.cancelPolicyLabel')}
+                </span>{' '}
+                {tr('propertyCreatorModal.cancelPolicyText')}
+              </p>
+              <p>
+                <span className="font-medium text-[#1a1a1a]">
+                  {tr('propertyCreatorModal.paymentLabel')}
+                </span>{' '}
+                {tr('propertyCreatorModal.paymentText')}
+              </p>
             </div>
           </div>
 
@@ -533,7 +538,6 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
             </div>
           )}
 
-          {/* Primary button — 12px radius, slight shadow */}
           <button
             type="button"
             onClick={handleSubmit}
@@ -543,10 +547,14 @@ export default function PropertyCreatorModal({ isOpen, onClose, onSuccess, initi
             {isSubmitting ? (
               <span className="inline-flex items-center justify-center gap-2">
                 <span className="property-loader" aria-hidden />
-                {initialProperty ? 'מעדכן...' : 'יוצר...'}
+                {initialProperty
+                  ? tr('propertyCreatorModal.updating')
+                  : tr('propertyCreatorModal.creating')}
               </span>
             ) : (
-              initialProperty ? 'עדכן נכס' : 'צור דף נכס'
+              initialProperty
+                ? tr('propertyCreatorModal.submitUpdate')
+                : tr('propertyCreatorModal.submitCreate')
             )}
           </button>
         </div>

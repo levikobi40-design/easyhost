@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin, Users, Trash2, Wind, Wifi, Tv, Car, Waves, UtensilsCrossed, Shirt, Building2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import PropertyGallery from './PropertyGallery';
 import { isBazaarJaffaProperty } from '../../data/propertyData';
 import { formatPropertyPriceLabel, buildPropertyGalleryImages } from '../../utils/propertyGallery';
@@ -7,7 +8,9 @@ import {
   ROOMS_WORKSPACE_OFFICE_INTERIOR_CDN,
   ROOMS_WORKSPACE_OFFICE_INTERIOR_LOCAL,
 } from '../../utils/propertyCardImages';
-import useTranslations from '../../hooks/useTranslations';
+import { normalizeLang } from '../../utils/languages';
+import { translatePropertyStatus } from '../../utils/propertyStatusI18n';
+import useStore from '../../store/useStore';
 
 const PLACEHOLDER_IMAGE =
   'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&auto=format&fit=crop';
@@ -48,27 +51,40 @@ function propertyNameNeedsRoomsOfficeHero(name) {
   if (/\bROOMS\b/i.test(s)) return true;
   if (/workspace/i.test(s)) return true;
   if (/sky\s*tower/i.test(s) || s.includes('Sky Tower')) return true;
+  // Legacy Hebrew listing name (data match only — not UI chrome)
   return /סקיי\s*טאוור/.test(s);
 }
 
+/** Icon lookup: English keys + Hebrew amenity aliases from older listings. */
 const AMENITY_ICONS = {
   AC: Wind,
   'Wi-Fi': Wifi,
   Wifi: Wifi,
-  טלוויזיה: Tv,
   TV: Tv,
-  חניה: Car,
-  בריכה: Waves,
   Pool: Waves,
-  מטבח: UtensilsCrossed,
-  'מכונת כביסה': Shirt,
   Dryer: Shirt,
   'Dedicated Workspace': Tv,
   'Cooking basics': UtensilsCrossed,
   'Carbon Monoxide Alarm': Users,
   'First Aid Kit': Users,
   Crib: Users,
+  Kitchen: UtensilsCrossed,
+  Parking: Car,
+  Washer: Shirt,
 };
+
+const AMENITY_ALIASES = {
+  טלוויזיה: 'TV',
+  חניה: 'Parking',
+  בריכה: 'Pool',
+  מטבח: 'Kitchen',
+  'מכונת כביסה': 'Washer',
+};
+
+function resolveAmenityIcon(label) {
+  const key = AMENITY_ALIASES[label] || label;
+  return AMENITY_ICONS[key] || Wifi;
+}
 
 const PropertyCard = React.memo(function PropertyCard({
   property,
@@ -79,8 +95,11 @@ const PropertyCard = React.memo(function PropertyCard({
   imageRefreshKey = 0,
   lang: langProp,
 }) {
-  const { t } = useTranslations();
-  void langProp;
+  const { t } = useTranslation();
+  const storeLang = useStore((s) => s.lang);
+  const lang = normalizeLang(langProp || storeLang || 'en');
+  const tr = useCallback((key, opts) => t(key, { ...(opts || {}), lng: lang }), [t, lang]);
+
   const [galleryExpanded, setGalleryExpanded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -88,6 +107,10 @@ const PropertyCard = React.memo(function PropertyCard({
   const coverUrl = galleryImages[0] || '';
   const extraPhotos = galleryImages.length > 1 ? galleryImages.length - 1 : 0;
   const priceLabel = formatPropertyPriceLabel(property);
+  const statusLabel = translatePropertyStatus(tr, property.status, lang);
+  const isReady = /^(ready|available|clean|vacant)$/i.test(String(property.status || ''))
+    || property.status === 'מוכן'
+    || property.status === 'פנוי';
 
   const showHeroImg = Boolean(coverUrl);
   const rawMain = coverUrl;
@@ -126,16 +149,16 @@ const PropertyCard = React.memo(function PropertyCard({
             aria-hidden
           >
             <Building2 size={52} strokeWidth={1.6} className="opacity-95 drop-shadow-sm" />
-            <span className="text-[11px] font-bold tracking-wide opacity-90">{t('propertyCard.noImage')}</span>
+            <span className="text-[11px] font-bold tracking-wide opacity-90">{tr('propertyCard.noImage')}</span>
           </div>
         )}
         <div className="absolute top-3 right-3 z-[3]">
           <span
             className={`px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-sm ${
-              property.status === 'Ready' ? 'bg-green-500/90 text-white' : 'bg-amber-400/90 text-black'
+              isReady ? 'bg-green-500/90 text-white' : 'bg-amber-400/90 text-black'
             }`}
           >
-            {property.status === 'Ready' ? t('propertyCard.ready') : t('propertyCard.cleaning')}
+            {statusLabel}
           </span>
         </div>
       </div>
@@ -153,7 +176,7 @@ const PropertyCard = React.memo(function PropertyCard({
             setGalleryExpanded(true);
           }}
         >
-          {t('propertyCard.showMorePhotos', { count: extraPhotos })}
+          {tr('propertyCard.showMorePhotos', { count: extraPhotos })}
         </button>
       )}
       {extraPhotos > 0 && galleryExpanded && (
@@ -165,7 +188,7 @@ const PropertyCard = React.memo(function PropertyCard({
             setGalleryExpanded(false);
           }}
         >
-          {t('propertyCard.hidePhotos')}
+          {tr('propertyCard.hidePhotos')}
         </button>
       )}
       <div className="p-4">
@@ -178,13 +201,13 @@ const PropertyCard = React.memo(function PropertyCard({
                 <span className="text-gray-500 font-normal text-sm"> / night</span>
               </>
             ) : property.brand === 'WeWork' ? (
-              <>₪0<span className="text-gray-500 font-normal text-sm">{t('propertyCard.priceUpdate')}</span></>
+              <>₪0<span className="text-gray-500 font-normal text-sm">{tr('propertyCard.priceUpdate')}</span></>
             ) : null}
           </span>
         </div>
         <div className="flex items-center gap-2 text-gray-500 text-xs mb-3 flex-wrap">
           <Users size={12} />
-          <span>{property.guests} {t('propertyCard.guests')}</span>
+          <span>{property.guests} {tr('propertyCard.guests')}</span>
           <MapPin size={12} />
           <span>{property.city || '—'}</span>
           {property.brand && (
@@ -195,14 +218,14 @@ const PropertyCard = React.memo(function PropertyCard({
           )}
           {property.occupancy_rate != null && property.occupancy_rate !== '' && (
             <span className="text-rose-600 font-semibold">
-              · {t('propertyCard.occupancy', { pct: Math.round(Number(property.occupancy_rate)) })}
+              · {tr('propertyCard.occupancy', { pct: Math.round(Number(property.occupancy_rate)) })}
             </span>
           )}
         </div>
         {property.amenities && property.amenities.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
             {property.amenities.slice(0, 5).map((a) => {
-              const Icon = AMENITY_ICONS[a] || Wifi;
+              const Icon = resolveAmenityIcon(a);
               return (
                 <span
                   key={a}
@@ -227,13 +250,13 @@ const PropertyCard = React.memo(function PropertyCard({
               onClick={(e) => { e.stopPropagation(); onManage ? onManage(property) : (onEdit && onEdit(property)); }}
               className="flex-1 min-h-[44px] flex items-center justify-center bg-gray-900 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-gray-800 transition-colors"
             >
-              {t('propertyCard.manage')}
+              {tr('propertyCard.manage')}
             </button>
             <button
               type="button"
               onClick={() => onDelete && onDelete(String(property.id))}
               className="w-10 h-10 flex items-center justify-center bg-red-50 rounded-xl text-red-600 hover:bg-red-100 transition-all shrink-0"
-              title={t('propertyCard.delete')}
+              title={tr('propertyCard.delete')}
             >
               <Trash2 size={16} />
             </button>
@@ -247,7 +270,7 @@ const PropertyCard = React.memo(function PropertyCard({
               }}
               className="w-full py-2 rounded-xl text-xs font-bold border-2 border-amber-300 bg-amber-50/90 text-amber-950 hover:bg-amber-100 transition-colors"
             >
-              {t('propertyCard.viewPolicy')}
+              {tr('propertyCard.viewPolicy')}
             </button>
           )}
         </div>
@@ -255,9 +278,6 @@ const PropertyCard = React.memo(function PropertyCard({
     </div>
   );
 }, (prev, next) => (
-  // Re-render when i18n language changes: parent passes imageRefreshKey / identity;
-  // language-driven strings come from useTranslations inside — always allow refresh
-  // when any visual prop changes. Return false (re-render) if unsure.
   prev.property?.id === next.property?.id
   && prev.property?.mainImage === next.property?.mainImage
   && prev.property?.photo_url === next.property?.photo_url

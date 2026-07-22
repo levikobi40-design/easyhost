@@ -48,10 +48,14 @@ const _ADMIN_EMAILS = new Set(['levikobi40@gmail.com']);
 const Sidebar = ({ activeView, setActiveView }) => {
   const { sidebarOpen, toggleSidebar, lang: storeLang, role, activeTenantId, authToken, user } = useStore();
   const { t, i18n } = useTranslation();
-  // Prefer i18n language so labels always match the active dictionary after a switch.
-  const lang = i18n.language || storeLang || 'en';
+  // Store is source of truth (matches TopBar); keep i18n aligned.
+  const lang = storeLang || 'en';
   const isRTL = isRtlLang(lang);
-  const safeT = typeof t === 'function' ? t : (k) => k;
+  const safeT = (key, opts) => (typeof t === 'function' ? t(key, { ...(opts || {}), lng: lang }) : key);
+
+  useEffect(() => {
+    if (i18n.language !== lang) i18n.changeLanguage(lang);
+  }, [i18n, lang]);
 
   const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -99,7 +103,7 @@ const Sidebar = ({ activeView, setActiveView }) => {
 
   const navLabel = (item) => {
     const key = `sidebarNav.${item.id}`;
-    const translated = safeT(key);
+    const translated = safeT(key, { lng: lang });
     if (!translated || translated === key) return item.fallback;
     return translated;
   };

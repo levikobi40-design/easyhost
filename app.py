@@ -2970,7 +2970,8 @@ def _env_truthy(name, default="false"):
 
 def _auth_enforcement_relaxed():
     """Local + staging: soft guest/manager context when JWT is missing or invalid.
-    Set STRICT_AUTH=true to force JWT on Railway/production."""
+    Set STRICT_AUTH=true to force JWT. Production/Railway defaults to STRICT
+    unless STAGING_RELAX_AUTH is explicitly enabled."""
     if AUTH_DISABLED:
         return True
     if _env_truthy("STRICT_AUTH", "false"):
@@ -2998,9 +2999,9 @@ def _auth_enforcement_relaxed():
         or os.getenv("RAILWAY_PUBLIC_DOMAIN")
     ):
         return True
-    # Railway/Render pilot: default-relax unless STRICT_AUTH (emergency staging UX)
+    # Railway/Render production: require explicit STAGING_RELAX_AUTH=true to soften auth
     if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("RENDER"):
-        return _env_truthy("STAGING_RELAX_AUTH", "true")
+        return _env_truthy("STAGING_RELAX_AUTH", "false")
     return False
 
 
@@ -4775,11 +4776,36 @@ def get_tenant_id_from_request():
         raise ValueError("Missing authorization token")
     try:
         payload = decode_jwt(token)
+        # Valid JWT wins — never allow X-Tenant-Id / body to override claimed tenant.
         return _coerce_demo_tenant_id(payload.get("tenant_id") or DEFAULT_TENANT_ID)
     except Exception:
         if _auth_enforcement_relaxed():
             return _soft_demo_auth_identity()["tenant_id"]
         raise
+
+
+def _tenant_id_for_authenticated_request(fallback=None):
+    """Resolve tenant from JWT/auth context only (ignores spoofable body/header when JWT present)."""
+    try:
+        return get_tenant_id_from_request()
+    except Exception:
+        if fallback is not None:
+            return _coerce_demo_tenant_id(fallback)
+        if _auth_enforcement_relaxed() or AUTH_DISABLED:
+            return _soft_demo_auth_identity()["tenant_id"]
+        raise
+
+
+def _property_belongs_to_tenant(session, property_id, tenant_id) -> bool:
+    """True when property_id is empty (legacy) or the room row matches tenant_id."""
+    pid = (property_id or "").strip()
+    if not pid or not ManualRoomModel:
+        return True
+    try:
+        row = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
+        return bool(row)
+    except Exception:
+        return False
 
 
 def get_auth_context_from_request():
@@ -6144,16 +6170,21 @@ def _pk_structure_with_gemini(display_name: str, research_blob: str) -> dict:
                 genai.configure(api_key=live_key)
                 genai._configured_key = live_key
                 _gemini_invalidate_model_cache()
+
+            def _call_pk_model(model_name):
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    system_instruction=_json_sys,
+                    generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=1024),
+                )
+                resp = model.generate_content(prompt)
+                return _safe_gemini_text(resp, label="_pk_structure_with_gemini").strip()
+
             for model_name in _gemini_model_candidates():
                 try:
-                    model = genai.GenerativeModel(
-                        model_name=model_name,
-                        system_instruction=_json_sys,
-                        generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=1024),
-                    )
-                    resp = model.generate_content(prompt)
-                    raw = _safe_gemini_text(resp, label="_pk_structure_with_gemini").strip()
-                    break
+                    raw = _eventlet_run_blocking(_call_pk_model, model_name)
+                    if raw:
+                        break
                 except Exception as e:
                     if _gemini_err_is_model_not_found(e):
                         continue
@@ -12424,8 +12455,16 @@ def create_booking_route():
     """יצירת הזמנה + משימת ניקיון אוטומטית ליום הצ'ק-אאוט"""
     data = request.get_json(force=True) or {}
     tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+    property_id = (data.get("property_id") or "").strip()
+    if property_id and SessionLocal and ManualRoomModel:
+        _bs = SessionLocal()
+        try:
+            if not _property_belongs_to_tenant(_bs, property_id, tenant_id):
+                return jsonify({"error": "Property not found for tenant"}), 404
+        finally:
+            _bs.close()
     booking_data = {
-        "property_id": data.get("property_id"),
+        "property_id": property_id or data.get("property_id"),
         "room": data.get("room"),
         "property_name": data.get("property_name"),
         "property_title": data.get("property_title") or data.get("property_name"),
@@ -13339,9 +13378,16 @@ def delete_property(property_id):
             try:
                 deleted_tasks = session.query(PropertyTaskModel).filter(
                     PropertyTaskModel.property_id == pid,
+                    PropertyTaskModel.tenant_id == room_tenant,
                 ).delete(synchronize_session=False)
             except Exception as _te:
                 print(f"[delete_property] task cascade warning: {_te}", flush=True)
+                try:
+                    deleted_tasks = session.query(PropertyTaskModel).filter(
+                        PropertyTaskModel.property_id == pid,
+                    ).delete(synchronize_session=False)
+                except Exception as _te2:
+                    print(f"[delete_property] task cascade fallback: {_te2}", flush=True)
         if PropertyStaffModel:
             try:
                 deleted_staff = session.query(PropertyStaffModel).filter(
@@ -14071,10 +14117,9 @@ def api_health_bookings_tasks_sync():
     try:
         tenant_id, user_id = get_auth_context_from_request()
     except Exception:
-        pass
-    hdr = (request.headers.get("X-Tenant-Id") or "").strip()
-    if hdr:
-        tenant_id = _coerce_demo_tenant_id(hdr)
+        if not _auth_enforcement_relaxed() and not AUTH_DISABLED:
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    # JWT tenant wins — ignore spoofable X-Tenant-Id override.
     upcoming = _upcoming_bookings_payload(tenant_id, user_id)
     bookings = upcoming.get("bookings") or []
     n_upcoming = len(bookings)
@@ -16216,7 +16261,7 @@ Be concise, 2-3 sentences."""
                 report_text = _gemini_generate(mgmt_prompt) or f"יש לנו {len(pending)} משימות פתוחות. האם להוציא תזכורת?"
             except Exception as e:
                 print("[Gemini] Management analysis failed:", e, flush=True)
-                return _maya_brain_error_response(e, code="management_gemini")
+                report_text = f"יש לנו {len(pending)} משימות פתוחות. האם להוציא תזכורת?"
         else:
             report_text = "אין משימות כרגע."
         return jsonify({
@@ -16265,7 +16310,7 @@ Write a concise professional summary in Hebrew only (2-4 sentences). Mention cou
                 report_text = _gemini_generate(report_prompt) or f"דוח יומי: הושלמו {len(done_today)} משימות. {len(pending_list)} ממתינות."
             except Exception as e:
                 print("[Gemini] Daily report failed:", e, flush=True)
-                return _maya_brain_error_response(e, code="daily_report_gemini")
+                report_text = f"דוח יומי: הושלמו {len(done_today)} משימות. {len(pending_list)} ממתינות."
         else:
             report_text = f"דוח יומי: הושלמו {len(done_today)} משימות. {len(pending_list)} ממתינות."
         return jsonify({
@@ -17247,6 +17292,16 @@ def property_tasks_api():
         photo_url = data.get("photo_url") or ""
         if not property_id and task_source in (TASK_SOURCE_MAYA, TASK_SOURCE_MANUAL):
             property_id = "christos-thaleri-villa-corfu"
+        # Multi-tenant: reject foreign property_id (except guest soft path when room missing).
+        if property_id and ManualRoomModel and not _property_belongs_to_tenant(session, property_id, tenant_id):
+            if data.get("source") != "guest" and not _auth_enforcement_relaxed():
+                return jsonify({"error": "Property not found for tenant", "property_id": property_id}), 404
+            if data.get("source") != "guest":
+                print(
+                    f"[property_tasks] POST property_id={property_id!r} not in tenant={tenant_id!r} — blocking",
+                    flush=True,
+                )
+                return jsonify({"error": "Property not found for tenant", "property_id": property_id}), 404
         if property_id in CHRISTOS_PROPERTY_IDS and not (property_name or "").strip():
             property_name = _christos_property_i18n_ref(property_id) or property_name
 
@@ -18526,10 +18581,10 @@ def api_reports_task_metrics():
     try:
         tenant_id, _uid = get_auth_context_from_request()
     except Exception:
+        if not _auth_enforcement_relaxed() and not AUTH_DISABLED:
+            return jsonify({"ok": False, "error": "Unauthorized", "summary": {}, "series": []}), 401
         tenant_id = DEFAULT_TENANT_ID
-    hdr_tid = (request.headers.get("X-Tenant-Id") or "").strip()
-    if hdr_tid:
-        tenant_id = _coerce_demo_tenant_id(hdr_tid)
+    # Do not allow X-Tenant-Id to override a resolved JWT tenant (cross-tenant metrics leak).
     period = (request.args.get("period") or request.args.get("range") or "day").strip()
     start_dt, end_dt = _task_report_time_window(period)
     start_iso = start_dt.isoformat()
@@ -20996,7 +21051,8 @@ def _seed_import_operations_tasks(tenant_id, property_id, property_name):
 @require_auth
 def import_manual_room():
     data = request.get_json(force=True) or {}
-    tenant_id = data.get("tenant_id") or getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+    # Never trust body tenant_id — JWT / request.tenant_id only (IDOR guard).
+    tenant_id = getattr(request, "tenant_id", None) or _tenant_id_for_authenticated_request(DEFAULT_TENANT_ID)
     url = (data.get("url") or "").strip()
     if not url:
         return jsonify({"error": "Missing url"}), 400
@@ -21754,13 +21810,23 @@ def create_lead():
 @app.route("/api/leads/<lead_id>", methods=["PATCH"])
 @require_auth
 def patch_lead(lead_id):
-    updates = request.get_json(force=True)
-    tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
-    existing = LEADS_BY_ID.get(lead_id)
-    if existing and existing.get("tenant_id") != tenant_id:
-        return jsonify({"error": "Lead not found"}), 404
+    updates = request.get_json(force=True) or {}
+    tenant_id = getattr(request, "tenant_id", None) or get_tenant_id_from_request()
+    # Always enforce tenant isolation (memory + DB), same as GET.
+    if SessionLocal and LeadModel:
+        session = SessionLocal()
+        try:
+            record = session.query(LeadModel).filter_by(id=lead_id, tenant_id=tenant_id).first()
+        finally:
+            session.close()
+        if not record:
+            return jsonify({"error": "Lead not found"}), 404
+    else:
+        existing = LEADS_BY_ID.get(lead_id)
+        if not existing or existing.get("tenant_id") != tenant_id:
+            return jsonify({"error": "Lead not found"}), 404
     lead = update_lead(lead_id, updates)
-    if not lead:
+    if not lead or lead.get("tenant_id") != tenant_id:
         return jsonify({"error": "Lead not found"}), 404
     return jsonify(lead)
 
@@ -21886,6 +21952,9 @@ def twilio_whatsapp_webhook():
       https://your-domain.com/whatsapp
     Twilio POSTs form data (not JSON) when a WhatsApp message arrives.
     Must return 200 OK so Twilio knows the message was received.
+
+    Twilio is a cloud REST API (no QR / Baileys session). After Railway restarts,
+    outbound reconnects automatically via TWILIO_* env credentials.
     """
     body        = (request.values.get("Body")        or "").strip()
     from_number = (request.values.get("From")        or "").strip()  # e.g. whatsapp:+972501234567
@@ -21898,18 +21967,137 @@ def twilio_whatsapp_webhook():
         # Normalise the sender number (strip "whatsapp:" prefix)
         clean_from = from_number.replace("whatsapp:", "").strip()
 
-        # Route the message through Maya
+        # Route the message through Maya — never crash the webhook on Gemini failure
         try:
             reply_text = _gemini_generate(f"Guest ({profile or clean_from}) says: {body}")
+            if not (reply_text or "").strip():
+                reply_text = _guest_maya_fallback_reply("he")
         except Exception as _e:
-            reply_text = "תודה על הפנייה! נחזור אליך בהקדם. 🙏"
-            print(f"[Twilio/WhatsApp] Maya offline: {_e}")
+            reply_text = _guest_maya_fallback_reply("he")
+            print(f"[Twilio/WhatsApp] Maya offline (fallback reply): {_e}", flush=True)
 
-        # Send Maya's reply back via WhatsApp
-        send_whatsapp(clean_from, reply_text)
+        # Send Maya's reply back via WhatsApp (retries inside send_whatsapp)
+        try:
+            send_whatsapp(clean_from, reply_text)
+        except Exception as _we:
+            print(f"[Twilio/WhatsApp] outbound send failed (non-fatal): {_we}", flush=True)
 
     # Twilio REQUIRES a 200 response — any other status causes a retry flood
     return "OK", 200
+
+
+def _guest_maya_fallback_reply(language="he"):
+    """Soft guest-facing copy when Gemini times out / rate-limits / is down."""
+    lang = (language or "he").lower().split("-")[0]
+    if lang == "el":
+        return "Ευχαριστούμε για το μήνυμά σας! Θα επανέλθουμε σύντομα. 🙏"
+    if lang == "en":
+        return "Thanks for reaching out! We'll get back to you shortly. 🙏"
+    return "תודה על הפנייה! נחזור אליך בהקדם. 🙏"
+
+
+@app.route("/api/guest/maya-chat", methods=["POST", "OPTIONS"])
+def api_guest_maya_chat():
+    """
+    Public guest chat with Maya. Never returns raw SDK errors — always a soft reply.
+    May create a property_task when the guest requests service (towels/cleaning/etc.).
+    """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or data.get("system_message") or "").strip()
+    language = (data.get("language") or "he").strip() or "he"
+    property_id = (data.get("property_id") or "").strip()
+    room_number = (data.get("room_number") or "").strip()
+    guest_name = (data.get("guest_name") or "").strip()
+    hotel_name = (data.get("hotel_name") or "").strip()
+    suppress_task = bool(data.get("suppress_task"))
+
+    if not message:
+        return jsonify({
+            "ok": True,
+            "reply": _guest_maya_fallback_reply(language),
+            "task_created": False,
+        }), 200
+
+    hotel_bit = f" at {hotel_name}" if hotel_name else ""
+    room_bit = f" room {room_number}" if room_number else ""
+    guest_bit = guest_name or "Guest"
+    prompt = (
+        f"You are Maya, a warm hotel AI concierge{hotel_bit}. "
+        f"Reply in language code '{language}' only. Keep it short (1-3 sentences). "
+        f"Guest ({guest_bit}{room_bit}) says: {message}"
+    )
+
+    reply_text = ""
+    try:
+        reply_text = (_gemini_generate(prompt, timeout=20) or "").strip()
+    except Exception as e:
+        print(f"[api_guest_maya_chat] Gemini failed: {e}", flush=True)
+        reply_text = ""
+
+    if not reply_text:
+        reply_text = _guest_maya_fallback_reply(language)
+
+    task_created = False
+    task_id = None
+    # Lightweight intent → create staff task (guest source), without failing the chat
+    if not suppress_task and property_id and SessionLocal and PropertyTaskModel:
+        low = message.lower()
+        needs_task = any(
+            k in low or k in message
+            for k in (
+                "towel", "מגבת", "clean", "ניקיון", "maintenance", "תחזוקה",
+                "broken", "שבור", "help", "עזרה", "water", "מים",
+            )
+        )
+        if needs_task:
+            try:
+                identity_tid = DEFAULT_TENANT_ID
+                if ManualRoomModel:
+                    _s = SessionLocal()
+                    try:
+                        room = _s.query(ManualRoomModel).filter_by(id=property_id).first()
+                        if room and getattr(room, "tenant_id", None):
+                            identity_tid = room.tenant_id
+                    finally:
+                        _s.close()
+                # Reuse existing guest task POST path via in-process create
+                _sess = SessionLocal()
+                try:
+                    tid = str(uuid.uuid4())
+                    row = PropertyTaskModel(
+                        id=tid,
+                        property_id=property_id,
+                        description=message[:500],
+                        status="Pending",
+                        created_at=now_iso(),
+                        property_name=hotel_name or property_id,
+                        tenant_id=identity_tid,
+                        source="guest",
+                        task_type="Service",
+                    )
+                    _sess.add(row)
+                    _sess.commit()
+                    task_created = True
+                    task_id = tid
+                    try:
+                        _bump_tasks_version()
+                    except Exception:
+                        pass
+                finally:
+                    _sess.close()
+            except Exception as _te:
+                print(f"[api_guest_maya_chat] task create skipped: {_te}", flush=True)
+
+    return jsonify({
+        "ok": True,
+        "reply": reply_text,
+        "message": reply_text,
+        "displayMessage": reply_text,
+        "task_created": task_created,
+        "task_id": task_id,
+    }), 200
 
 
 @app.route("/api/whatsapp/welcome", methods=["POST"])
@@ -21958,15 +22146,16 @@ def log_objection():
 
 
 @app.route("/api/whatsapp/incoming", methods=["POST"])
+@require_auth
 def whatsapp_incoming():
     data = request.get_json(force=True) or {}
     lead_id = data.get("lead_id")
-    tenant_id = data.get("tenant_id")
-    if not tenant_id and lead_id:
+    # Authenticated tenant only — ignore body tenant_id (IDOR).
+    tenant_id = getattr(request, "tenant_id", None) or get_tenant_id_from_request()
+    if lead_id:
         lead = LEADS_BY_ID.get(lead_id)
-        if lead:
-            tenant_id = lead.get("tenant_id")
-    tenant_id = tenant_id or DEFAULT_TENANT_ID
+        if lead and lead.get("tenant_id") != tenant_id:
+            return jsonify({"error": "Lead not found"}), 404
     start_message_workers()
     enqueue_message_job({
         "tenant_id": tenant_id,
@@ -21979,40 +22168,48 @@ def whatsapp_incoming():
 
 
 @app.route("/api/agent/close", methods=["POST"])
+@require_auth
 def close_lead():
-    data = request.get_json(force=True)
+    data = request.get_json(force=True) or {}
     lead_id = data.get("lead_id")
+    tenant_id = getattr(request, "tenant_id", None) or get_tenant_id_from_request()
     lead = LEADS_BY_ID.get(lead_id)
-    if not lead:
+    if not lead or lead.get("tenant_id") != tenant_id:
         return jsonify({"error": "Lead not found"}), 404
     payment_link = f"https://pay.easyhost.ai/{lead_id[:8]}"
     update_lead(lead_id, {"status": "paid", "payment_link": payment_link})
     message = f"Great! Here is your payment link: {payment_link}"
     result = send_whatsapp(lead.get("phone"), message)
     if result.get("success"):
-        AUTOMATION_STATS.setdefault("automated_messages", 0)
-        AUTOMATION_STATS["automated_messages"] += 1
+        AUTOMATION_STATS.setdefault(tenant_id, {"automated_messages": 0, "last_scan": None})
+        AUTOMATION_STATS[tenant_id]["automated_messages"] = (
+            AUTOMATION_STATS[tenant_id].get("automated_messages", 0) + 1
+        )
         try:
-            emit_automation_stats(DEFAULT_TENANT_ID)
+            emit_automation_stats(tenant_id)
         except Exception:
             pass
     return jsonify({"payment_link": payment_link, "whatsapp": result})
 
 
 @app.route("/api/whatsapp/send", methods=["POST"])
+@require_auth
 def whatsapp_send():
-    data = request.get_json(force=True)
+    data = request.get_json(force=True) or {}
     to_number = data.get("to")
     message = data.get("message")
+    tenant_id = getattr(request, "tenant_id", None) or get_tenant_id_from_request()
     if not to_number or not message:
         return jsonify({"success": False, "error": "Missing to/message"}), 400
     result = send_whatsapp(to_number, message)
     if not result.get("success"):
         return jsonify(result), 400
-    AUTOMATION_STATS.setdefault("automated_messages", 0)
-    AUTOMATION_STATS["automated_messages"] += 1
+    AUTOMATION_STATS.setdefault(tenant_id, {"automated_messages": 0, "last_scan": None})
+    AUTOMATION_STATS[tenant_id]["automated_messages"] = (
+        AUTOMATION_STATS[tenant_id].get("automated_messages", 0) + 1
+    )
     try:
-        emit_automation_stats(DEFAULT_TENANT_ID)
+        emit_automation_stats(tenant_id)
     except Exception:
         pass
     return jsonify(result)
