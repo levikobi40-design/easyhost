@@ -73,18 +73,18 @@
     "scanToManage": "סריקה לניהול"
   },
   "sidebarNav": {
-    "dashboard":  "🏠 סקירה כללית",
-    "analytics":  "📊 אנליטיקס",
-    "premium":    "🏨 מרכז נכסים",
+    "dashboard": "🏠 סקירה כללית",
+    "analytics": "📊 אנליטיקס",
+    "premium": "🏨 מרכז נכסים",
     "properties": "ניהול נכסים",
-    "inventory":  "🛏 מלאי חדרים",
-    "tasks":      "לוח משימות",
-    "crm":        "👥 ניהול לידים",
-    "operator":   "📡 מפעיל",
-    "field":      "⚡ סוכן שטח",
-    "scheduler":  "מתזמן משמרות",
-    "manualops":  "הפעלה ידנית",
-    "godmode":    "🔮 מצוינות תפעולית"
+    "inventory": "🛏 מלאי חדרים",
+    "tasks": "לוח משימות",
+    "crm": "👥 ניהול לידים",
+    "operator": "📡 מפעיל",
+    "field": "⚡ סוכן שטח",
+    "scheduler": "מתזמן משמרות",
+    "manualops": "הפעלה ידנית",
+    "godmode": "🔮 מצוינות תפעולית"
   },
   "godMode": {
     "demoStaff": "צוות הדגמה"
@@ -311,10 +311,10 @@
     },
     "toast": "✅ משימה חדשה ל-{{name}} נשלחה! {{emoji}}",
     "guestChips": {
-      "towels":   "מגבות",
+      "towels": "מגבות",
       "cleaning": "ניקיון",
-      "issue":    "תקלה",
-      "test":     "בדיקה"
+      "issue": "תקלה",
+      "test": "בדיקה"
     },
     "bypassBtn": "⚡ עקוף AI — צור משימה ידנית עכשיו",
     "bypassHint": "או הקלד /test-task [חדר] · /clean [חדר] · /towels [חדר] · /fix [חדר]",
@@ -834,23 +834,122 @@
       "profile": "פרופיל"
     },
     "tiles": {
-      "checkout": { "label": "צ'ק-אאוט" },
-      "room_cleaning": { "label": "ניקיון", "description": "בקשת ניקיון חדר", "staff": "צוות ניקיון" },
-      "towels": { "label": "מגבות", "description": "בקשת מגבות", "staff": "צוות ניקיון" },
-      "maintenance": { "label": "תחזוקה", "description": "בקשת תחזוקה", "staff": "קובי" },
-      "spa": { "label": "ספא", "description": "בקשת שירות ספא" },
-      "room_service": { "label": "שירות חדר", "description": "בקשת שירות חדר" },
-      "wifi": { "label": "Wi‑Fi", "description": "בקשת עזרה ב-WiFi / אינטרנט" },
-      "reception": { "label": "קבלה", "description": "בקשה לדסק קבלה" },
-      "session_end": { "label": "סיום מפגש" },
-      "coffee": { "label": "קפה", "description": "בקשת קפה" },
-      "meeting_tech": { "label": "חדר ישיבות — טכנולוגיה", "description": "[דחוף] תמיכה טכנית בחדר ישיבות", "staff": "מנהל קהילה" },
-      "printer": { "label": "מדפסת", "description": "בקשת הדפסה / מדפסת" }
+      "checkout": {
+        "label": "צ'ק-אאוט"
+      },
+      "room_cleaning": {
+        "label": "ניקיון",
+        "description": "בקשת ניקיון חדר",
+        "staff": "צוות ניקיון"
+      },
+      "towels": {
+        "label": "מגבות",
+        "description": "בקשת מגבות",
+        "staff": "צוות ניקיון"
+      },
+      "maintenance": {
+        "label": "תחזוקה",
+        "description": "בקשת תחזוקה",
+        "staff": "קובי"
+      },
+      "spa": {
+        "label": "ספא",
+        "description": "בקשת שירות ספא"
+      },
+      "room_service": {
+        "label": "שירות חדר",
+        "description": "בקשת שירות חדר"
+      },
+      "wifi": {
+        "label": "Wi‑Fi",
+        "description": "בקשת עזרה ב-WiFi / אינטרנט"
+      },
+      "reception": {
+        "label": "קבלה",
+        "description": "בקשה לדסק קבלה"
+      },
+      "session_end": {
+        "label": "סיום מפגש"
+      },
+      "coffee": {
+        "label": "קפה",
+        "description": "בקשת קפה"
+      },
+      "meeting_tech": {
+        "label": "חדר ישיבות — טכנולוגיה",
+        "description": "[דחוף] תמיכה טכנית בחדר ישיבות",
+        "staff": "מנהל קהילה"
+      },
+      "printer": {
+        "label": "מדפסת",
+        "description": "בקשת הדפסה / מדפסת"
+      }
     },
     "maya": {
       "progressAck": "רשמתי לעצמי, העזרה בדרך.",
       "staffDone": "מצוין! סימנו את הבקשה כבוצעה. משהו נוסף?"
     },
     "language": "שפה"
+  },
+  "propertiesPage": {
+    "title": "הנכסים שלי",
+    "subtitle": "נהל {{count}} נכסים פעילים עם האוטומציה של מאיה",
+    "subtitleBranch": " (סניף נבחר)",
+    "importEnterprise": "ייבוא Enterprise (אקסל גדול)",
+    "importTitle": "ייבוא המוני: גיליונות Staff, Properties, Rooms, Inventory, Pricing",
+    "addGuest": "הוסף אורח חדש",
+    "addProperty": "הוסף נכס חדש",
+    "addAnotherProperty": "הוסף נכס נוסף",
+    "searchFilter": "חיפוש וסינון",
+    "searchPlaceholder": "חיפוש לפי שם, עיר, מותג, מזהה…",
+    "viewResults": "צפה בתוצאות",
+    "allCities": "כל הערים",
+    "allBrands": "כל המותגים",
+    "allPropertyTypes": "כל סוגי הנכס",
+    "allOccupancy": "כל תפוסות",
+    "branch": "סניף",
+    "allBranches": "כל הסניפים",
+    "showingCount": "מוצגים {{visible}} מתוך {{total}} נכסים (טעינה הדרגתית לביצועים)",
+    "emptyFilter": "אין נכסים שמתאימים לסינון. נקה חיפוש או בחר \"כל הסניפים\" / כל הערים.",
+    "loadMoreLoading": "טוען מהשרת...",
+    "loadMore": "טען עוד ({{local}} מקומי{{server}})",
+    "loadMoreServer": " · יש עוד בשרת",
+    "deleteConfirm": "האם למחוק את הנכס?",
+    "deleteError": "שגיאה במחיקה",
+    "importFailed": "ייבוא נכשל",
+    "suitesCount": "{{count}} סוגי חדרים",
+    "close": "סגור",
+    "mayaSortConfirm": "קובי, רשימת הנכסים מסונכרנת עם השרת — פיילוט קורפו.",
+    "suitesTitle": "סוגי חדרים ומחירים",
+    "suitesRooms": "{{count}} חדרים",
+    "suitesGuestsMax": "עד {{count}} אורחים",
+    "suitesBeds": "{{count}} מיטות",
+    "suitesBaths": "{{count}} אמבטיות",
+    "suitesEmpty": "אין סוגי חדרים כרגע",
+    "suitesAdd": "+ הוסף סוג חדר נוסף",
+    "suitesPerNight": "/ ללילה"
+  },
+  "propertyCard": {
+    "noImage": "אין תמונה",
+    "ready": "מוכן",
+    "cleaning": "בניקיון",
+    "showMorePhotos": "הצג {{count}} תמונות נוספות",
+    "hidePhotos": "הסתר תמונות",
+    "priceUpdate": " · לעדכון",
+    "guests": "אורחים",
+    "occupancy": "תפוסה {{pct}}%",
+    "manage": "נהל נכס",
+    "delete": "מחק נכס",
+    "viewPolicy": "צפה במדיניות המלון"
+  },
+  "propertyGallery": {
+    "noPhotos": "אין תמונות",
+    "propertyFallback": "נכס",
+    "imageN": "תמונה {{n}}",
+    "imageAlt": "{{name}} - תמונה {{n}}",
+    "gallery": "גלריית תמונות",
+    "close": "סגור",
+    "prev": "הקודם",
+    "next": "הבא"
   }
 }

@@ -31,8 +31,34 @@ export const isRtlLang = (lang) => RTL_LANGS.includes(String(lang || '').toLower
 
 /** Coerce any input to a supported code, falling back to English. */
 export const normalizeLang = (lang) => {
-  const l = String(lang || '').toLowerCase().trim();
-  return SUPPORTED_LANGS.includes(l) ? l : DEFAULT_LANG;
+  const raw = String(lang || '').toLowerCase().trim().replace(/_/g, '-');
+  if (!raw) return DEFAULT_LANG;
+  if (SUPPORTED_LANGS.includes(raw)) return raw;
+  const primary = raw.split('-')[0];
+  const aliases = { iw: 'he', gr: 'el', gre: 'el', heb: 'he', eng: 'en' };
+  const mapped = aliases[primary] || primary;
+  return SUPPORTED_LANGS.includes(mapped) ? mapped : DEFAULT_LANG;
+};
+
+/**
+ * Pick the best supported language from the browser (navigator.languages).
+ * Returns null when nothing matches (caller may fall back to IP geo / default).
+ */
+export const detectBrowserLanguage = () => {
+  if (typeof navigator === 'undefined') return null;
+  const candidates = [
+    ...(Array.isArray(navigator.languages) ? navigator.languages : []),
+    navigator.language,
+    navigator.userLanguage,
+  ].filter(Boolean);
+  for (const c of candidates) {
+    const raw = String(c).toLowerCase().replace(/_/g, '-');
+    const primary = raw.split('-')[0];
+    const aliases = { iw: 'he', gr: 'el', gre: 'el', heb: 'he', eng: 'en' };
+    const mapped = aliases[primary] || primary;
+    if (SUPPORTED_LANGS.includes(mapped)) return mapped;
+  }
+  return null;
 };
 
 /** Ordered list of { code, label, name } for building language selectors. */

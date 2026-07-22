@@ -490,23 +490,122 @@
       "profile": "Προφίλ"
     },
     "tiles": {
-      "checkout": { "label": "Check-out" },
-      "room_cleaning": { "label": "Καθαρισμός", "description": "Αίτημα καθαρισμού δωματίου", "staff": "Καθαριότητα" },
-      "towels": { "label": "Πετσέτες", "description": "Αίτημα πετσετών", "staff": "Καθαριότητα" },
-      "maintenance": { "label": "Συντήρηση", "description": "Αίτημα συντήρησης", "staff": "Συντήρηση" },
-      "spa": { "label": "Spa", "description": "Αίτημα spa" },
-      "room_service": { "label": "Room service", "description": "Αίτημα room service" },
-      "wifi": { "label": "Wi‑Fi", "description": "Βοήθεια Wi‑Fi / internet" },
-      "reception": { "label": "Ρεσεψιόν", "description": "Αίτημα ρεσεψιόν" },
-      "session_end": { "label": "Λήξη συνεδρίας" },
-      "coffee": { "label": "Καφές", "description": "Αίτημα καφέ" },
-      "meeting_tech": { "label": "Αίθουσα — τεχνολογία", "description": "[Επείγον] Τεχνική υποστήριξη αίθουσας", "staff": "Community manager" },
-      "printer": { "label": "Εκτυπωτής", "description": "Αίτημα εκτύπωσης" }
+      "checkout": {
+        "label": "Check-out"
+      },
+      "room_cleaning": {
+        "label": "Καθαρισμός",
+        "description": "Αίτημα καθαρισμού δωματίου",
+        "staff": "Καθαριότητα"
+      },
+      "towels": {
+        "label": "Πετσέτες",
+        "description": "Αίτημα πετσετών",
+        "staff": "Καθαριότητα"
+      },
+      "maintenance": {
+        "label": "Συντήρηση",
+        "description": "Αίτημα συντήρησης",
+        "staff": "Συντήρηση"
+      },
+      "spa": {
+        "label": "Spa",
+        "description": "Αίτημα spa"
+      },
+      "room_service": {
+        "label": "Room service",
+        "description": "Αίτημα room service"
+      },
+      "wifi": {
+        "label": "Wi‑Fi",
+        "description": "Βοήθεια Wi‑Fi / internet"
+      },
+      "reception": {
+        "label": "Ρεσεψιόν",
+        "description": "Αίτημα ρεσεψιόν"
+      },
+      "session_end": {
+        "label": "Λήξη συνεδρίας"
+      },
+      "coffee": {
+        "label": "Καφές",
+        "description": "Αίτημα καφέ"
+      },
+      "meeting_tech": {
+        "label": "Αίθουσα — τεχνολογία",
+        "description": "[Επείγον] Τεχνική υποστήριξη αίθουσας",
+        "staff": "Community manager"
+      },
+      "printer": {
+        "label": "Εκτυπωτής",
+        "description": "Αίτημα εκτύπωσης"
+      }
     },
     "maya": {
       "progressAck": "Το κατέγραψα — η βοήθεια είναι καθοδόν.",
       "staffDone": "Τέλεια! Η αίτηση ολοκληρώθηκε. Κάτι άλλο;"
     },
     "language": "Γλώσσα"
+  },
+  "propertiesPage": {
+    "title": "Τα ακίνητά μου",
+    "subtitle": "Διαχείριση {{count}} ενεργών ακινήτων με αυτοματισμό Maya",
+    "subtitleBranch": " (επιλεγμένο κατάστημα)",
+    "importEnterprise": "Εισαγωγή Enterprise (μεγάλο Excel)",
+    "importTitle": "Μαζική εισαγωγή: Staff, Properties, Rooms, Inventory, Pricing",
+    "addGuest": "Προσθήκη νέου επισκέπτη",
+    "addProperty": "Προσθήκη νέου ακινήτου",
+    "addAnotherProperty": "Προσθήκη άλλου ακινήτου",
+    "searchFilter": "Αναζήτηση και φίλτρα",
+    "searchPlaceholder": "Αναζήτηση με όνομα, πόλη, μάρκα, ID…",
+    "viewResults": "Προβολή αποτελεσμάτων",
+    "allCities": "Όλες οι πόλεις",
+    "allBrands": "Όλες οι μάρκες",
+    "allPropertyTypes": "Όλοι οι τύποι",
+    "allOccupancy": "Όλη η πληρότητα",
+    "branch": "Κατάστημα",
+    "allBranches": "Όλα τα καταστήματα",
+    "showingCount": "Εμφάνιση {{visible}} από {{total}} ακίνητα (προοδευτική φόρτωση)",
+    "emptyFilter": "Κανένα ακίνητο δεν ταιριάζει. Καθαρίστε την αναζήτηση ή επιλέξτε «Όλα τα καταστήματα» / Όλες οι πόλεις.",
+    "loadMoreLoading": "Φόρτωση από τον διακομιστή…",
+    "loadMore": "Φόρτωση περισσότερων ({{local}} τοπικά{{server}})",
+    "loadMoreServer": " · περισσότερα στον διακομιστή",
+    "deleteConfirm": "Διαγραφή αυτού του ακινήτου;",
+    "deleteError": "Η διαγραφή απέτυχε",
+    "importFailed": "Η εισαγωγή απέτυχε",
+    "suitesCount": "{{count}} τύποι δωματίων",
+    "close": "Κλείσιμο",
+    "mayaSortConfirm": "Η λίστα ακινήτων συγχρονίστηκε με τον διακομιστή — πιλοτικό Corfu.",
+    "suitesTitle": "Τύποι δωματίων και τιμές",
+    "suitesRooms": "{{count}} δωμάτια",
+    "suitesGuestsMax": "έως {{count}} επισκέπτες",
+    "suitesBeds": "{{count}} κρεβάτια",
+    "suitesBaths": "{{count}} μπάνια",
+    "suitesEmpty": "Δεν υπάρχουν τύποι δωματίων ακόμη",
+    "suitesAdd": "+ Προσθήκη άλλου τύπου δωματίου",
+    "suitesPerNight": "/ νύχτα"
+  },
+  "propertyCard": {
+    "noImage": "Χωρίς εικόνα",
+    "ready": "Έτοιμο",
+    "cleaning": "Καθαρισμός",
+    "showMorePhotos": "Εμφάνιση {{count}} ακόμη φωτογραφιών",
+    "hidePhotos": "Απόκρυψη φωτογραφιών",
+    "priceUpdate": " · ενημέρωση",
+    "guests": "επισκέπτες",
+    "occupancy": "Πληρότητα {{pct}}%",
+    "manage": "Διαχείριση ακινήτου",
+    "delete": "Διαγραφή ακινήτου",
+    "viewPolicy": "Πολιτική ξενοδοχείου"
+  },
+  "propertyGallery": {
+    "noPhotos": "Χωρίς φωτογραφίες",
+    "propertyFallback": "Ακίνητο",
+    "imageN": "Εικόνα {{n}}",
+    "imageAlt": "{{name}} - εικόνα {{n}}",
+    "gallery": "Γκαλερί φωτογραφιών",
+    "close": "Κλείσιμο",
+    "prev": "Προηγούμενο",
+    "next": "Επόμενο"
   }
 }

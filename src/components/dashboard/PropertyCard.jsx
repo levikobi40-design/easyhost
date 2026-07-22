@@ -7,6 +7,7 @@ import {
   ROOMS_WORKSPACE_OFFICE_INTERIOR_CDN,
   ROOMS_WORKSPACE_OFFICE_INTERIOR_LOCAL,
 } from '../../utils/propertyCardImages';
+import useTranslations from '../../hooks/useTranslations';
 
 const PLACEHOLDER_IMAGE =
   'https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800&auto=format&fit=crop';
@@ -77,6 +78,7 @@ const PropertyCard = React.memo(function PropertyCard({
   onBazaarPolicy,
   imageRefreshKey = 0,
 }) {
+  const { t } = useTranslations();
   const [galleryExpanded, setGalleryExpanded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -122,7 +124,7 @@ const PropertyCard = React.memo(function PropertyCard({
             aria-hidden
           >
             <Building2 size={52} strokeWidth={1.6} className="opacity-95 drop-shadow-sm" />
-            <span className="text-[11px] font-bold tracking-wide opacity-90">אין תמונה</span>
+            <span className="text-[11px] font-bold tracking-wide opacity-90">{t('propertyCard.noImage')}</span>
           </div>
         )}
         <div className="absolute top-3 right-3 z-[3]">
@@ -131,7 +133,7 @@ const PropertyCard = React.memo(function PropertyCard({
               property.status === 'Ready' ? 'bg-green-500/90 text-white' : 'bg-amber-400/90 text-black'
             }`}
           >
-            {property.status === 'Ready' ? 'מוכן' : 'בניקיון'}
+            {property.status === 'Ready' ? t('propertyCard.ready') : t('propertyCard.cleaning')}
           </span>
         </div>
       </div>
@@ -149,7 +151,7 @@ const PropertyCard = React.memo(function PropertyCard({
             setGalleryExpanded(true);
           }}
         >
-          הצג {extraPhotos} תמונות נוספות
+          {t('propertyCard.showMorePhotos', { count: extraPhotos })}
         </button>
       )}
       {extraPhotos > 0 && galleryExpanded && (
@@ -161,7 +163,7 @@ const PropertyCard = React.memo(function PropertyCard({
             setGalleryExpanded(false);
           }}
         >
-          הסתר תמונות
+          {t('propertyCard.hidePhotos')}
         </button>
       )}
       <div className="p-4">
@@ -174,13 +176,13 @@ const PropertyCard = React.memo(function PropertyCard({
                 <span className="text-gray-500 font-normal text-sm"> / night</span>
               </>
             ) : property.brand === 'WeWork' ? (
-              <>₪0<span className="text-gray-500 font-normal text-sm"> · לעדכון</span></>
+              <>₪0<span className="text-gray-500 font-normal text-sm">{t('propertyCard.priceUpdate')}</span></>
             ) : null}
           </span>
         </div>
         <div className="flex items-center gap-2 text-gray-500 text-xs mb-3 flex-wrap">
           <Users size={12} />
-          <span>{property.guests} אורחים</span>
+          <span>{property.guests} {t('propertyCard.guests')}</span>
           <MapPin size={12} />
           <span>{property.city || '—'}</span>
           {property.brand && (
@@ -191,7 +193,7 @@ const PropertyCard = React.memo(function PropertyCard({
           )}
           {property.occupancy_rate != null && property.occupancy_rate !== '' && (
             <span className="text-rose-600 font-semibold">
-              · תפוסה {Math.round(Number(property.occupancy_rate))}%
+              · {t('propertyCard.occupancy', { pct: Math.round(Number(property.occupancy_rate)) })}
             </span>
           )}
         </div>
@@ -223,13 +225,13 @@ const PropertyCard = React.memo(function PropertyCard({
               onClick={(e) => { e.stopPropagation(); onManage ? onManage(property) : (onEdit && onEdit(property)); }}
               className="flex-1 min-h-[44px] flex items-center justify-center bg-gray-900 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-gray-800 transition-colors"
             >
-              נהל נכס
+              {t('propertyCard.manage')}
             </button>
             <button
               type="button"
               onClick={() => onDelete && onDelete(String(property.id))}
               className="w-10 h-10 flex items-center justify-center bg-red-50 rounded-xl text-red-600 hover:bg-red-100 transition-all shrink-0"
-              title="מחק נכס"
+              title={t('propertyCard.delete')}
             >
               <Trash2 size={16} />
             </button>
@@ -243,7 +245,7 @@ const PropertyCard = React.memo(function PropertyCard({
               }}
               className="w-full py-2 rounded-xl text-xs font-bold border-2 border-amber-300 bg-amber-50/90 text-amber-950 hover:bg-amber-100 transition-colors"
             >
-              צפה במדיניות המלון
+              {t('propertyCard.viewPolicy')}
             </button>
           )}
         </div>

@@ -30,7 +30,7 @@ import MayaChat from './components/maya/MayaChat';
 import WorkerLogin from './components/auth/WorkerLogin';
 import { isBiktaNessZionaUser } from './utils/biktaUser';
 import { resolveNavTier, isDashboardAdmin, isOperationRole } from './utils/dashboardRoles';
-import { SUPPORTED_LANGS, isRtlLang } from './utils/languages';
+import { SUPPORTED_LANGS, isRtlLang, normalizeLang, detectBrowserLanguage } from './utils/languages';
 import { startBackendHeartbeat } from './services/backendHeartbeat';
 import { checkPythonApiHealth, flushTaskUpdateQueue } from './services/api';
 import { isAuthBypassedClient } from './utils/apiClient';
@@ -145,12 +145,35 @@ function MainApp() {
     }
   }, [i18n, isRTL, lang]);
 
+  // ?lang= / ?lng= — deep-link for clients abroad (e.g. /properties?lang=el)
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get('lang') || params.get('lng');
+    if (!raw) return;
+    const code = normalizeLang(raw);
+    setLang(code); // explicit link choice — persist as user preference
+    params.delete('lang');
+    params.delete('lng');
+    const qs = params.toString();
+    navigate({ pathname: location.pathname, search: qs ? `?${qs}` : '', hash: location.hash }, { replace: true });
+  }, [location.search, location.pathname, location.hash, navigate, setLang]);
+
+  // Auto language: browser Accept-Language / navigator, then IP geo (IL → he).
+  // Never overrides an explicit user choice (TopBar / ?lang= / persisted easyhost_lang).
+  useEffect(() => {
+    if (langUserSet) return;
+    if (sessionStorage.getItem('lang_auto_done')) return;
+    sessionStorage.setItem('lang_auto_done', '1');
+
+    const browserLang = detectBrowserLanguage();
+    if (browserLang) {
+      setLang(browserLang, { auto: true });
+      return;
+    }
+
+    // Legacy IP hint for visitors without a matching navigator language
     if (sessionStorage.getItem('ip_geo_done')) return;
     sessionStorage.setItem('ip_geo_done', '1');
-    // Never auto-detect over an explicit, persisted user choice (the old code
-    // forced Hebrew for IL visitors, overriding a user who had picked English).
-    if (langUserSet) return;
     fetch('https://ipapi.co/json/', { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {

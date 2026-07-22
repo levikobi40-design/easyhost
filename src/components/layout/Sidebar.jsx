@@ -10,6 +10,7 @@ import easyhostLogoDark from '../../assets/easyhost-logo-dark.svg';
 import useStore from '../../store/useStore';
 import { AI_ASSISTANT_URL } from '../../utils/constants';
 import { resolveNavTier } from '../../utils/dashboardRoles';
+import { isRtlLang } from '../../utils/languages';
 import StaffDirectory from './StaffDirectory';
 import StaffDirectoryErrorBoundary from './StaffDirectoryErrorBoundary';
 import './Sidebar.css';
@@ -46,7 +47,7 @@ const _ADMIN_EMAILS = new Set(['levikobi40@gmail.com']);
 
 const Sidebar = ({ activeView, setActiveView }) => {
   const { sidebarOpen, toggleSidebar, lang, role, activeTenantId, authToken, user } = useStore();
-  const isRTL = lang === 'he';
+  const isRTL = isRtlLang(lang);
   const { t } = useTranslations();
   const safeT = typeof t === 'function' ? t : (k) => k;
 
@@ -95,12 +96,6 @@ const Sidebar = ({ activeView, setActiveView }) => {
   };
 
   const navLabel = (item) => {
-    if (isBazaarJaffaTenant && isRTL) {
-      if (item.id === 'tasks') return 'לוח משימות';
-      if (item.id === 'properties') return 'ניהול נכסים';
-      if (item.id === 'bazaar-week') return 'שבוע פעילות / מבצעים';
-      if (item.id === 'manualops') return 'הפעלה ידנית';
-    }
     const key = `sidebarNav.${item.id}`;
     const translated = safeT(key);
     if (!translated || translated === key) return item.fallback;

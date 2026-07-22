@@ -73,18 +73,18 @@
     "scanToManage": "Scan to manage"
   },
   "sidebarNav": {
-    "dashboard":  "🏠 Overview",
-    "analytics":  "📊 Analytics",
-    "premium":    "🏨 Properties Hub",
+    "dashboard": "🏠 Overview",
+    "analytics": "📊 Analytics",
+    "premium": "🏨 Properties Hub",
     "properties": "Property management",
-    "inventory":  "🛏 Room Inventory",
-    "tasks":      "Mission board",
-    "crm":        "👥 Leads CRM",
-    "operator":   "📡 Operator",
-    "field":      "⚡ Field Agent",
-    "scheduler":  "Shift scheduler",
-    "manualops":  "Manual operations",
-    "godmode":    "🔮 Operational Excellence"
+    "inventory": "🛏 Room Inventory",
+    "tasks": "Mission board",
+    "crm": "👥 Leads CRM",
+    "operator": "📡 Operator",
+    "field": "⚡ Field Agent",
+    "scheduler": "Shift scheduler",
+    "manualops": "Manual operations",
+    "godmode": "🔮 Operational Excellence"
   },
   "godMode": {
     "demoStaff": "Demo staff"
@@ -311,10 +311,10 @@
     },
     "toast": "✅ New task assigned to {{name}}! {{emoji}}",
     "guestChips": {
-      "towels":   "Towels",
+      "towels": "Towels",
       "cleaning": "Cleaning",
-      "issue":    "Issue",
-      "test":     "Test"
+      "issue": "Issue",
+      "test": "Test"
     },
     "bypassBtn": "⚡ Bypass AI — Create task manually",
     "bypassHint": "Or type /test-task [room] · /clean [room] · /towels [room] · /fix [room]",
@@ -834,23 +834,122 @@
       "profile": "الملف"
     },
     "tiles": {
-      "checkout": { "label": "تسجيل المغادرة" },
-      "room_cleaning": { "label": "تنظيف", "description": "طلب تنظيف الغرفة", "staff": "فريق التنظيف" },
-      "towels": { "label": "مناشف", "description": "طلب مناشف", "staff": "فريق التنظيف" },
-      "maintenance": { "label": "صيانة", "description": "طلب صيانة", "staff": "الصيانة" },
-      "spa": { "label": "سبا", "description": "طلب خدمة سبا" },
-      "room_service": { "label": "خدمة الغرف", "description": "طلب خدمة الغرف" },
-      "wifi": { "label": "Wi‑Fi", "description": "مساعدة Wi‑Fi / الإنترنت" },
-      "reception": { "label": "الاستقبال", "description": "طلب مكتب الاستقبال" },
-      "session_end": { "label": "إنهاء الجلسة" },
-      "coffee": { "label": "قهوة", "description": "طلب قهوة" },
-      "meeting_tech": { "label": "قاعة — تقنية", "description": "[عاجل] دعم تقني للقاعة", "staff": "مدير المجتمع" },
-      "printer": { "label": "طابعة", "description": "طلب طباعة" }
+      "checkout": {
+        "label": "تسجيل المغادرة"
+      },
+      "room_cleaning": {
+        "label": "تنظيف",
+        "description": "طلب تنظيف الغرفة",
+        "staff": "فريق التنظيف"
+      },
+      "towels": {
+        "label": "مناشف",
+        "description": "طلب مناشف",
+        "staff": "فريق التنظيف"
+      },
+      "maintenance": {
+        "label": "صيانة",
+        "description": "طلب صيانة",
+        "staff": "الصيانة"
+      },
+      "spa": {
+        "label": "سبا",
+        "description": "طلب خدمة سبا"
+      },
+      "room_service": {
+        "label": "خدمة الغرف",
+        "description": "طلب خدمة الغرف"
+      },
+      "wifi": {
+        "label": "Wi‑Fi",
+        "description": "مساعدة Wi‑Fi / الإنترنت"
+      },
+      "reception": {
+        "label": "الاستقبال",
+        "description": "طلب مكتب الاستقبال"
+      },
+      "session_end": {
+        "label": "إنهاء الجلسة"
+      },
+      "coffee": {
+        "label": "قهوة",
+        "description": "طلب قهوة"
+      },
+      "meeting_tech": {
+        "label": "قاعة — تقنية",
+        "description": "[عاجل] دعم تقني للقاعة",
+        "staff": "مدير المجتمع"
+      },
+      "printer": {
+        "label": "طابعة",
+        "description": "طلب طباعة"
+      }
     },
     "maya": {
       "progressAck": "تم التسجيل — المساعدة في الطريق.",
       "staffDone": "ممتاز! تم إكمال طلبك. هل تحتاج شيئاً آخر؟"
     },
     "language": "اللغة"
+  },
+  "propertiesPage": {
+    "title": "My Properties",
+    "subtitle": "Manage {{count}} active properties with Maya automation",
+    "subtitleBranch": " (selected branch)",
+    "importEnterprise": "Enterprise import (large Excel)",
+    "importTitle": "Bulk import: Staff, Properties, Rooms, Inventory, Pricing sheets",
+    "addGuest": "Add new guest",
+    "addProperty": "Add new property",
+    "addAnotherProperty": "Add another property",
+    "searchFilter": "Search & filter",
+    "searchPlaceholder": "Search by name, city, brand, ID…",
+    "viewResults": "View results",
+    "allCities": "All cities",
+    "allBrands": "All brands",
+    "allPropertyTypes": "All property types",
+    "allOccupancy": "All occupancy",
+    "branch": "Branch",
+    "allBranches": "All branches",
+    "showingCount": "Showing {{visible}} of {{total}} properties (progressive load for performance)",
+    "emptyFilter": "No properties match this filter. Clear search or choose \"All branches\" / All cities.",
+    "loadMoreLoading": "Loading from server…",
+    "loadMore": "Load more ({{local}} local{{server}})",
+    "loadMoreServer": " · more on server",
+    "deleteConfirm": "Delete this property?",
+    "deleteError": "Delete failed",
+    "importFailed": "Import failed",
+    "suitesCount": "{{count}} room types",
+    "close": "Close",
+    "mayaSortConfirm": "Property list is synced with the server — Corfu pilot.",
+    "suitesTitle": "Room types & prices",
+    "suitesRooms": "{{count}} rooms",
+    "suitesGuestsMax": "up to {{count}} guests",
+    "suitesBeds": "{{count}} beds",
+    "suitesBaths": "{{count}} baths",
+    "suitesEmpty": "No room types yet",
+    "suitesAdd": "+ Add another room type",
+    "suitesPerNight": "/ night"
+  },
+  "propertyCard": {
+    "noImage": "No image",
+    "ready": "Ready",
+    "cleaning": "Cleaning",
+    "showMorePhotos": "Show {{count}} more photos",
+    "hidePhotos": "Hide photos",
+    "priceUpdate": " · update",
+    "guests": "guests",
+    "occupancy": "Occupancy {{pct}}%",
+    "manage": "Manage property",
+    "delete": "Delete property",
+    "viewPolicy": "View hotel policy"
+  },
+  "propertyGallery": {
+    "noPhotos": "No photos",
+    "propertyFallback": "Property",
+    "imageN": "Image {{n}}",
+    "imageAlt": "{{name}} - image {{n}}",
+    "gallery": "Photo gallery",
+    "close": "Close",
+    "prev": "Previous",
+    "next": "Next"
   }
 }

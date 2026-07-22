@@ -22,17 +22,19 @@ import {
   chunkArray,
 } from '../../utils/massImportEngine';
 import { persistPropertyImageOverrideFromItem } from '../../utils/propertyImagePersistence';
+import useTranslations from '../../hooks/useTranslations';
+import { isRtlLang } from '../../utils/languages';
 import './PropertiesDashboard.css';
 
 const PAGE_SIZE = 20;
-
-const MAYA_PROP_SORT_CONFIRM =
-  'קובי, רשימת הנכסים מסונכרנת עם השרת — פיילוט קורפו.';
 
 const EASYHOST_BLUE = '#2563eb';
 const EASYHOST_BLUE_HOVER = '#1d4ed8';
 
 export default function PropertiesDashboard() {
+  const { t } = useTranslations();
+  const lang = useStore((s) => s.lang) || 'en';
+  const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
   const {
     properties,
     loading,
@@ -104,8 +106,8 @@ export default function PropertiesDashboard() {
   const occOptions = useMemo(() => [], []);
 
   const branchOptions = useMemo(
-    () => [{ id: 'all', label: 'כל הסניפים' }],
-    [],
+    () => [{ id: 'all', label: t('propertiesPage.allBranches') }],
+    [t, lang],
   );
 
   const suitesData = useMemo(
@@ -205,7 +207,7 @@ export default function PropertiesDashboard() {
       }
       refresh(true);
     } catch (err) {
-      window.alert(err?.message || 'ייבוא נכשל');
+      window.alert(err?.message || t('propertiesPage.importFailed'));
     } finally {
       setMassImportBusy(false);
     }
@@ -254,8 +256,9 @@ export default function PropertiesDashboard() {
       });
     }
     if (isNew && activeTenantId === 'BAZAAR_JAFFA') {
-      addMayaMessage({ role: 'assistant', content: MAYA_PROP_SORT_CONFIRM });
-      speakMayaReply(MAYA_PROP_SORT_CONFIRM, role, {});
+      const mayaLine = t('propertiesPage.mayaSortConfirm');
+      addMayaMessage({ role: 'assistant', content: mayaLine });
+      speakMayaReply(mayaLine, role, {});
       window.requestAnimationFrame(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
@@ -269,7 +272,7 @@ export default function PropertiesDashboard() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('האם למחוק את הנכס?')) return;
+    if (!window.confirm(t('propertiesPage.deleteConfirm'))) return;
     const idStr = id != null ? String(id) : '';
     if (!idStr) return;
     try {
@@ -277,7 +280,7 @@ export default function PropertiesDashboard() {
       refresh();
       window.dispatchEvent(new Event('properties-refresh'));
     } catch (e) {
-      window.alert(e?.message || 'שגיאה במחיקה');
+      window.alert(e?.message || t('propertiesPage.deleteError'));
     }
   };
 
@@ -300,13 +303,13 @@ export default function PropertiesDashboard() {
   }
 
   return (
-    <div className="properties-dashboard p-10 bg-[#eef2f7] min-h-screen" dir="rtl">
+    <div className="properties-dashboard p-10 bg-[#eef2f7] min-h-screen" dir={dir}>
       <div className="flex justify-between items-center mb-12 properties-header-section pb-6 -mx-2 px-2 rounded-xl">
         <div>
-          <h1 className="text-4xl font-black text-gray-900">הנכסים שלי</h1>
+          <h1 className="text-4xl font-black text-gray-900">{t('propertiesPage.title')}</h1>
           <p className="text-gray-600 mt-1">
-            נהל {filteredProperties.length} נכסים פעילים עם האוטומציה של מאיה
-            {branchFilter !== 'all' ? ` (סניף נבחר)` : ''}.
+            {t('propertiesPage.subtitle', { count: filteredProperties.length })}
+            {branchFilter !== 'all' ? t('propertiesPage.subtitleBranch') : ''}.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -322,10 +325,10 @@ export default function PropertiesDashboard() {
             disabled={massImportBusy}
             onClick={() => massInputRef.current?.click()}
             className="props-add-btn"
-            title="ייבוא המוני: גיליונות Staff, Properties, Rooms, Inventory, Pricing"
+            title={t('propertiesPage.importTitle')}
           >
             {massImportBusy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            <span className="mr-1">ייבוא Enterprise (אקסל גדול)</span>
+            <span className="mr-1">{t('propertiesPage.importEnterprise')}</span>
           </button>
           <button
             type="button"
@@ -333,7 +336,7 @@ export default function PropertiesDashboard() {
             className="props-add-btn"
           >
             <Plus size={16} className="props-add-icon" />
-            הוסף אורח חדש
+            {t('propertiesPage.addGuest')}
           </button>
           <button
             type="button"
@@ -341,7 +344,7 @@ export default function PropertiesDashboard() {
             className="props-add-btn"
           >
             <Plus size={16} className="props-add-icon" />
-            הוסף נכס חדש
+            {t('propertiesPage.addProperty')}
           </button>
         </div>
       </div>
@@ -350,17 +353,17 @@ export default function PropertiesDashboard() {
         className="mb-6 max-w-5xl rounded-2xl px-5 py-4 shadow-sm"
         style={{ backgroundColor: '#f8f9fa', border: '1px solid #e0e0e0' }}
       >
-        <h3 className="text-sm font-black text-gray-900 mb-3">חיפוש וסינון</h3>
+        <h3 className="text-sm font-black text-gray-900 mb-3">{t('propertiesPage.searchFilter')}</h3>
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch mb-3">
           <div className="relative flex-1 min-w-[200px] sm:order-1">
-            <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search size={16} className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-slate-500`} />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && applyFiltersViewResults()}
-              placeholder="חיפוש לפי שם, עיר, מותג, מזהה…"
-              className="w-full h-12 rounded-xl border border-slate-300 bg-white py-2.5 pr-10 pl-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/70"
+              placeholder={t('propertiesPage.searchPlaceholder')}
+              className={`w-full h-12 rounded-xl border border-slate-300 bg-white py-2.5 ${dir === 'rtl' ? 'pr-10 pl-3' : 'pl-10 pr-3'} text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/70`}
             />
           </div>
           <button
@@ -371,7 +374,7 @@ export default function PropertiesDashboard() {
             onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = EASYHOST_BLUE_HOVER; }}
             onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = EASYHOST_BLUE; }}
           >
-            צפה בתוצאות
+            {t('propertiesPage.viewResults')}
           </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-stretch">
@@ -380,7 +383,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setCityFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">כל הערים</option>
+            <option value="all">{t('propertiesPage.allCities')}</option>
             {cityOptions.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
@@ -390,7 +393,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setBrandFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">כל המותגים</option>
+            <option value="all">{t('propertiesPage.allBrands')}</option>
             {brandOptions.map((b) => (
               <option key={b} value={b}>{b}</option>
             ))}
@@ -400,9 +403,9 @@ export default function PropertiesDashboard() {
             onChange={(e) => setPropertyTypeFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">כל סוגי הנכס</option>
-            {typeOptions.map((t) => (
-              <option key={t} value={t}>{t}</option>
+            <option value="all">{t('propertiesPage.allPropertyTypes')}</option>
+            {typeOptions.map((tp) => (
+              <option key={tp} value={tp}>{tp}</option>
             ))}
           </select>
           <select
@@ -410,7 +413,7 @@ export default function PropertiesDashboard() {
             onChange={(e) => setOccupancyFilter(e.target.value)}
             className="h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200/60"
           >
-            <option value="all">כל תפוסות</option>
+            <option value="all">{t('propertiesPage.allOccupancy')}</option>
             {occOptions.map((o) => (
               <option key={o} value={o}>{o}</option>
             ))}
@@ -418,7 +421,7 @@ export default function PropertiesDashboard() {
         </div>
         <div className="mt-3">
           <label htmlFor="rooms-branch-select" className="sr-only">
-            סניף
+            {t('propertiesPage.branch')}
           </label>
           <select
             id="rooms-branch-select"
@@ -434,7 +437,10 @@ export default function PropertiesDashboard() {
           </select>
         </div>
         <p className="text-xs text-slate-600 mt-3">
-          מוצגים {visibleProperties.length} מתוך {filteredProperties.length} נכסים (טעינה הדרגתית לביצועים)
+          {t('propertiesPage.showingCount', {
+            visible: visibleProperties.length,
+            total: filteredProperties.length,
+          })}
         </p>
       </div>
 
@@ -445,7 +451,7 @@ export default function PropertiesDashboard() {
         <div id="properties-dashboard-grid" className="properties-grid">
           {!loading && filteredProperties.length === 0 && (
             <div className="col-span-full text-center py-16 text-gray-500 rounded-2xl border border-dashed border-gray-200 bg-white/80">
-              אין נכסים שמתאימים לסינון. נקה חיפוש או בחר &quot;כל הסניפים&quot; / כל הערים.
+              {t('propertiesPage.emptyFilter')}
             </div>
           )}
           {visibleProperties.map((p) => (
@@ -470,7 +476,7 @@ export default function PropertiesDashboard() {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors bg-indigo-50/80 group-hover:bg-indigo-100/90">
               <Plus className="props-add-tile-icon" size={32} />
             </div>
-            <p className="props-add-tile-text">הוסף נכס נוסף</p>
+            <p className="props-add-tile-text">{t('propertiesPage.addAnotherProperty')}</p>
           </div>
         </div>
         {(visibleCount < filteredProperties.length || hasMoreProperties) && (
@@ -482,8 +488,11 @@ export default function PropertiesDashboard() {
               className="px-10 py-3.5 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-800 shadow-lg disabled:opacity-60"
             >
               {loadingMoreProperties
-                ? 'טוען מהשרת...'
-                : `טען עוד (${Math.max(0, filteredProperties.length - visibleCount)} מקומי${hasMoreProperties ? ' · יש עוד בשרת' : ''})`}
+                ? t('propertiesPage.loadMoreLoading')
+                : t('propertiesPage.loadMore', {
+                    local: Math.max(0, filteredProperties.length - visibleCount),
+                    server: hasMoreProperties ? t('propertiesPage.loadMoreServer') : '',
+                  })}
             </button>
           </div>
         )}
@@ -495,8 +504,8 @@ export default function PropertiesDashboard() {
           suites={suitesData}
           onAddSuite={() => setShowPropertyModal(true)}
         />
-        <p className="text-xs text-gray-500 mt-2 text-center" dir="rtl">
-          סוגי חדרים לפי גלילה: {suitesData.length} / {filteredProperties.length} (אחרי סינון)
+        <p className="text-xs text-gray-500 mt-2 text-center" dir={dir}>
+          {t('propertiesPage.suitesCount', { count: `${suitesData.length} / ${filteredProperties.length}` })}
         </p>
       </div>
 
@@ -520,7 +529,7 @@ export default function PropertiesDashboard() {
                 type="button"
                 onClick={() => setBazaarPolicyOpen(false)}
                 className="p-2 rounded-lg hover:bg-gray-100 shrink-0"
-                aria-label="סגור"
+                aria-label={t('propertiesPage.close')}
               >
                 <X size={22} />
               </button>
@@ -537,7 +546,7 @@ export default function PropertiesDashboard() {
               onClick={() => setBazaarPolicyOpen(false)}
               className="mt-6 w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm hover:bg-gray-800"
             >
-              סגור
+              {t('propertiesPage.close')}
             </button>
           </div>
         </div>
