@@ -1,34 +1,19 @@
-import { useEffect, useState } from 'react';
-import i18n from '../i18n';
+import { useTranslation } from 'react-i18next';
 
 /**
- * Custom hook for translations (no React context needed)
- * @returns {object} Translation helpers { t, i18n }
+ * App-wide translation hook.
+ * Thin wrapper around react-i18next's useTranslation so every consumer
+ * re-renders immediately when the active language changes.
+ *
+ * @returns {{ t: Function, i18n: object, lang: string }}
  */
 export const useTranslations = () => {
-  const [, forceRender] = useState(0);
-
-  useEffect(() => {
-    const handleLanguageChange = () => {
-      forceRender((prev) => prev + 1);
-    };
-    try {
-      i18n.on('languageChanged', handleLanguageChange);
-    } catch (_) {}
-    return () => {
-      try {
-        i18n.off('languageChanged', handleLanguageChange);
-      } catch (_) {}
-    };
-  }, []);
-
-  const t = (key, options) => {
-    try {
-      if (typeof i18n?.t === 'function') return i18n.t(key, options);
-    } catch (_) {}
-    return typeof key === 'string' ? key : '';
+  const { t, i18n } = useTranslation();
+  return {
+    t,
+    i18n,
+    lang: i18n?.language || 'en',
   };
-  return { t, i18n };
 };
 
 export default useTranslations;

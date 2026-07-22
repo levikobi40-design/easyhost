@@ -22,7 +22,7 @@ import {
   chunkArray,
 } from '../../utils/massImportEngine';
 import { persistPropertyImageOverrideFromItem } from '../../utils/propertyImagePersistence';
-import useTranslations from '../../hooks/useTranslations';
+import { useTranslation } from 'react-i18next';
 import { isRtlLang } from '../../utils/languages';
 import './PropertiesDashboard.css';
 
@@ -32,8 +32,9 @@ const EASYHOST_BLUE = '#2563eb';
 const EASYHOST_BLUE_HOVER = '#1d4ed8';
 
 export default function PropertiesDashboard() {
-  const { t } = useTranslations();
-  const lang = useStore((s) => s.lang) || 'en';
+  const { t, i18n } = useTranslation();
+  const storeLang = useStore((s) => s.lang) || 'en';
+  const lang = i18n.language || storeLang;
   const dir = isRtlLang(lang) ? 'rtl' : 'ltr';
   const {
     properties,
@@ -458,6 +459,7 @@ export default function PropertiesDashboard() {
             <PropertyCard
               key={p.id}
               property={p}
+              lang={lang}
               onDelete={handleDelete}
               onEdit={openEditModal}
               onManage={openManageDashboard}

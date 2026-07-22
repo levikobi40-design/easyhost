@@ -5,7 +5,7 @@ import {
   ChevronRight, Sparkles, ExternalLink, Home, CalendarCheck, X, BedDouble, BarChart3,
   Cpu, Map, CalendarRange, UserCog,
 } from 'lucide-react';
-import useTranslations from '../../hooks/useTranslations';
+import { useTranslation } from 'react-i18next';
 import easyhostLogoDark from '../../assets/easyhost-logo-dark.svg';
 import useStore from '../../store/useStore';
 import { AI_ASSISTANT_URL } from '../../utils/constants';
@@ -46,9 +46,11 @@ function _emailFromJwt(token) {
 const _ADMIN_EMAILS = new Set(['levikobi40@gmail.com']);
 
 const Sidebar = ({ activeView, setActiveView }) => {
-  const { sidebarOpen, toggleSidebar, lang, role, activeTenantId, authToken, user } = useStore();
+  const { sidebarOpen, toggleSidebar, lang: storeLang, role, activeTenantId, authToken, user } = useStore();
+  const { t, i18n } = useTranslation();
+  // Prefer i18n language so labels always match the active dictionary after a switch.
+  const lang = i18n.language || storeLang || 'en';
   const isRTL = isRtlLang(lang);
-  const { t } = useTranslations();
   const safeT = typeof t === 'function' ? t : (k) => k;
 
   const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;

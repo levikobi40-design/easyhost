@@ -45,8 +45,17 @@ i18n.use(initReactI18next).init({
   lng: initialLng,
   fallbackLng: 'en',
   supportedLngs: ['en', 'he', 'el', 'ar', 'hi', 'th', 'sq'],
+  nonExplicitSupportedLngs: true,
+  load: 'languageOnly',
+  returnNull: false,
+  returnEmptyString: false,
   interpolation: {
     escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+    bindI18n: 'languageChanged loaded',
+    bindI18nStore: 'added removed',
   },
 });
 

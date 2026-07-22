@@ -77,8 +77,10 @@ const PropertyCard = React.memo(function PropertyCard({
   onManage,
   onBazaarPolicy,
   imageRefreshKey = 0,
+  lang: langProp,
 }) {
   const { t } = useTranslations();
+  void langProp;
   const [galleryExpanded, setGalleryExpanded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -253,6 +255,9 @@ const PropertyCard = React.memo(function PropertyCard({
     </div>
   );
 }, (prev, next) => (
+  // Re-render when i18n language changes: parent passes imageRefreshKey / identity;
+  // language-driven strings come from useTranslations inside — always allow refresh
+  // when any visual prop changes. Return false (re-render) if unsure.
   prev.property?.id === next.property?.id
   && prev.property?.mainImage === next.property?.mainImage
   && prev.property?.photo_url === next.property?.photo_url
@@ -265,6 +270,7 @@ const PropertyCard = React.memo(function PropertyCard({
   && prev.property?.price === next.property?.price
   && prev.property?.occupancy_rate === next.property?.occupancy_rate
   && prev.imageRefreshKey === next.imageRefreshKey
+  && prev.lang === next.lang
 ));
 
 export default PropertyCard;

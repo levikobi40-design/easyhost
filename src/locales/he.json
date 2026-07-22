@@ -20,10 +20,13 @@
     "godMode": "מצוינות תפעולית"
   },
   "languages": {
-    "he": "עברית",
     "en": "English",
+    "he": "עברית",
     "el": "Ελληνικά",
-    "ar": "العربية"
+    "ar": "العربية",
+    "hi": "Hindi",
+    "th": "Thai",
+    "sq": "Albanian"
   },
   "roles": {
     "host": "מארח",
@@ -84,7 +87,8 @@
     "field": "⚡ סוכן שטח",
     "scheduler": "מתזמן משמרות",
     "manualops": "הפעלה ידנית",
-    "godmode": "🔮 מצוינות תפעולית"
+    "godmode": "🔮 מצוינות תפעולית",
+    "bazaar-week": "📅 שבוע פעילות / מבצעים"
   },
   "godMode": {
     "demoStaff": "צוות הדגמה"

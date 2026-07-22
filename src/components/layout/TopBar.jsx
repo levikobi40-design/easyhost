@@ -1,15 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, UserCircle, Layers, Building2, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import useStore from '../../store/useStore';
-import i18n from '../../i18n';
 import NotificationCenter from '../notifications/NotificationCenter';
 import { API_URL } from '../../utils/apiClient';
 import { notifyTasksChanged } from '../../utils/taskSyncBridge';
 import './TopBar.css';
 import { useMission } from '../../context/MissionContext';
 import { PILOT_LANGUAGE_OPTIONS } from '../../utils/pilotLanguages';
-import useTranslations from '../../hooks/useTranslations';
 import { hasDeveloperOrSettingsHub, isDashboardAdmin, isOperationRole } from '../../utils/dashboardRoles';
 
 /* ── Mode definitions ─────────────────────────────────────── */
@@ -22,7 +21,7 @@ const SYSTEM_MODES = [
 
 const TopBar = () => {
   const navigate = useNavigate();
-  const { t } = useTranslations();
+  const { t } = useTranslation();
   const {
     lang, setLang, role, setRole, toggleSidebar,
     tenants, activeTenantId, setActiveTenantId,
@@ -47,8 +46,8 @@ const TopBar = () => {
   const currentLangCode = String(currentLang?.code || lang || 'he').toUpperCase();
 
   const applyLang = useCallback((code) => {
+    // setLang already calls i18n.changeLanguage + persists; keep both in sync.
     setLang(code);
-    i18n.changeLanguage(code);
     setLangOpen(false);
   }, [setLang]);
 
