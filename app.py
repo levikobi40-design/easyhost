@@ -1324,10 +1324,19 @@ def _gemini_invalidate_model_cache():
     _GEMINI_MODEL_CANDIDATES_CACHE_FOR_KEY = None
 
 
-# Ids that often 404 on generateContent (v1beta); string built so the old default name is not a single literal in source.
+# Deprecated / invalid for Maya text chat — skip these (404/400 + modality mismatch).
 _GEMINI_MODEL_ID_BLOCKLIST = frozenset(
     {
-        "gemini-" + "1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-001",
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash-lite-001",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash-lite-preview",
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-flash-preview-05-20",
+        "gemini-pro",
+        "gemini-pro-vision",
     }
 )
 
@@ -1342,46 +1351,73 @@ def _normalize_gemini_model_id(name: str) -> str:
 
 def _is_deprecated_gemini_model_id(name: str) -> bool:
     """
-    Block model ids that commonly return 404 on generateContent (v1beta) for current API keys.
-    Does not block the distinct *-8b Flash variant (different model id).
+    Block model ids that 404, are retired, or are non-text (TTS / audio / image-only).
+    Used by streaming + non-streaming Maya Gemini calls.
     """
     n = _normalize_gemini_model_id(name)
     if not n:
         return True
-    return n in _GEMINI_MODEL_ID_BLOCKLIST
+    if n in _GEMINI_MODEL_ID_BLOCKLIST:
+        return True
+    # Modality / specialist models — not for Maya text chat.
+    bad_tokens = (
+        "-tts",
+        "tts-",
+        "audio",
+        "image-generation",
+        "imagen",
+        "embedding",
+        "aqa",
+        "robotics",
+        "computer-use",
+        "learnlm",
+        "gemma-",
+        "native-audio",
+        "preview-native",
+        "flash-lite",  # lite variants frequently 404 on current keys
+        "2.0-flash",   # retired 2.0 flash family
+    )
+    if any(tok in n for tok in bad_tokens):
+        return True
+    return False
 
 
 def _gemini_preferred_models_prefix():
-    """Ids that usually answer on current Gemini API (before env / discovery)."""
+    """Stable text models for Maya — primary then fallbacks (no discovery noise)."""
     return [
-        "gemini-1.5-flash-latest",
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
         "gemini-1.5-pro",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-001",
-        "gemini-2.5-flash-preview-05-20",
     ]
 
 
 def _gemini_model_candidates_static_fallback():
-    """Last-resort ids if ListModels fails — excludes blocklisted legacy ids."""
+    """Last-resort text ids if ListModels fails."""
     return [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-001",
-        "gemini-2.5-flash-preview-05-20",
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
         "gemini-1.5-pro",
-        "gemini-pro",
     ]
 
 
 def _gemini_discover_models_generate_content():
     """
-    Return model resource names that support generateContent (e.g. models/gemini-2.0-flash-001).
-    Prefers Flash models first. Requires genai.configure(api_key) already.
+    Return short names that support generateContent and are valid for Maya text.
+    Only keeps known-good flash/pro text models — never TTS / lite / 2.0.
+    Requires genai.configure(api_key) already.
     """
     if not _USE_NEW_GENAI:
         return []
+    # Allowlist of short ids we will accept from discovery (order = preference).
+    allow = {
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-pro",
+        "gemini-1.5-pro-latest",
+    }
     try:
-        names_ok = []
+        found = set()
         for m in genai.list_models():
             nm = getattr(m, "name", None) or ""
             if not nm:
@@ -1397,18 +1433,17 @@ def _gemini_discover_models_generate_content():
                 meths = [str(methods)]
             if not any("generateContent" in x or x.endswith("generateContent") for x in meths):
                 continue
-            if _is_deprecated_gemini_model_id(nm):
-                continue
-            names_ok.append(nm)
-        flash = [n for n in names_ok if "flash" in n.lower()]
-        rest = [n for n in names_ok if n not in flash]
-        flash.sort()
-        rest.sort()
-        out = flash + rest
+            short = _normalize_gemini_model_id(nm)
+            if short in allow and not _is_deprecated_gemini_model_id(short):
+                found.add(short)
+        out = [m for m in _gemini_preferred_models_prefix() if m in found]
+        for m in sorted(found):
+            if m not in out:
+                out.append(m)
         if out:
-            print(f"[Gemini] list_models: {len(out)} generateContent-capable (first 8): {out[:8]}", flush=True)
+            print(f"[Gemini] list_models: text candidates: {out}", flush=True)
         else:
-            print("[Gemini] list_models: no non-deprecated generateContent models returned", flush=True)
+            print("[Gemini] list_models: no allowlisted text models; using static fallbacks", flush=True)
         return out
     except Exception as e:
         print(f"[Gemini] list_models() failed: {type(e).__name__}: {e}", flush=True)
@@ -1420,9 +1455,10 @@ def _gemini_discover_models_generate_content():
 
 def _gemini_model_candidates():
     """
-    Ordered model ids for google.generativeai generateContent.
-    Precedence: GEMINI_MODEL → GEMINI_MODEL_PRIMARY → MAYA_GEMINI_MODEL → list_models() (discovered) → static fallbacks.
-    Blocklisted env values are skipped with a log line.
+    Ordered model ids for google.generativeai generateContent (Maya text / SSE).
+    Precedence: GEMINI_MODEL → GEMINI_MODEL_PRIMARY → MAYA_GEMINI_MODEL → preferred
+    → allowlisted list_models() → static fallbacks.
+    Cap at a short chain so deprecated 404s cannot inflate latency.
     Cached per API key until key changes.
     """
     global _GEMINI_MODEL_CANDIDATES_CACHE, _GEMINI_MODEL_CANDIDATES_CACHE_FOR_KEY
@@ -1449,12 +1485,13 @@ def _gemini_model_candidates():
             continue
         if _is_deprecated_gemini_model_id(v):
             print(
-                f"[Gemini] ignoring blocklisted {env_key}={v!r} — unset or set a current id; ListModels will pick one",
+                f"[Gemini] ignoring blocklisted {env_key}={v!r} — use gemini-2.5-flash or gemini-1.5-flash",
                 flush=True,
             )
             continue
-        if v not in out:
-            out.append(v)
+        short = _normalize_gemini_model_id(v) or v
+        if short not in out:
+            out.append(short)
 
     discovered = []
     if live_key and _USE_NEW_GENAI:
@@ -1469,29 +1506,19 @@ def _gemini_model_candidates():
 
             _tb_lm0.print_exc()
 
-    for n in discovered:
-        if n not in out and not _is_deprecated_gemini_model_id(n):
-            out.append(n)
-
-    for m in _gemini_model_candidates_static_fallback():
-        if m not in out and not _is_deprecated_gemini_model_id(m):
-            out.append(m)
-
-    if not out:
-        out = ["gemini-2.0-flash", "gemini-2.0-flash-001"]
-
     preferred = _gemini_preferred_models_prefix()
     merged = []
     seen = set()
-    for m in preferred + out:
-        mm = str(m or "").strip()
+    for m in preferred + out + list(discovered) + _gemini_model_candidates_static_fallback():
+        mm = _normalize_gemini_model_id(m) or str(m or "").strip()
         if not mm or mm in seen:
             continue
         if _is_deprecated_gemini_model_id(mm):
             continue
         seen.add(mm)
         merged.append(mm)
-    out = merged
+    # Keep the chain short — at most primary + two fallbacks (plus optional env pin).
+    out = merged[:4] if merged else list(preferred)
 
     print(f"[Gemini] selected primary candidate (first try): {out[0]!r}", flush=True)
 
@@ -1499,7 +1526,7 @@ def _gemini_model_candidates():
         _GEMINI_MODEL_CANDIDATES_CACHE = tuple(out)
         _GEMINI_MODEL_CANDIDATES_CACHE_FOR_KEY = live_key
 
-    print(f"[Gemini] full candidate chain ({len(out)}): {out[:16]}{'...' if len(out) > 16 else ''}", flush=True)
+    print(f"[Gemini] full candidate chain ({len(out)}): {out}", flush=True)
     return out
 
 
