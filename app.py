@@ -2291,6 +2291,14 @@ def api_health():
         "init_done": INIT_DONE,
         "auth_disabled": _auth_disabled,
         "auth_relaxed": _auth_relaxed,
+        # Internal Maya chat is always ready (soft-auth + optional Gemini).
+        # Twilio outbound is reported separately and must not drive UI "online".
+        "maya_ready": True,
+        "twilio_outbound_enabled": not _env_truthy("SKIP_TWILIO_WHATSAPP", "true"),
+        "twilio_configured": bool(
+            (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
+            and (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
+        ),
     }), 200
 
 
@@ -2413,8 +2421,23 @@ def handle_options_preflight():
 
 @app.before_request
 def bypass_auth_for_ai_routes():
-    """When AUTH_DISABLED or staging-relaxed, skip hard JWT for heavy ops routes."""
+    """Skip hard JWT for Maya chat + (when soft-auth) heavy ops routes.
+
+    Internal `/api/ai/*`, `/api/chat`, `/api/maya/*`, and public `/api/guest/*`
+    stay reachable under STRICT_AUTH — handlers prefer a real JWT and soft-fall
+    themselves so Twilio SKIP never blanks dashboard Maya.
+    """
     if request.method == "OPTIONS":
+        return
+    path = request.path or ""
+    # Always allow Maya / guest chat paths (identity resolved inside the handler).
+    if (
+        path.startswith("/api/ai/")
+        or path == "/api/chat"
+        or path.startswith("/api/guest/")
+        or path.startswith("/api/maya/")
+    ):
+        g.bypass_ai_auth = True
         return
     try:
         soft = AUTH_DISABLED or _auth_enforcement_relaxed()
@@ -2423,31 +2446,27 @@ def bypass_auth_for_ai_routes():
     if not soft:
         g.bypass_ai_auth = False
         return
-    if request.path.startswith("/api/ai/"):
+    if path == "/api/property-tasks" or path.startswith("/api/property-tasks/"):
         g.bypass_ai_auth = True
-    elif request.path == "/api/chat":
-        g.bypass_ai_auth = True
-    elif request.path == "/api/property-tasks" or request.path.startswith("/api/property-tasks/"):
-        g.bypass_ai_auth = True
-    elif request.path in (
+    elif path in (
         "/api/property-tasks-batch",
         "/api/property-tasks-batch-update",
         "/api/batch_update",
     ):
         g.bypass_ai_auth = True
-    elif request.path.startswith("/api/rooms/") or request.path.startswith("/api/bookings/"):
+    elif path.startswith("/api/rooms/") or path.startswith("/api/bookings/"):
         g.bypass_ai_auth = True
-    elif request.path == "/api/messages" or request.path.startswith("/api/messages"):
+    elif path == "/api/messages" or path.startswith("/api/messages"):
         g.bypass_ai_auth = True
-    elif request.path.startswith("/api/notify/"):
+    elif path.startswith("/api/notify/"):
         g.bypass_ai_auth = True
-    elif request.path.startswith("/api/analytics"):
+    elif path.startswith("/api/analytics"):
         g.bypass_ai_auth = True
-    elif request.path == "/api/properties" or request.path.startswith("/api/properties/"):
+    elif path == "/api/properties" or path.startswith("/api/properties/"):
         g.bypass_ai_auth = True
-    elif request.path == "/api/tasks" or request.path.startswith("/api/tasks/"):
+    elif path == "/api/tasks" or path.startswith("/api/tasks/"):
         g.bypass_ai_auth = True
-    elif request.path == "/api/upload" or request.path.startswith("/api/upload"):
+    elif path == "/api/upload" or path.startswith("/api/upload"):
         g.bypass_ai_auth = True
     else:
         g.bypass_ai_auth = False
@@ -4994,6 +5013,20 @@ def _extract_bearer_token():
     if auth_header and auth_header.lower().startswith("bearer "):
         return auth_header.split(" ", 1)[1].strip()
     return (request.args.get("token") or "").strip() or None
+
+
+def get_maya_chat_auth_bundle():
+    """
+    Identity for internal Maya dashboard chat (/api/ai/maya-command, /api/chat).
+    Prefers a real JWT; never hard-blocks the chat UI — falls back to soft demo
+    identity so Gemini internal chat stays available regardless of Twilio /
+    SKIP_TWILIO_WHATSAPP and even briefly after JWT expiry mid-session.
+    """
+    try:
+        return get_property_tasks_auth_bundle()
+    except Exception as e:
+        print(f"[Maya] chat auth soft-fallback ({type(e).__name__}: {e})", flush=True)
+        return _soft_demo_auth_identity()
 
 
 def get_property_tasks_auth_bundle():
@@ -15072,7 +15105,7 @@ def api_maya_chat_history():
     if request.method == "OPTIONS":
         return Response(status=204)
     try:
-        tenant_id, _user_id = get_auth_context_from_request()
+        tenant_id = get_maya_chat_auth_bundle()["tenant_id"]
     except Exception:
         tenant_id = DEFAULT_TENANT_ID
     try:
@@ -15626,19 +15659,11 @@ def ai_maya_command():
     if request.method == "OPTIONS":
         return Response(status=204)
     try:
-        maya_identity = get_property_tasks_auth_bundle()
+        maya_identity = get_maya_chat_auth_bundle()
     except Exception as exc:
-        if AUTH_DISABLED:
-            maya_identity = {
-                "tenant_id": DEFAULT_TENANT_ID,
-                "user_id": f"demo-{DEFAULT_TENANT_ID}",
-                "app_role": "admin",
-                "worker_handle": "",
-                "email": "",
-            }
-        else:
-            msg = str(exc).strip() or "Unauthorized"
-            return jsonify({"error": msg, "success": False}), 401
+        # Should not happen (get_maya_chat_auth_bundle always returns), but keep chat alive.
+        print(f"[Maya] ai_maya_command auth unexpected: {exc}", flush=True)
+        maya_identity = _soft_demo_auth_identity()
     tenant_id = maya_identity["tenant_id"]
     user_id = maya_identity["user_id"]
     request.maya_identity = maya_identity

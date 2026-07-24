@@ -415,7 +415,17 @@ export const getManualRooms = async () => {
  * Raw AI tools may use POST /ai-response (God Mode / tools).
  */
 export const sendMayaCommand = async (command, tasksForAnalysis = null, history = null, language = null, { onDelta, uiContext } = {}) => {
-  const auth = getAuthHeaders();
+  // Prefer session JWT; refresh demo token when missing so strict auth never blanks Maya.
+  let auth = getAuthHeaders();
+  try {
+    const ensured = await ensureValidAuthHeaders();
+    auth = {
+      Authorization: ensured.Authorization || auth.Authorization,
+      'X-Tenant-Id': ensured['X-Tenant-Id'] || auth['X-Tenant-Id'],
+    };
+  } catch (_) {
+    auth = getAuthHeaders();
+  }
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'text/event-stream, application/json',
@@ -579,6 +589,20 @@ export const sendMayaCommand = async (command, tasksForAnalysis = null, history 
   } catch (error) {
     const status = error?.status;
     const msg = String(error?.message || '');
+    // Expired/missing JWT mid-session: refresh demo/session token and retry once.
+    if (status === 401 || error?.code === 'unauthorized') {
+      try {
+        const ensured = await ensureValidAuthHeaders();
+        if (ensured.Authorization) headers.Authorization = ensured.Authorization;
+        if (ensured['X-Tenant-Id']) {
+          headers['X-Tenant-Id'] = ensured['X-Tenant-Id'];
+          payload.tenantId = ensured['X-Tenant-Id'];
+        }
+        return await postMayaAndBumpTasks();
+      } catch (_) {
+        /* backend soft-falls; surface original error below */
+      }
+    }
     const looksNetwork =
       !status &&
       (msg.includes('Failed to fetch') ||
@@ -606,10 +630,14 @@ export const sendMayaCommand = async (command, tasksForAnalysis = null, history 
 export const fetchMayaChatHistory = async () => {
   const paths = ['/maya/chat-history', '/maya/chat_history'];
   let lastStatus = 0;
+  let headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+  try {
+    headers = { ...headers, ...(await ensureValidAuthHeaders()) };
+  } catch (_) { /* keep whatever we have */ }
   for (const p of paths) {
     const response = await fetch(`${API_URL}${p}`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers,
       credentials: 'include',
     });
     lastStatus = response.status;

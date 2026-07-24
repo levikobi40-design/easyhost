@@ -3,7 +3,7 @@
  * Uses Twilio or Meta Cloud API for sending messages
  */
 
-import { API_URL } from '../utils/apiClient';
+import { API_URL, getAuthHeaders } from '../utils/apiClient';
 
 class WhatsAppService {
   constructor() {
@@ -60,19 +60,8 @@ class WhatsAppService {
   }
 
   getAuthHeaders() {
-    try {
-      const raw = localStorage.getItem('hotel-enterprise-storage');
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      const token = parsed?.state?.authToken;
-      const tenantId = parsed?.state?.activeTenantId;
-      const headers = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      if (tenantId) headers['X-Tenant-Id'] = tenantId;
-      return headers;
-    } catch (error) {
-      return {};
-    }
+    // Prefer shared JWT helper (clears expired tokens, same stores as Maya chat).
+    return getAuthHeaders();
   }
 
   /**
@@ -250,7 +239,7 @@ class WhatsAppService {
    */
   async getMessageStatus(messageId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/whatsapp/status/${messageId}`, {
+      const response = await fetch(`${API_URL}/whatsapp/status/${messageId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -274,7 +263,7 @@ class WhatsAppService {
    */
   async setupWebhook(callbackUrl) {
     try {
-      const response = await fetch(`${API_BASE_URL}/whatsapp/webhook/setup`, {
+      const response = await fetch(`${API_URL}/whatsapp/webhook/setup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

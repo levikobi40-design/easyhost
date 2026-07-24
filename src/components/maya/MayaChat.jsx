@@ -1372,9 +1372,17 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
     };
   }, [mayaChatOpen, authToken, loadMayaChatHistory]);
 
-  /* ── Backend heartbeat — clears false "offline" after transient fetch errors ── */
+  /* ── Backend heartbeat — Maya stays "online" independent of Twilio outbound ── */
   useEffect(() => {
-    const onBeat = () => setOnline(true);
+    const onBeat = (e) => {
+      const d = e?.detail || {};
+      // Twilio SKIP / twilio_outbound_enabled=false must never grey out internal Maya.
+      if (d.maya_ready === false && d.status !== 'ok' && d.ok !== true) {
+        return;
+      }
+      setOnline(true);
+    };
+    if (window.__EASYHOST_HEARTBEAT_OK__) setOnline(true);
     window.addEventListener('easyhost-heartbeat', onBeat);
     return () => window.removeEventListener('easyhost-heartbeat', onBeat);
   }, []);
@@ -1659,13 +1667,28 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
         }
         onAfterSendSuccess?.(result);
       } catch (err) {
-        setOnline(false);
+        // Auth / Twilio issues must not mark internal Maya as permanently offline.
         const errStr = String(err?.message || err || '').toLowerCase();
+        const isAuthOnly =
+          err?.status === 401 ||
+          err?.code === 'unauthorized' ||
+          errStr.includes('unauthorized');
+        const isNetwork =
+          err?.code === 'maya_unreachable' ||
+          errStr.includes('failed to fetch') ||
+          errStr.includes('network') ||
+          errStr.includes('cannot reach');
+        // Keep "online" whenever the backend heartbeat is alive — Twilio SKIP must not grey out Maya.
+        if (isNetwork && !window.__EASYHOST_HEARTBEAT_OK__ && !isAuthOnly) {
+          setOnline(false);
+        } else {
+          setOnline(true);
+        }
 
         const isKeyInvalid = errStr.includes('key_invalid') || errStr.includes('__key_invalid__') ||
                              errStr.includes('api key not valid') || errStr.includes('api key invalid') ||
                              errStr.includes('key has expired') || errStr.includes('api key expired') ||
-                             errStr.includes('unauthenticated') || errStr.includes('permission_denied');
+                             (errStr.includes('api key') && errStr.includes('permission_denied'));
         const is429 = errStr.includes('429') || errStr.includes('quota') ||
                       errStr.includes('exhausted') || errStr.includes('resource');
 

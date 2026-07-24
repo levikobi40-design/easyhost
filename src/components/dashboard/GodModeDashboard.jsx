@@ -6,7 +6,7 @@ import {
   MessageSquare, Paperclip, Send, Trash2, Eye,
 } from 'lucide-react';
 import useTranslations from '../../hooks/useTranslations';
-import { fetchWithRetry, API_URL } from '../../utils/apiClient';
+import { fetchWithRetry, API_URL, getAuthHeaders } from '../../utils/apiClient';
 import api from '../../services/api';
 import hotelRealtime from '../../services/hotelRealtime';
 import { notifyTasksChanged, subscribeCrossTabTaskSync } from '../../utils/taskSyncBridge';
@@ -275,7 +275,7 @@ export default function GodModeDashboard() {
       // Inject the message into Maya's AI pipeline (same as Maya chat: /ai/maya-command)
       const res = await fetch(`${API_URL}/ai/maya-command`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body:    JSON.stringify({
           command: injectMsg,
           message: injectMsg,
