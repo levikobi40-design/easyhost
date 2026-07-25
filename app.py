@@ -1317,6 +1317,70 @@ def _maya_brain_error_response(exc=None, *, note=None, code="brain_error", maint
     return jsonify(payload), 200
 
 
+def _maya_gateway_budget_sec(default=12):
+    """
+    Hard ceiling for Maya HTTP handlers so Railway/Nginx/Cloudflare never 504.
+    Env: MAYA_GATEWAY_TIMEOUT_SEC (clamped 8–15).
+    """
+    try:
+        v = int((os.getenv("MAYA_GATEWAY_TIMEOUT_SEC") or str(default)).strip())
+    except (TypeError, ValueError):
+        v = default
+    return max(8, min(int(v), 15))
+
+
+def _maya_timeout_fallback_payload(language="he"):
+    """Graceful JSON when Gemini exceeds the gateway budget — Maya stays 'connected'."""
+    lang = (language or "he").lower().split("-")[0]
+    if lang == "el":
+        msg = "Η Maya χρειάζεται λίγο περισσότερο χρόνο — δοκιμάστε ξανά σε λίγο. Είμαι ακόμα συνδεδεμένη."
+    elif lang == "en":
+        msg = "Maya needs a bit more time — please try again in a moment. I'm still connected."
+    else:
+        msg = "מאיה צריכה עוד רגע — נסה שוב בקרוב. אני עדיין מחוברת."
+    return {
+        "success": True,
+        "ok": True,
+        "message": msg,
+        "displayMessage": msg,
+        "response": msg,
+        "reply": msg,
+        "timeoutFallback": True,
+        "maya_ready": True,
+        "brainFailure": False,
+    }
+
+
+def _maya_call_with_deadline(fn, timeout_sec, *args, **kwargs):
+    """
+    Run blocking work on a daemon thread; raise TimeoutError if it exceeds timeout_sec.
+    Keeps the eventlet hub free and guarantees HTTP handlers return before proxy 504s.
+    """
+    import queue
+    import threading
+
+    q = queue.Queue(maxsize=1)
+
+    def _worker():
+        try:
+            q.put(("ok", fn(*args, **kwargs)))
+        except Exception as ex:
+            q.put(("err", ex))
+
+    th = threading.Thread(target=_worker, name="maya-gateway-deadline", daemon=True)
+    th.start()
+    th.join(timeout=float(timeout_sec))
+    if th.is_alive():
+        raise TimeoutError(f"Maya gateway budget exceeded ({timeout_sec}s)")
+    try:
+        kind, payload = q.get_nowait()
+    except queue.Empty:
+        raise TimeoutError(f"Maya gateway budget exceeded ({timeout_sec}s)")
+    if kind == "err":
+        raise payload
+    return payload
+
+
 def _gemini_invalidate_model_cache():
     """Call when GEMINI_API_KEY changes so list_models + candidate order refresh."""
     global _GEMINI_MODEL_CANDIDATES_CACHE, _GEMINI_MODEL_CANDIDATES_CACHE_FOR_KEY
@@ -1493,8 +1557,12 @@ def _gemini_model_candidates():
         if short not in out:
             out.append(short)
 
+    # ListModels is opt-in — discovery latency often causes first-request 504s on Railway.
     discovered = []
-    if live_key and _USE_NEW_GENAI:
+    _want_list = str(os.getenv("GEMINI_LIST_MODELS", "false") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    if _want_list and live_key and _USE_NEW_GENAI:
         try:
             if live_key != getattr(genai, "_configured_key", None):
                 genai.configure(api_key=live_key)
@@ -1688,10 +1756,11 @@ def _eventlet_run_blocking(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> str:
+def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", deadline: float | None = None) -> str:
     """
     Maya unified LLM: **Gemini** (google-generativeai). Same MAYA_SYSTEM_INSTRUCTION / LIVE DATA.
     Blocking SDK calls run via eventlet.tpool so the single eventlet worker is not stalled.
+    `deadline` is time.monotonic() wall-clock; when hit, raises TimeoutError (no more model retries).
     """
     import traceback as _tb
 
@@ -1712,6 +1781,8 @@ def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> 
             print(f"[Gemini] ❌ genai.configure FAILED: {type(_cfg_e).__name__}: {_cfg_e}")
             _tb.print_exc()
             raise
+
+    timeout = max(4, min(int(timeout or 12), 15))
 
     def _call_model(model_name):
         _sys = MAYA_SYSTEM_INSTRUCTION
@@ -1743,10 +1814,27 @@ def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> 
 
     last_exc = None
     for model_name in _gemini_model_candidates():
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError("Maya gateway budget exceeded before Gemini call")
+        # Shrink per-call timeout to remaining budget so we never overrun the proxy.
+        call_timeout = timeout
+        if deadline is not None:
+            remaining = max(2, int(deadline - time.monotonic()))
+            call_timeout = min(timeout, remaining)
         try:
             print("--- API CALL START ---")
-            print(f"[Gemini] → calling {model_name} (tpool/non-blocking hub) …")
-            text = _eventlet_run_blocking(_call_model, model_name)
+            print(f"[Gemini] → calling {model_name} (tpool, timeout={call_timeout}s) …")
+            # Bind per-attempt timeout into the nested call
+            def _call_with_budget(mn=model_name, ct=call_timeout):
+                nonlocal timeout
+                prev = timeout
+                timeout = ct
+                try:
+                    return _call_model(mn)
+                finally:
+                    timeout = prev
+
+            text = _eventlet_run_blocking(_call_with_budget)
             print(f"[Gemini] ✅ {model_name} responded ({len(text)} chars)")
             return text
         except Exception as e:
@@ -1754,6 +1842,8 @@ def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> 
             err_str = str(e).lower()
             print(f"[Gemini] ❌ {model_name} failed: {type(e).__name__}: {e}")
             _tb.print_exc()
+            if isinstance(e, TimeoutError) or "timeout" in err_str or "timed out" in err_str:
+                raise TimeoutError(str(e) or "Gemini timed out") from e
             if any(
                 x in err_str
                 for x in (
@@ -1779,7 +1869,9 @@ def _gemini_generate(prompt: str, timeout: int = 25, extra_system: str = "") -> 
     raise last_exc or RuntimeError("[Gemini] All models failed")
 
 
-def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: str = "") -> str:
+def _gemini_stream_collect_string(
+    prompt: str, timeout: int = 12, extra_system: str = "", deadline: float | None = None
+) -> str:
     """
     Same final string as _gemini_generate, using generate_content(stream=True) for lower time-to-first-token.
     """
@@ -1795,7 +1887,9 @@ def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: 
         genai._configured_key = live_key
         _gemini_invalidate_model_cache()
 
-    def _stream_one(model_name: str) -> str:
+    timeout = max(4, min(int(timeout or 12), 15))
+
+    def _stream_one(model_name: str, call_timeout: int) -> str:
         _sys = MAYA_SYSTEM_INSTRUCTION
         if (extra_system or "").strip():
             _sys = MAYA_SYSTEM_INSTRUCTION + "\n\n--- LIVE DATA (authoritative) ---\n" + extra_system.strip()
@@ -1807,13 +1901,15 @@ def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: 
                 max_output_tokens=768,
             ),
         )
-        _req_opts = {"timeout": int(timeout)} if timeout else {}
+        _req_opts = {"timeout": int(call_timeout)} if call_timeout else {}
         try:
             stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
         except TypeError:
             stream = model.generate_content(prompt, stream=True)
         parts = []
         for chunk in stream:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("Maya gateway budget exceeded during Gemini stream")
             piece = _safe_gemini_chunk_text(chunk, label=model_name).strip()
             if piece:
                 parts.append(piece)
@@ -1821,13 +1917,20 @@ def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: 
 
     last_exc = None
     for model_name in _gemini_model_candidates():
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError("Maya gateway budget exceeded before Gemini stream")
+        call_timeout = timeout
+        if deadline is not None:
+            call_timeout = min(timeout, max(2, int(deadline - time.monotonic())))
         try:
-            text = _eventlet_run_blocking(_stream_one, model_name)
+            text = _eventlet_run_blocking(_stream_one, model_name, call_timeout)
             if text:
                 return text
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
+            if isinstance(e, TimeoutError) or "timeout" in err_str or "timed out" in err_str:
+                raise TimeoutError(str(e) or "Gemini stream timed out") from e
             if any(
                 x in err_str
                 for x in (
@@ -1852,13 +1955,16 @@ def _gemini_stream_collect_string(prompt: str, timeout: int = 55, extra_system: 
     raise last_exc or RuntimeError("[Gemini] All models failed (stream)")
 
 
-def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
+def _maya_llm_stream_text_chunks(
+    prompt: str, timeout: int, extra_system: str, deadline: float | None = None
+):
     """
     Yield incremental text fragments from Gemini (stream=True).
     Used for SSE maya-command so the UI can render tokens before the full JSON is ready.
 
     The blocking SDK stream runs on a real OS thread so eventlet's single worker hub
     keeps serving /health, Socket.IO, and other API calls (avoids Railway 504s).
+    Hard `deadline` (time.monotonic) raises TimeoutError so handlers can soft-fall before proxy 504.
     """
     import queue
     import threading
@@ -1874,7 +1980,11 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
         genai._configured_key = live_key
         _gemini_invalidate_model_cache()
 
-    def _stream_one(model_name: str):
+    timeout = max(4, min(int(timeout or 12), 15))
+    if deadline is None:
+        deadline = time.monotonic() + float(timeout)
+
+    def _stream_one(model_name: str, call_timeout: int):
         _sys = MAYA_SYSTEM_INSTRUCTION
         if (extra_system or "").strip():
             _sys = MAYA_SYSTEM_INSTRUCTION + "\n\n--- LIVE DATA (authoritative) ---\n" + extra_system.strip()
@@ -1886,12 +1996,14 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
                 max_output_tokens=768,
             ),
         )
-        _req_opts = {"timeout": int(timeout)} if timeout else {}
+        _req_opts = {"timeout": int(call_timeout)} if call_timeout else {}
         try:
             stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
         except TypeError:
             stream = model.generate_content(prompt, stream=True)
         for chunk in stream:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Maya gateway budget exceeded during SSE stream")
             piece = _safe_gemini_chunk_text(chunk, label=model_name)
             if piece:
                 yield piece
@@ -1906,11 +2018,14 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
 
     last_exc = None
     for model_name in _gemini_model_candidates():
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Maya gateway budget exceeded before SSE stream")
+        call_timeout = min(timeout, max(2, int(deadline - time.monotonic())))
         q = queue.Queue()
 
-        def _worker(name=model_name):
+        def _worker(name=model_name, ct=call_timeout):
             try:
-                for piece in _stream_one(name):
+                for piece in _stream_one(name, ct):
                     q.put(("ok", piece))
                 q.put(("done", None))
             except Exception as ex:
@@ -1920,6 +2035,8 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
         th.start()
         try:
             while True:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Maya gateway budget exceeded (SSE)")
                 _hub_sleep()
                 try:
                     kind, payload = q.get(timeout=0.25)
@@ -1934,10 +2051,14 @@ def _maya_llm_stream_text_chunks(prompt: str, timeout: int, extra_system: str):
                     raise payload
                 yield payload
             continue
+        except TimeoutError:
+            raise
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
             _tb.print_exc()
+            if "timeout" in err_str or "timed out" in err_str:
+                raise TimeoutError(str(e) or "Gemini SSE timed out") from e
             if any(
                 x in err_str
                 for x in (
@@ -2293,8 +2414,9 @@ def _handle_unhandled_exception(e):
 @app.route("/api/health", methods=["GET", "OPTIONS"])
 @cross_origin(origins="*", allow_headers=["Content-Type", "Authorization", "X-Tenant-Id"], methods=["GET", "OPTIONS"])
 def api_health():
-    """Liveness probe — confirms Flask is reachable.
-    Also surfaces DB mode so the frontend can distinguish live-DB from SQLite-fallback mode.
+    """Liveness probe — must return instantly (no Gemini/Twilio/network I/O).
+    `maya_ready` is always true so the dashboard stays Connected even when an
+    individual AI request times out.
     """
     if request.method == "OPTIONS":
         return Response(status=204)
@@ -2310,6 +2432,10 @@ def api_health():
         _auth_relaxed = bool(_auth_enforcement_relaxed())
     except Exception:
         pass
+    # Env reads only — never dial Twilio / Gemini from /health.
+    _skip_twilio = str(os.getenv("SKIP_TWILIO_WHATSAPP", "true") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
     return jsonify({
         "status": "ok",
         "ok": True,
@@ -2318,10 +2444,9 @@ def api_health():
         "init_done": INIT_DONE,
         "auth_disabled": _auth_disabled,
         "auth_relaxed": _auth_relaxed,
-        # Internal Maya chat is always ready (soft-auth + optional Gemini).
-        # Twilio outbound is reported separately and must not drive UI "online".
+        # Always true — UI Connected status must not depend on Twilio or last LLM call.
         "maya_ready": True,
-        "twilio_outbound_enabled": not _env_truthy("SKIP_TWILIO_WHATSAPP", "true"),
+        "twilio_outbound_enabled": not _skip_twilio,
         "twilio_configured": bool(
             (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
             and (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
@@ -16573,11 +16698,15 @@ Rules:
     _extra_sys = _maya_live_facts_system_block(tenant_id, user_id, maya_stats_snapshot, command)
     _stream_env = (os.getenv("MAYA_GEMINI_USE_STREAM", "1") or "").strip().lower()
     _prefer_stream = _stream_env not in ("0", "false", "no", "off") or bool(data.get("stream"))
+    # Hard gateway budget (≤15s) — never let Railway/Nginx/Cloudflare return 504.
+    _budget = _maya_gateway_budget_sec(12)
     try:
-        _stream_timeout = int((os.getenv("MAYA_GEMINI_STREAM_TIMEOUT_SEC") or "15").strip())
+        _stream_timeout = int((os.getenv("MAYA_GEMINI_STREAM_TIMEOUT_SEC") or str(_budget)).strip())
     except ValueError:
-        _stream_timeout = 15
-    _stream_timeout = max(10, min(_stream_timeout, 60))
+        _stream_timeout = _budget
+    _stream_timeout = max(8, min(_stream_timeout, _budget))
+    _deadline = time.monotonic() + float(_budget)
+    _lang = (data.get("language") or "he")
 
     _accept_h = (request.headers.get("Accept") or "").lower()
     _wants_sse = bool(data.get("sse")) or ("text/event-stream" in _accept_h)
@@ -16590,8 +16719,13 @@ Rules:
             with app.app_context():
                 buf = []
                 try:
+                    # Immediate SSE comment keeps proxies from idle-closing before first token.
+                    yield ": maya-connected\n\n"
                     for piece in _maya_llm_stream_text_chunks(
-                        prompt, timeout=_stream_timeout, extra_system=_extra_sys
+                        prompt,
+                        timeout=_stream_timeout,
+                        extra_system=_extra_sys,
+                        deadline=_deadline,
                     ):
                         buf.append(piece)
                         yield (
@@ -16616,6 +16750,14 @@ Rules:
                         + json.dumps({"type": "done", "result": result}, ensure_ascii=False)
                         + "\n\n"
                     )
+                except TimeoutError as te:
+                    print(f"[Gemini] maya-command SSE timeout fallback: {te}", flush=True)
+                    soft = _maya_timeout_fallback_payload(_lang)
+                    yield (
+                        "data: "
+                        + json.dumps({"type": "done", "result": soft}, ensure_ascii=False)
+                        + "\n\n"
+                    )
                 except Exception as e:
                     import traceback as _tb_sse
 
@@ -16624,6 +16766,7 @@ Rules:
                     _tb_sse.print_exc()
                     print(f"{'='*60}\n", flush=True)
                     err = _maya_brain_error_payload(e, code="gemini_call")
+                    err["maya_ready"] = True
                     yield (
                         "data: "
                         + json.dumps({"type": "done", "result": err}, ensure_ascii=False)
@@ -16644,9 +16787,16 @@ Rules:
     try:
         with app.app_context():
             if _prefer_stream:
-                text = _gemini_stream_collect_string(prompt, timeout=_stream_timeout, extra_system=_extra_sys)
+                text = _gemini_stream_collect_string(
+                    prompt, timeout=_stream_timeout, extra_system=_extra_sys, deadline=_deadline
+                )
             else:
-                text = _gemini_generate(prompt, timeout=22, extra_system=_extra_sys)
+                text = _gemini_generate(
+                    prompt, timeout=_stream_timeout, extra_system=_extra_sys, deadline=_deadline
+                )
+    except TimeoutError as te:
+        print(f"[Gemini] maya-command timeout fallback: {te}", flush=True)
+        return jsonify(_maya_timeout_fallback_payload(_lang)), 200
     except Exception as e:
         import traceback as _tb_cmd
 
@@ -22003,10 +22153,9 @@ def twilio_whatsapp_webhook():
     Twilio webhook — set this URL in the Twilio console:
       https://your-domain.com/whatsapp
     Twilio POSTs form data (not JSON) when a WhatsApp message arrives.
-    Must return 200 OK so Twilio knows the message was received.
+    Must return 200 OK immediately so Twilio (and Railway proxies) never 504.
 
-    Twilio is a cloud REST API (no QR / Baileys session). After Railway restarts,
-    outbound reconnects automatically via TWILIO_* env credentials.
+    Gemini + outbound WhatsApp run on a daemon thread with a short budget.
     """
     body        = (request.values.get("Body")        or "").strip()
     from_number = (request.values.get("From")        or "").strip()  # e.g. whatsapp:+972501234567
@@ -22016,23 +22165,29 @@ def twilio_whatsapp_webhook():
     print(f"[Twilio/WhatsApp] ← from={from_number}  body={body[:80]!r}")
 
     if body and from_number:
-        # Normalise the sender number (strip "whatsapp:" prefix)
         clean_from = from_number.replace("whatsapp:", "").strip()
+        budget = _maya_gateway_budget_sec(12)
 
-        # Route the message through Maya — never crash the webhook on Gemini failure
-        try:
-            reply_text = _gemini_generate(f"Guest ({profile or clean_from}) says: {body}")
-            if not (reply_text or "").strip():
+        def _wa_maya_reply(_from=clean_from, _body=body, _profile=profile, _budget=budget):
+            deadline = time.monotonic() + float(_budget)
+            try:
+                reply_text = _gemini_generate(
+                    f"Guest ({_profile or _from}) says: {_body}",
+                    timeout=min(10, _budget),
+                    deadline=deadline,
+                )
+                if not (reply_text or "").strip():
+                    reply_text = _guest_maya_fallback_reply("he")
+            except Exception as _e:
                 reply_text = _guest_maya_fallback_reply("he")
-        except Exception as _e:
-            reply_text = _guest_maya_fallback_reply("he")
-            print(f"[Twilio/WhatsApp] Maya offline (fallback reply): {_e}", flush=True)
+                print(f"[Twilio/WhatsApp] Maya offline (fallback reply): {_e}", flush=True)
+            try:
+                send_whatsapp(_from, reply_text)
+            except Exception as _we:
+                print(f"[Twilio/WhatsApp] outbound send failed (non-fatal): {_we}", flush=True)
 
-        # Send Maya's reply back via WhatsApp (retries inside send_whatsapp)
-        try:
-            send_whatsapp(clean_from, reply_text)
-        except Exception as _we:
-            print(f"[Twilio/WhatsApp] outbound send failed (non-fatal): {_we}", flush=True)
+        # ACK first — never block the webhook HTTP request on Gemini/Twilio.
+        threading.Thread(target=_wa_maya_reply, name="twilio-wa-maya", daemon=True).start()
 
     # Twilio REQUIRES a 200 response — any other status causes a retry flood
     return "OK", 200
@@ -22082,8 +22237,15 @@ def api_guest_maya_chat():
     )
 
     reply_text = ""
+    _budget = _maya_gateway_budget_sec(12)
+    _deadline = time.monotonic() + float(_budget)
     try:
-        reply_text = (_gemini_generate(prompt, timeout=20) or "").strip()
+        reply_text = (
+            _gemini_generate(prompt, timeout=min(10, _budget), deadline=_deadline) or ""
+        ).strip()
+    except TimeoutError as e:
+        print(f"[api_guest_maya_chat] Gemini timeout (soft fallback): {e}", flush=True)
+        reply_text = ""
     except Exception as e:
         print(f"[api_guest_maya_chat] Gemini failed: {e}", flush=True)
         reply_text = ""
@@ -22144,6 +22306,7 @@ def api_guest_maya_chat():
 
     return jsonify({
         "ok": True,
+        "maya_ready": True,
         "reply": reply_text,
         "message": reply_text,
         "displayMessage": reply_text,

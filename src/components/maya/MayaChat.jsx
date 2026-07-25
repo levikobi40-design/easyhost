@@ -1667,8 +1667,15 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
         }
         onAfterSendSuccess?.(result);
       } catch (err) {
-        // Auth / Twilio issues must not mark internal Maya as permanently offline.
+        // Individual AI timeouts / 504s must NOT mark Maya disconnected — heartbeat owns online status.
         const errStr = String(err?.message || err || '').toLowerCase();
+        const isTimeout =
+          err?.name === 'AbortError' ||
+          errStr.includes('aborted') ||
+          errStr.includes('timeout') ||
+          errStr.includes('timed out') ||
+          err?.status === 504 ||
+          err?.status === 502;
         const isAuthOnly =
           err?.status === 401 ||
           err?.code === 'unauthorized' ||
@@ -1678,11 +1685,11 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
           errStr.includes('failed to fetch') ||
           errStr.includes('network') ||
           errStr.includes('cannot reach');
-        // Keep "online" whenever the backend heartbeat is alive — Twilio SKIP must not grey out Maya.
-        if (isNetwork && !window.__EASYHOST_HEARTBEAT_OK__ && !isAuthOnly) {
-          setOnline(false);
-        } else {
+        // Stay Connected unless the backend itself is unreachable (no heartbeat).
+        if (isTimeout || isAuthOnly || window.__EASYHOST_HEARTBEAT_OK__ || !isNetwork) {
           setOnline(true);
+        } else {
+          setOnline(false);
         }
 
         const isKeyInvalid = errStr.includes('key_invalid') || errStr.includes('__key_invalid__') ||
@@ -1700,6 +1707,11 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
             '🔑 Maya is offline — the Gemini API key is invalid or missing. ' +
             'Set GEMINI_API_KEY in your server environment (.env or Render), restart the backend, ' +
             'and confirm the key at Google AI Studio.';
+        } else if (isTimeout) {
+          errorContent = t('mayaChat.errorServer') ||
+            (isRTL
+              ? 'מאיה צריכה עוד רגע — נסה שוב. אני עדיין מחוברת.'
+              : 'Maya needs a moment — try again. I\'m still connected.');
         } else if (is429) {
           errorContent = t('mayaChat.error429');
         } else {

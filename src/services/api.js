@@ -12,8 +12,8 @@ import {
 } from '../utils/taskUpdateQueue';
 import hotelRealtime from './hotelRealtime';
 
-/** Maya brain (Flask → Claude/Gemini): hard cap so the client never hangs for minutes. */
-const MAYA_CHAT_TIMEOUT_MS = 55_000;
+/** Maya brain (Flask → Gemini): client abort just above server gateway budget (≤15s) to avoid hanging on 504. */
+const MAYA_CHAT_TIMEOUT_MS = 16_000;
 /** After this many ms the UI shows “Working on it” while the request continues (see MayaChat). */
 export const MAYA_CHAT_SLOW_HINT_MS = 2000;
 
@@ -584,11 +584,33 @@ export const sendMayaCommand = async (command, tasksForAnalysis = null, history 
     return err;
   };
 
+  const softTimeoutFallback = () => ({
+    success: true,
+    ok: true,
+    timeoutFallback: true,
+    maya_ready: true,
+    brainFailure: false,
+    displayMessage: 'מאיה צריכה עוד רגע — נסה שוב בקרוב. אני עדיין מחוברת.',
+    message: 'Maya needs a moment — please try again shortly. I\'m still connected.',
+    response: 'Maya needs a moment — please try again shortly. I\'m still connected.',
+  });
+
   try {
     return await postMayaAndBumpTasks();
   } catch (error) {
     const status = error?.status;
     const msg = String(error?.message || '');
+    const name = String(error?.name || '');
+    // Client abort / proxy 504 — soft JSON so UI stays Connected (never maya_unreachable).
+    const isTimeout =
+      name === 'AbortError' ||
+      status === 504 ||
+      status === 502 ||
+      /aborted|timeout|timed out|gateway/i.test(msg);
+    if (isTimeout) {
+      console.warn('[Maya] gateway/client timeout — soft fallback (still connected)');
+      return softTimeoutFallback();
+    }
     // Expired/missing JWT mid-session: refresh demo/session token and retry once.
     if (status === 401 || error?.code === 'unauthorized') {
       try {
@@ -609,17 +631,22 @@ export const sendMayaCommand = async (command, tasksForAnalysis = null, history 
         msg.includes('NetworkError') ||
         msg.includes('Cannot reach') ||
         msg.includes('NETWORK_ERROR'));
-    const retryable = looksNetwork || (typeof status === 'number' && status >= 500 && status < 600);
+    // Retry only true network blips — not 504 (already soft-fallen above).
+    const retryable = looksNetwork || status === 503;
     if (retryable) {
       await new Promise((r) => setTimeout(r, 500));
       try {
         return await postMayaAndBumpTasks();
       } catch (e2) {
+        const msg2 = String(e2?.message || '');
+        if (e2?.name === 'AbortError' || e2?.status === 504 || /aborted|timeout|gateway/i.test(msg2)) {
+          return softTimeoutFallback();
+        }
         console.warn('[Maya] maya-command unreachable after retry');
         throw unreachableError();
       }
     }
-    if (looksNetwork || (!status && /fetch|network|aborted/i.test(msg))) {
+    if (looksNetwork || (!status && /fetch|network/i.test(msg))) {
       throw unreachableError();
     }
     throw error;

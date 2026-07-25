@@ -36,6 +36,8 @@ export function startBackendHeartbeat(intervalMs = 30000) {
       }
       if (alive) {
         window.__EASYHOST_HEARTBEAT_OK__ = true;
+        // Maya Connected is independent of Twilio / last AI call latency.
+        if (data.maya_ready !== false) data.maya_ready = true;
         window.dispatchEvent(new CustomEvent('easyhost-heartbeat', { detail: data }));
       } else {
         window.__EASYHOST_HEARTBEAT_OK__ = false;
