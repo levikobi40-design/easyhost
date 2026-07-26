@@ -466,6 +466,24 @@
 .maya-hdr-status {
   color: rgba(255,255,255,0.8);
   font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.maya-hdr-status--online::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35);
+  flex-shrink: 0;
+}
+.maya-hdr-status--online {
+  color: #86efac;
+}
+.maya-hdr-status--connecting {
+  color: rgba(255, 255, 255, 0.65);
 }
 
 /* ════════════════════════════════════════════════════════════════

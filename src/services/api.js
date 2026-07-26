@@ -588,11 +588,13 @@ export const sendMayaCommand = async (command, tasksForAnalysis = null, history 
     success: true,
     ok: true,
     timeoutFallback: true,
+    localFallback: true,
     maya_ready: true,
     brainFailure: false,
-    displayMessage: 'מאיה צריכה עוד רגע — נסה שוב בקרוב. אני עדיין מחוברת.',
-    message: 'Maya needs a moment — please try again shortly. I\'m still connected.',
-    response: 'Maya needs a moment — please try again shortly. I\'m still connected.',
+    action: 'info',
+    displayMessage: 'אני מחוברת. אפשר לשאול על משימות פתוחות, חדרים או מצב הלוח.',
+    message: "I'm connected. Ask me about open tasks, rooms, or board status.",
+    response: "I'm connected. Ask me about open tasks, rooms, or board status.",
   });
 
   try {

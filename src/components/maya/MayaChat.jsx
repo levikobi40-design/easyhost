@@ -1372,19 +1372,24 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
     };
   }, [mayaChatOpen, authToken, loadMayaChatHistory]);
 
-  /* ── Backend heartbeat — Maya stays "online" independent of Twilio outbound ── */
+  /* ── Connection status lock: only /api/health heartbeat may turn Maya "off" ── */
   useEffect(() => {
-    const onBeat = (e) => {
+    const syncFromHealth = (e) => {
       const d = e?.detail || {};
-      // Twilio SKIP / twilio_outbound_enabled=false must never grey out internal Maya.
-      if (d.maya_ready === false && d.status !== 'ok' && d.ok !== true) {
+      // Green Connected whenever Flask health is up — ignore Twilio / AI timeouts.
+      if (d.status === 'ok' || d.ok === true || d.maya_ready === true || window.__EASYHOST_HEARTBEAT_OK__) {
+        setOnline(true);
         return;
       }
-      setOnline(true);
+      if (window.__EASYHOST_HEARTBEAT_OK__ === false) {
+        setOnline(false);
+      }
     };
+    // Default Connected on mount; never flash "connecting" on mobile for AI delays.
+    setOnline(true);
     if (window.__EASYHOST_HEARTBEAT_OK__) setOnline(true);
-    window.addEventListener('easyhost-heartbeat', onBeat);
-    return () => window.removeEventListener('easyhost-heartbeat', onBeat);
+    window.addEventListener('easyhost-heartbeat', syncFromHealth);
+    return () => window.removeEventListener('easyhost-heartbeat', syncFromHealth);
   }, []);
 
   /* ── Task-created toast ── */
@@ -1589,14 +1594,20 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
           }
         }
 
-        if (result && (result.success === false || result.brainFailure)) {
+        // Soft / local fallbacks are valid answers — keep Connected (never treat as disconnect).
+        if (result?.timeoutFallback || result?.localFallback || result?.maya_ready === true) {
+          setOnline(true);
+        }
+
+        if (result && (result.success === false || result.brainFailure) && !result.timeoutFallback && !result.localFallback) {
           const failText =
             (typeof result.displayMessage === 'string' && result.displayMessage.trim() && result.displayMessage) ||
             (typeof result.message === 'string' && result.message.trim() && result.message) ||
             (typeof result.brainErrorDetail === 'string' && result.brainErrorDetail.trim() && result.brainErrorDetail) ||
             t('mayaChat.errorServer');
           patchMayaMessage(streamMsgId, { content: failText, isError: true, streaming: false, data: result });
-          setOnline(true);
+          // AI error must not grey out Maya while health is up.
+          if (window.__EASYHOST_HEARTBEAT_OK__ !== false) setOnline(true);
           return;
         }
 
@@ -1667,7 +1678,11 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
         }
         onAfterSendSuccess?.(result);
       } catch (err) {
-        // Individual AI timeouts / 504s must NOT mark Maya disconnected — heartbeat owns online status.
+        // HARD LOCK: chat/AI failures never mark Maya disconnected — only /api/health can.
+        if (window.__EASYHOST_HEARTBEAT_OK__ !== false) {
+          setOnline(true);
+        }
+
         const errStr = String(err?.message || err || '').toLowerCase();
         const isTimeout =
           err?.name === 'AbortError' ||
@@ -1676,22 +1691,6 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
           errStr.includes('timed out') ||
           err?.status === 504 ||
           err?.status === 502;
-        const isAuthOnly =
-          err?.status === 401 ||
-          err?.code === 'unauthorized' ||
-          errStr.includes('unauthorized');
-        const isNetwork =
-          err?.code === 'maya_unreachable' ||
-          errStr.includes('failed to fetch') ||
-          errStr.includes('network') ||
-          errStr.includes('cannot reach');
-        // Stay Connected unless the backend itself is unreachable (no heartbeat).
-        if (isTimeout || isAuthOnly || window.__EASYHOST_HEARTBEAT_OK__ || !isNetwork) {
-          setOnline(true);
-        } else {
-          setOnline(false);
-        }
-
         const isKeyInvalid = errStr.includes('key_invalid') || errStr.includes('__key_invalid__') ||
                              errStr.includes('api key not valid') || errStr.includes('api key invalid') ||
                              errStr.includes('key has expired') || errStr.includes('api key expired') ||
@@ -1703,22 +1702,28 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
 
         let errorContent;
         if (isKeyInvalid) {
-          errorContent =
-            '🔑 Maya is offline — the Gemini API key is invalid or missing. ' +
-            'Set GEMINI_API_KEY in your server environment (.env or Render), restart the backend, ' +
-            'and confirm the key at Google AI Studio.';
+          // Keep status Connected; only the bubble explains the key issue.
+          errorContent = isRTL
+            ? 'מאיה מחוברת לשרת, אבל מפתח Gemini חסר/לא תקף. עדכנו GEMINI_API_KEY והפעילו מחדש.'
+            : 'Maya is connected to the server, but the Gemini API key is missing/invalid. Update GEMINI_API_KEY and restart.';
         } else if (isTimeout) {
-          errorContent = t('mayaChat.errorServer') ||
-            (isRTL
-              ? 'מאיה צריכה עוד רגע — נסה שוב. אני עדיין מחוברת.'
-              : 'Maya needs a moment — try again. I\'m still connected.');
+          errorContent = isRTL
+            ? 'אני מחוברת — יש עיכוב קצר בתשובה. אפשר לשאול על משימות פתוחות או מצב הלוח.'
+            : "I'm connected — a short delay on the AI reply. Ask me about open tasks or board status.";
         } else if (is429) {
           errorContent = t('mayaChat.error429');
         } else {
-          errorContent = t('mayaChat.errorServer');
+          errorContent = isRTL
+            ? 'אני מחוברת. נסה לנסח שוב — או שאל על סטטוס המשימות.'
+            : "I'm connected. Try rephrasing — or ask about task status.";
         }
 
-        patchMayaMessage(streamMsgId, { content: errorContent, isError: true, streaming: false });
+        // Soft content (not a hard error) for timeouts so mobile doesn't feel "disconnected".
+        patchMayaMessage(streamMsgId, {
+          content: errorContent,
+          isError: !isTimeout,
+          streaming: false,
+        });
       } finally {
         setMayaTyping(false);
       }
@@ -1921,7 +1926,15 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
               <div className="maya-hdr-text">
                 <span className="maya-hdr-name">{t('mayaChat.title')}</span>
                 <span className="maya-hdr-role">{t('mayaChat.role')}</span>
-                <span className="maya-hdr-status">
+                <span
+                  className={`maya-hdr-status${
+                    isMayaStreaming
+                      ? ' maya-hdr-status--typing'
+                      : mayaOnline
+                        ? ' maya-hdr-status--online'
+                        : ' maya-hdr-status--connecting'
+                  }`}
+                >
                   {isMayaStreaming
                     ? (isRTL ? 'מאיה כותבת…' : 'Maya is typing…')
                     : mayaOnline

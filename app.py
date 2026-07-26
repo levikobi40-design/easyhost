@@ -1329,15 +1329,181 @@ def _maya_gateway_budget_sec(default=12):
     return max(8, min(int(v), 15))
 
 
-def _maya_timeout_fallback_payload(language="he"):
-    """Graceful JSON when Gemini exceeds the gateway budget — Maya stays 'connected'."""
+def _maya_local_instant_reply(
+    command,
+    tenant_id=None,
+    user_id=None,
+    language="he",
+    stats_snapshot=None,
+):
+    """
+    Instant DB/context answer when Gemini times out or gRPC fails.
+    Never returns a generic "busy / high volume" dead-end — always a usable assistant reply.
+    """
     lang = (language or "he").lower().split("-")[0]
+    cmd = (command or "").strip()
+    cmd_l = cmd.lower()
+    tid = tenant_id or DEFAULT_TENANT_ID
+    uid = user_id or f"demo-{tid}"
+
+    # Connection / ping — affirm Connected (matches green UI indicator).
+    if any(
+        x in cmd or x in cmd_l
+        for x in (
+            "מחוברת",
+            "מחובר",
+            "את שם",
+            "את כאן",
+            "are you connected",
+            "are you online",
+            "you there",
+            "you online",
+            "ping",
+            "hello maya",
+            "היי מאיה",
+            "שלום מאיה",
+            "hi maya",
+            "hey maya",
+        )
+    ) or cmd_l in ("?", "היי", "hi", "hello", "hey"):
+        if lang == "el":
+            return "Ναι — είμαι συνδεδεμένη και έτοιμη. Πες μου για εργασίες, δωμάτια ή κατάσταση πίνακα."
+        if lang == "en":
+            return "Yes — I'm connected and ready. Ask me about open tasks, rooms, or board status."
+        return "כן — אני מחוברת ומוכנה. אפשר לשאול על משימות פתוחות, חדרים או מצב הלוח."
+
+    # Live task / status questions from DB (no Gemini).
+    asks_status = any(
+        x in cmd or x in cmd_l
+        for x in (
+            "מה הסטטוס",
+            "מה המצב",
+            "איך המצב",
+            "מצב המשימות",
+            "סטטוס",
+            "כמה משימות",
+            "משימות פתוחות",
+            "status",
+            "how many tasks",
+            "open tasks",
+            "task board",
+        )
+    )
+    asks_now = any(
+        x in cmd or x in cmd_l
+        for x in (
+            "מה קורה",
+            "מה נעשה",
+            "what's happening",
+            "what is happening",
+            "right now",
+        )
+    )
+    if asks_now:
+        try:
+            return _maya_whats_happening_reply(tid)
+        except Exception:
+            pass
+    if asks_status:
+        try:
+            return _maya_task_board_status_reply(tid, uid)
+        except Exception:
+            pass
+
+    # Snapshot counts when available (from the request that already loaded stats).
+    open_n = None
+    total_n = None
+    try:
+        if isinstance(stats_snapshot, dict):
+            open_n = stats_snapshot.get("total_tasks")
+            total_n = stats_snapshot.get("total_property_tasks_all") or stats_snapshot.get("total_tasks")
+        if open_n is None:
+            c = _task_status_counts_for_tenant(tid)
+            if c:
+                open_n = int(c.get("pending") or 0) + int(c.get("in_progress") or 0)
+                total_n = int(c.get("total") or 0)
+    except Exception:
+        open_n = None
+
+    # Lightweight property-knowledge hit (name substring in learned sites).
+    try:
+        if SessionLocal and PropertyKnowledgeModel and len(cmd) >= 3:
+            _s = SessionLocal()
+            try:
+                q = _s.query(PropertyKnowledgeModel).filter(
+                    PropertyKnowledgeModel.tenant_id == tid
+                )
+                try:
+                    q = q.order_by(PropertyKnowledgeModel.id.desc())
+                except Exception:
+                    pass
+                rows = q.limit(40).all()
+                for row in rows or []:
+                    name = (getattr(row, "display_name", None) or "").strip()
+                    if not name:
+                        continue
+                    if name.lower() in cmd_l or any(
+                        tok and len(tok) > 3 and tok in (name.lower())
+                        for tok in re.findall(r"[\w\u0590-\u05ff]{4,}", cmd_l)
+                    ):
+                        vibe = (
+                            getattr(row, "summary", None)
+                            or getattr(row, "location_note", None)
+                            or getattr(row, "offices_note", None)
+                            or ""
+                        ).strip()
+                        if lang == "en":
+                            base = f"I have {name} on file."
+                            return f"{base} {vibe[:220]}".strip() if vibe else f"{base} Ask me about tasks or status for that site."
+                        base = f"יש לי את {name} בידע הנכסים."
+                        return f"{base} {vibe[:220]}".strip() if vibe else f"{base} אפשר לשאול על משימות או סטטוס שם."
+            finally:
+                _s.close()
+    except Exception as _pk_e:
+        print(f"[Maya] local property lookup skip: {_pk_e}", flush=True)
+
+    # Helpful default — still a valid assistant answer (not a busy error).
+    if open_n is not None:
+        if lang == "el":
+            return (
+                f"Είμαι συνδεδεμένη. Στον πίνακα υπάρχουν περίπου {int(open_n)} ανοιχτές εργασίες"
+                + (f" (σύνολο {int(total_n)})" if total_n is not None else "")
+                + ". Πες μου τι να ελέγξω — κατάσταση, δωμάτιο ή νέα εργασία."
+            )
+        if lang == "en":
+            return (
+                f"I'm connected. There are about {int(open_n)} open tasks on the board"
+                + (f" (total {int(total_n)})" if total_n is not None else "")
+                + ". Tell me what to check — status, a room, or a new task."
+            )
+        return (
+            f"אני מחוברת. בלוח יש כ־{int(open_n)} משימות פתוחות"
+            + (f" (סה\"כ {int(total_n)})" if total_n is not None else "")
+            + ". אפשר לבקש סטטוס, חדר, או לפתוח משימה חדשה."
+        )
+
     if lang == "el":
-        msg = "Η Maya χρειάζεται λίγο περισσότερο χρόνο — δοκιμάστε ξανά σε λίγο. Είμαι ακόμα συνδεδεμένη."
-    elif lang == "en":
-        msg = "Maya needs a bit more time — please try again in a moment. I'm still connected."
-    else:
-        msg = "מאיה צריכה עוד רגע — נסה שוב בקרוב. אני עדיין מחוברת."
+        return "Είμαι συνδεδεμένη και έτοιμη να βοηθήσω με εργασίες, δωμάτια και κατάσταση πίνακα."
+    if lang == "en":
+        return "I'm connected and ready to help with tasks, rooms, and board status."
+    return "אני מחוברת ומוכנה לעזור עם משימות, חדרים ומצב הלוח."
+
+
+def _maya_timeout_fallback_payload(
+    language="he",
+    command=None,
+    tenant_id=None,
+    user_id=None,
+    stats_snapshot=None,
+):
+    """Local instant answer when Gemini exceeds budget — Maya stays Connected."""
+    msg = _maya_local_instant_reply(
+        command,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        language=language,
+        stats_snapshot=stats_snapshot,
+    )
     return {
         "success": True,
         "ok": True,
@@ -1346,8 +1512,10 @@ def _maya_timeout_fallback_payload(language="he"):
         "response": msg,
         "reply": msg,
         "timeoutFallback": True,
+        "localFallback": True,
         "maya_ready": True,
         "brainFailure": False,
+        "action": "info",
     }
 
 
@@ -1765,14 +1933,15 @@ def _gemini_rpc_timeout_sec(preferred=8):
     return max(3, min(int(v), 12))
 
 
-def _maya_high_volume_fallback_text(language="en"):
-    """Soft copy when Gemini gRPC hits DEADLINE_EXCEEDED / high load."""
-    lang = (language or "en").lower().split("-")[0]
-    if lang == "he":
-        return "מאיה מעבדת כרגע עומס גבוה של בקשות — נסה שוב בעוד רגע. אני עדיין מחוברת."
-    if lang == "el":
-        return "Η Maya επεξεργάζεται προσωρινά υψηλό όγκο αιτημάτων — δοκιμάστε ξανά σε λίγο. Είμαι ακόμα συνδεδεμένη."
-    return "I'm temporarily processing a high volume of requests, please try again in a moment."
+def _maya_high_volume_fallback_text(language="en", command=None, tenant_id=None, user_id=None, stats_snapshot=None):
+    """Backward-compatible alias → context-aware local instant reply (never a dead-end busy line)."""
+    return _maya_local_instant_reply(
+        command,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        language=language,
+        stats_snapshot=stats_snapshot,
+    )
 
 
 def _is_gemini_deadline_error(exc) -> bool:
@@ -2026,31 +2195,56 @@ def _gemini_stream_collect_string(
 
 
 def _maya_llm_stream_text_chunks(
-    prompt: str, timeout: int, extra_system: str, deadline: float | None = None
+    prompt: str,
+    timeout: int,
+    extra_system: str,
+    deadline: float | None = None,
+    *,
+    command: str | None = None,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+    language: str = "he",
+    stats_snapshot=None,
 ):
     """
     Yield incremental text fragments from Gemini (stream=True).
     Used for SSE maya-command so the UI can render tokens before the full JSON is ready.
 
-    The blocking SDK stream runs on a real OS thread so eventlet's single worker hub
-    keeps serving /health, Socket.IO, and other API calls (avoids Railway 504s).
-
-    gRPC DEADLINE_EXCEEDED / TimeoutError → yield a soft fallback line and return
-    (never bubble RpcError up to the proxy as a hanging/504 response).
+    On ANY stream failure (gRPC DEADLINE_EXCEEDED, TimeoutError, model errors) immediately
+    yield a context-aware local reply string and return — never hang or bubble RpcError.
     """
     import queue
     import threading
     import traceback as _tb
 
+    def _local_text():
+        return _maya_local_instant_reply(
+            command or prompt,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            language=language or "he",
+            stats_snapshot=stats_snapshot,
+        )
+
+    def _soft_yield_and_stop(reason):
+        print(f"[Gemini] SSE local instant reply ({reason})", flush=True)
+        yield _local_text()
+
     if not _USE_NEW_GENAI:
-        raise RuntimeError("[Gemini] google-generativeai not installed — run: pip install google-generativeai")
+        yield from _soft_yield_and_stop("gemini_sdk_missing")
+        return
     live_key = os.getenv("GEMINI_API_KEY", "").strip() or _GEMINI_API_KEY
     if not live_key:
-        raise RuntimeError("GEMINI_API_KEY not set — add it to .env or Render Environment Variables")
-    if live_key != getattr(genai, "_configured_key", None):
-        genai.configure(api_key=live_key)
-        genai._configured_key = live_key
-        _gemini_invalidate_model_cache()
+        yield from _soft_yield_and_stop("gemini_api_key_missing")
+        return
+    try:
+        if live_key != getattr(genai, "_configured_key", None):
+            genai.configure(api_key=live_key)
+            genai._configured_key = live_key
+            _gemini_invalidate_model_cache()
+    except Exception as _cfg_e:
+        yield from _soft_yield_and_stop(f"configure:{type(_cfg_e).__name__}")
+        return
 
     timeout = _gemini_rpc_timeout_sec(timeout or 8)
     if deadline is None:
@@ -2084,12 +2278,14 @@ def _maya_llm_stream_text_chunks(
         except ImportError:
             pass
 
-    def _soft_yield_and_stop(reason):
-        print(f"[Gemini] SSE soft-fallback ({reason})", flush=True)
-        yield _maya_high_volume_fallback_text("en")
-
     last_exc = None
-    for model_name in _gemini_model_candidates():
+    try:
+        candidates = _gemini_model_candidates()
+    except Exception as _cand_e:
+        yield from _soft_yield_and_stop(f"candidates:{type(_cand_e).__name__}")
+        return
+
+    for model_name in candidates:
         if time.monotonic() >= deadline:
             yield from _soft_yield_and_stop("gateway budget before stream")
             return
@@ -2123,51 +2319,22 @@ def _maya_llm_stream_text_chunks(
                 if kind == "done":
                     return
                 if kind == "err":
-                    if _is_gemini_deadline_error(payload):
-                        yield from _soft_yield_and_stop(
-                            f"gRPC/deadline from {model_name}: {type(payload).__name__}"
-                        )
-                        return
-                    raise payload
+                    # Deadline / gRPC / any worker error → local reply (no raise).
+                    yield from _soft_yield_and_stop(
+                        f"{model_name}:{type(payload).__name__}"
+                    )
+                    return
                 yield payload
             continue
         except Exception as e:
-            if _is_gemini_deadline_error(e):
-                yield from _soft_yield_and_stop(f"caught {type(e).__name__}")
-                return
             last_exc = e
-            err_str = str(e).lower()
             _tb.print_exc()
-            if any(
-                x in err_str
-                for x in (
-                    "api_key_invalid",
-                    "api key not valid",
-                    "invalid api key",
-                    "permission_denied",
-                    "api key expired",
-                    "key has expired",
-                    "unauthenticated",
-                )
-            ):
-                raise RuntimeError(
-                    "__KEY_INVALID__: The Gemini API key is invalid or expired. "
-                    "Get a new key at https://aistudio.google.com/apikey and update GEMINI_API_KEY."
-                )
-            if "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
-                raise
-            if _gemini_err_is_model_not_found(e):
-                continue
-            break
-    if last_exc is not None and _is_gemini_deadline_error(last_exc):
-        yield from _soft_yield_and_stop(type(last_exc).__name__)
-        return
+            # Never re-raise key/quota from the stream path — mobile must get a usable string.
+            yield from _soft_yield_and_stop(f"caught:{type(e).__name__}")
+            return
     if last_exc is not None:
-        # Final soft landing — never leave the SSE client hanging on RpcError.
-        print(f"[Gemini] SSE final soft-fallback after: {last_exc}", flush=True)
-        yield _maya_high_volume_fallback_text("en")
-        return
-    yield _maya_high_volume_fallback_text("en")
+        print(f"[Gemini] SSE final local reply after: {last_exc}", flush=True)
+    yield from _soft_yield_and_stop("exhausted_models")
 
 
 def _promote_property_task_to_in_progress_after_worker_notify(
@@ -16866,6 +17033,11 @@ Rules:
                         timeout=_stream_timeout,
                         extra_system=_extra_sys,
                         deadline=_deadline,
+                        command=command,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        language=_lang,
+                        stats_snapshot=maya_stats_snapshot,
                     ):
                         buf.append(piece)
                         yield (
@@ -16885,31 +17057,28 @@ Rules:
                         truth_audit=_truth_audit,
                         maya_identity=maya_identity,
                     )
+                    if isinstance(result, dict):
+                        result["maya_ready"] = True
                     yield (
                         "data: "
                         + json.dumps({"type": "done", "result": result}, ensure_ascii=False)
                         + "\n\n"
                     )
-                except TimeoutError as te:
-                    print(f"[Gemini] maya-command SSE timeout fallback: {te}", flush=True)
-                    soft = _maya_timeout_fallback_payload(_lang)
-                    yield (
-                        "data: "
-                        + json.dumps({"type": "done", "result": soft}, ensure_ascii=False)
-                        + "\n\n"
-                    )
                 except Exception as e:
                     import traceback as _tb_sse
 
-                    print(f"\n{'='*60}", flush=True)
-                    print(f"[Gemini] maya-command SSE FAILED: {type(e).__name__}: {e}", flush=True)
+                    print(f"[Gemini] maya-command SSE → local instant reply: {type(e).__name__}: {e}", flush=True)
                     _tb_sse.print_exc()
-                    print(f"{'='*60}\n", flush=True)
-                    err = _maya_brain_error_payload(e, code="gemini_call")
-                    err["maya_ready"] = True
+                    soft = _maya_timeout_fallback_payload(
+                        _lang,
+                        command=command,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        stats_snapshot=maya_stats_snapshot,
+                    )
                     yield (
                         "data: "
-                        + json.dumps({"type": "done", "result": err}, ensure_ascii=False)
+                        + json.dumps({"type": "done", "result": soft}, ensure_ascii=False)
                         + "\n\n"
                     )
 
@@ -16934,17 +17103,20 @@ Rules:
                 text = _gemini_generate(
                     prompt, timeout=_stream_timeout, extra_system=_extra_sys, deadline=_deadline
                 )
-    except TimeoutError as te:
-        print(f"[Gemini] maya-command timeout fallback: {te}", flush=True)
-        return jsonify(_maya_timeout_fallback_payload(_lang)), 200
     except Exception as e:
         import traceback as _tb_cmd
 
-        print(f"\n{'='*60}", flush=True)
-        print(f"[Gemini] maya-command FAILED: {type(e).__name__}: {e}", flush=True)
+        print(f"[Gemini] maya-command → local instant reply: {type(e).__name__}: {e}", flush=True)
         _tb_cmd.print_exc()
-        print(f"{'='*60}\n", flush=True)
-        return _maya_brain_error_response(e, code="gemini_call")
+        return jsonify(
+            _maya_timeout_fallback_payload(
+                _lang,
+                command=command,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                stats_snapshot=maya_stats_snapshot,
+            )
+        ), 200
 
     with app.app_context():
         result = _maya_build_json_response_from_llm_output(
@@ -22383,14 +22555,12 @@ def api_guest_maya_chat():
         reply_text = (
             _gemini_generate(prompt, timeout=min(10, _budget), deadline=_deadline) or ""
         ).strip()
-    except TimeoutError as e:
-        print(f"[api_guest_maya_chat] Gemini timeout (soft fallback): {e}", flush=True)
-        reply_text = ""
     except Exception as e:
-        print(f"[api_guest_maya_chat] Gemini failed: {e}", flush=True)
+        print(f"[api_guest_maya_chat] Gemini → local reply: {e}", flush=True)
         reply_text = ""
 
     if not reply_text:
+        # Prefer a short helpful guest reply over a dead-end busy message.
         reply_text = _guest_maya_fallback_reply(language)
 
     task_created = False
