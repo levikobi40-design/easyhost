@@ -242,15 +242,23 @@ export default function GodModeDashboard() {
   };
 
   // ── WhatsApp Injector ──────────────────────────────────────────────────────
+  const MAX_INJECT_IMAGE_BYTES = 8 * 1024 * 1024; // match server MAX_UPLOAD_FILE_BYTES
+
   const handleInjectFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    setInjectFile(f);
-    if (f.type.startsWith('image/')) {
-      setInjectPreview(URL.createObjectURL(f));
-    } else {
-      setInjectPreview(null);
+    if (!f.type.startsWith('image/')) {
+      setInjectDone('❌ Images only (JPEG/PNG/WebP). PDFs are not supported on this upload path.');
+      if (injectFileRef.current) injectFileRef.current.value = '';
+      return;
     }
+    if (f.size > MAX_INJECT_IMAGE_BYTES) {
+      setInjectDone(`❌ Image too large (${(f.size / (1024 * 1024)).toFixed(1)} MB). Max 8 MB — compress and retry.`);
+      if (injectFileRef.current) injectFileRef.current.value = '';
+      return;
+    }
+    setInjectFile(f);
+    setInjectPreview(URL.createObjectURL(f));
   };
 
   const handleInject = async () => {
@@ -262,13 +270,25 @@ export default function GodModeDashboard() {
 
       // Upload attachment first if present (with retry for intermittent network)
       if (injectFile) {
+        if (injectFile.size > MAX_INJECT_IMAGE_BYTES) {
+          setInjectDone('❌ Image exceeds 8 MB limit.');
+          return;
+        }
         const fd = new FormData();
         fd.append('files', injectFile);
         if (injectPropId) fd.append('property_id', injectPropId);
-        const upRes = await fetchWithRetry(`${API_URL}/field/upload`, { method: 'POST', body: fd }, { maxRetries: 3 });
+        // Prefer /upload; /field/upload is an alias on the backend.
+        const upRes = await fetchWithRetry(`${API_URL}/upload`, { method: 'POST', body: fd }, { maxRetries: 2 });
+        if (upRes.status === 413) {
+          const upJson = await upRes.json().catch(() => ({}));
+          setInjectDone(`❌ ${upJson.message || 'Image too large for upload.'}`);
+          return;
+        }
         if (upRes.ok) {
           const upJson = await upRes.json();
           attachUrl = (upJson.urls || [])[0] || null;
+        } else {
+          setInjectDone('❌ Image upload failed — message will send without attachment.');
         }
       }
 

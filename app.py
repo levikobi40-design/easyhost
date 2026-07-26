@@ -1756,7 +1756,97 @@ def _eventlet_run_blocking(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", deadline: float | None = None) -> str:
+def _gemini_rpc_timeout_sec(preferred=8):
+    """Per-RPC timeout for generate_content (keeps gRPC from hanging on DEADLINE_EXCEEDED)."""
+    try:
+        v = int((os.getenv("GEMINI_RPC_TIMEOUT_SEC") or str(preferred)).strip())
+    except (TypeError, ValueError):
+        v = preferred
+    return max(3, min(int(v), 12))
+
+
+def _maya_high_volume_fallback_text(language="en"):
+    """Soft copy when Gemini gRPC hits DEADLINE_EXCEEDED / high load."""
+    lang = (language or "en").lower().split("-")[0]
+    if lang == "he":
+        return "מאיה מעבדת כרגע עומס גבוה של בקשות — נסה שוב בעוד רגע. אני עדיין מחוברת."
+    if lang == "el":
+        return "Η Maya επεξεργάζεται προσωρινά υψηλό όγκο αιτημάτων — δοκιμάστε ξανά σε λίγο. Είμαι ακόμα συνδεδεμένη."
+    return "I'm temporarily processing a high volume of requests, please try again in a moment."
+
+
+def _is_gemini_deadline_error(exc) -> bool:
+    """True for gRPC DEADLINE_EXCEEDED / google.api_core DeadlineExceeded / client timeouts."""
+    if exc is None:
+        return False
+    if isinstance(exc, TimeoutError):
+        return True
+    try:
+        from google.api_core.exceptions import DeadlineExceeded, RetryError
+
+        if isinstance(exc, DeadlineExceeded):
+            return True
+        if isinstance(exc, RetryError) and _is_gemini_deadline_error(getattr(exc, "cause", None)):
+            return True
+    except Exception:
+        pass
+    try:
+        import grpc
+
+        if isinstance(exc, grpc.RpcError):
+            code = None
+            try:
+                code = exc.code()
+            except Exception:
+                code = getattr(exc, "code", None)
+            code_name = getattr(code, "name", None) or str(code or "")
+            if "DEADLINE_EXCEEDED" in str(code_name).upper():
+                return True
+    except Exception:
+        pass
+    s = f"{type(exc).__name__} {exc}".lower()
+    return any(
+        x in s
+        for x in (
+            "deadline_exceeded",
+            "deadline exceeded",
+            "statuscode.deadline_exceeded",
+            "_multithreadedrendezvous",
+            "multithreadedrendezvous",
+            "timed out",
+            "timeout",
+            "gateway budget exceeded",
+        )
+    )
+
+
+def _gemini_generate_content(model, prompt, *, stream=False, timeout_sec=8):
+    """
+    Call GenerativeModel.generate_content with an explicit RPC timeout.
+    Tries request_options / timeout kwargs so gRPC fails fast instead of hanging.
+    """
+    t = _gemini_rpc_timeout_sec(timeout_sec)
+    attempts = (
+        {"stream": stream, "request_options": {"timeout": t}},
+        {"stream": stream, "request_options": {"timeout": float(t)}},
+        {"stream": stream, "timeout": t},
+    )
+    last_type_err = None
+    for kwargs in attempts:
+        try:
+            return model.generate_content(prompt, **kwargs)
+        except TypeError as te:
+            last_type_err = te
+            continue
+    print(
+        f"[Gemini] WARNING: generate_content ignored timeout kwargs ({last_type_err}); "
+        f"streaming without RPC timeout",
+        flush=True,
+    )
+    return model.generate_content(prompt, stream=stream)
+
+
+def _gemini_generate(prompt: str, timeout: int = 8, extra_system: str = "", deadline: float | None = None) -> str:
     """
     Maya unified LLM: **Gemini** (google-generativeai). Same MAYA_SYSTEM_INSTRUCTION / LIVE DATA.
     Blocking SDK calls run via eventlet.tpool so the single eventlet worker is not stalled.
@@ -1782,9 +1872,9 @@ def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", dea
             _tb.print_exc()
             raise
 
-    timeout = max(4, min(int(timeout or 12), 15))
+    timeout = _gemini_rpc_timeout_sec(timeout or 8)
 
-    def _call_model(model_name):
+    def _call_model(model_name, call_timeout):
         _sys = MAYA_SYSTEM_INSTRUCTION
         if (extra_system or "").strip():
             _sys = MAYA_SYSTEM_INSTRUCTION + "\n\n--- LIVE DATA (authoritative) ---\n" + extra_system.strip()
@@ -1796,12 +1886,7 @@ def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", dea
                 max_output_tokens=768,
             ),
         )
-        # Honour timeout when the transport supports request_options
-        _req_opts = {"timeout": int(timeout)} if timeout else {}
-        try:
-            resp = model.generate_content(prompt, request_options=_req_opts)
-        except TypeError:
-            resp = model.generate_content(prompt)
+        resp = _gemini_generate_content(model, prompt, stream=False, timeout_sec=call_timeout)
         text = _safe_gemini_text(resp, label=model_name)
         if not text:
             _cands = getattr(resp, "candidates", None) or []
@@ -1816,25 +1901,15 @@ def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", dea
     for model_name in _gemini_model_candidates():
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError("Maya gateway budget exceeded before Gemini call")
-        # Shrink per-call timeout to remaining budget so we never overrun the proxy.
         call_timeout = timeout
         if deadline is not None:
             remaining = max(2, int(deadline - time.monotonic()))
             call_timeout = min(timeout, remaining)
+        call_timeout = _gemini_rpc_timeout_sec(call_timeout)
         try:
             print("--- API CALL START ---")
-            print(f"[Gemini] → calling {model_name} (tpool, timeout={call_timeout}s) …")
-            # Bind per-attempt timeout into the nested call
-            def _call_with_budget(mn=model_name, ct=call_timeout):
-                nonlocal timeout
-                prev = timeout
-                timeout = ct
-                try:
-                    return _call_model(mn)
-                finally:
-                    timeout = prev
-
-            text = _eventlet_run_blocking(_call_with_budget)
+            print(f"[Gemini] → calling {model_name} (tpool, rpc_timeout={call_timeout}s) …")
+            text = _eventlet_run_blocking(_call_model, model_name, call_timeout)
             print(f"[Gemini] ✅ {model_name} responded ({len(text)} chars)")
             return text
         except Exception as e:
@@ -1842,7 +1917,7 @@ def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", dea
             err_str = str(e).lower()
             print(f"[Gemini] ❌ {model_name} failed: {type(e).__name__}: {e}")
             _tb.print_exc()
-            if isinstance(e, TimeoutError) or "timeout" in err_str or "timed out" in err_str:
+            if _is_gemini_deadline_error(e):
                 raise TimeoutError(str(e) or "Gemini timed out") from e
             if any(
                 x in err_str
@@ -1870,13 +1945,11 @@ def _gemini_generate(prompt: str, timeout: int = 12, extra_system: str = "", dea
 
 
 def _gemini_stream_collect_string(
-    prompt: str, timeout: int = 12, extra_system: str = "", deadline: float | None = None
+    prompt: str, timeout: int = 8, extra_system: str = "", deadline: float | None = None
 ) -> str:
     """
     Same final string as _gemini_generate, using generate_content(stream=True) for lower time-to-first-token.
     """
-    import traceback as _tb
-
     if not _USE_NEW_GENAI:
         raise RuntimeError("[Gemini] google-generativeai not installed — run: pip install google-generativeai")
     live_key = os.getenv("GEMINI_API_KEY", "").strip() or _GEMINI_API_KEY
@@ -1887,7 +1960,7 @@ def _gemini_stream_collect_string(
         genai._configured_key = live_key
         _gemini_invalidate_model_cache()
 
-    timeout = max(4, min(int(timeout or 12), 15))
+    timeout = _gemini_rpc_timeout_sec(timeout or 8)
 
     def _stream_one(model_name: str, call_timeout: int) -> str:
         _sys = MAYA_SYSTEM_INSTRUCTION
@@ -1901,11 +1974,7 @@ def _gemini_stream_collect_string(
                 max_output_tokens=768,
             ),
         )
-        _req_opts = {"timeout": int(call_timeout)} if call_timeout else {}
-        try:
-            stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
-        except TypeError:
-            stream = model.generate_content(prompt, stream=True)
+        stream = _gemini_generate_content(model, prompt, stream=True, timeout_sec=call_timeout)
         parts = []
         for chunk in stream:
             if deadline is not None and time.monotonic() >= deadline:
@@ -1922,6 +1991,7 @@ def _gemini_stream_collect_string(
         call_timeout = timeout
         if deadline is not None:
             call_timeout = min(timeout, max(2, int(deadline - time.monotonic())))
+        call_timeout = _gemini_rpc_timeout_sec(call_timeout)
         try:
             text = _eventlet_run_blocking(_stream_one, model_name, call_timeout)
             if text:
@@ -1929,7 +1999,7 @@ def _gemini_stream_collect_string(
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
-            if isinstance(e, TimeoutError) or "timeout" in err_str or "timed out" in err_str:
+            if _is_gemini_deadline_error(e):
                 raise TimeoutError(str(e) or "Gemini stream timed out") from e
             if any(
                 x in err_str
@@ -1964,7 +2034,9 @@ def _maya_llm_stream_text_chunks(
 
     The blocking SDK stream runs on a real OS thread so eventlet's single worker hub
     keeps serving /health, Socket.IO, and other API calls (avoids Railway 504s).
-    Hard `deadline` (time.monotonic) raises TimeoutError so handlers can soft-fall before proxy 504.
+
+    gRPC DEADLINE_EXCEEDED / TimeoutError → yield a soft fallback line and return
+    (never bubble RpcError up to the proxy as a hanging/504 response).
     """
     import queue
     import threading
@@ -1980,7 +2052,7 @@ def _maya_llm_stream_text_chunks(
         genai._configured_key = live_key
         _gemini_invalidate_model_cache()
 
-    timeout = max(4, min(int(timeout or 12), 15))
+    timeout = _gemini_rpc_timeout_sec(timeout or 8)
     if deadline is None:
         deadline = time.monotonic() + float(timeout)
 
@@ -1996,11 +2068,7 @@ def _maya_llm_stream_text_chunks(
                 max_output_tokens=768,
             ),
         )
-        _req_opts = {"timeout": int(call_timeout)} if call_timeout else {}
-        try:
-            stream = model.generate_content(prompt, stream=True, request_options=_req_opts)
-        except TypeError:
-            stream = model.generate_content(prompt, stream=True)
+        stream = _gemini_generate_content(model, prompt, stream=True, timeout_sec=call_timeout)
         for chunk in stream:
             if time.monotonic() >= deadline:
                 raise TimeoutError("Maya gateway budget exceeded during SSE stream")
@@ -2016,11 +2084,17 @@ def _maya_llm_stream_text_chunks(
         except ImportError:
             pass
 
+    def _soft_yield_and_stop(reason):
+        print(f"[Gemini] SSE soft-fallback ({reason})", flush=True)
+        yield _maya_high_volume_fallback_text("en")
+
     last_exc = None
     for model_name in _gemini_model_candidates():
         if time.monotonic() >= deadline:
-            raise TimeoutError("Maya gateway budget exceeded before SSE stream")
+            yield from _soft_yield_and_stop("gateway budget before stream")
+            return
         call_timeout = min(timeout, max(2, int(deadline - time.monotonic())))
+        call_timeout = _gemini_rpc_timeout_sec(call_timeout)
         q = queue.Queue()
 
         def _worker(name=model_name, ct=call_timeout):
@@ -2036,7 +2110,8 @@ def _maya_llm_stream_text_chunks(
         try:
             while True:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError("Maya gateway budget exceeded (SSE)")
+                    yield from _soft_yield_and_stop("gateway budget (SSE)")
+                    return
                 _hub_sleep()
                 try:
                     kind, payload = q.get(timeout=0.25)
@@ -2048,17 +2123,21 @@ def _maya_llm_stream_text_chunks(
                 if kind == "done":
                     return
                 if kind == "err":
+                    if _is_gemini_deadline_error(payload):
+                        yield from _soft_yield_and_stop(
+                            f"gRPC/deadline from {model_name}: {type(payload).__name__}"
+                        )
+                        return
                     raise payload
                 yield payload
             continue
-        except TimeoutError:
-            raise
         except Exception as e:
+            if _is_gemini_deadline_error(e):
+                yield from _soft_yield_and_stop(f"caught {type(e).__name__}")
+                return
             last_exc = e
             err_str = str(e).lower()
             _tb.print_exc()
-            if "timeout" in err_str or "timed out" in err_str:
-                raise TimeoutError(str(e) or "Gemini SSE timed out") from e
             if any(
                 x in err_str
                 for x in (
@@ -2080,7 +2159,15 @@ def _maya_llm_stream_text_chunks(
             if _gemini_err_is_model_not_found(e):
                 continue
             break
-    raise last_exc or RuntimeError("[Gemini] All models failed (stream chunks)")
+    if last_exc is not None and _is_gemini_deadline_error(last_exc):
+        yield from _soft_yield_and_stop(type(last_exc).__name__)
+        return
+    if last_exc is not None:
+        # Final soft landing — never leave the SSE client hanging on RpcError.
+        print(f"[Gemini] SSE final soft-fallback after: {last_exc}", flush=True)
+        yield _maya_high_volume_fallback_text("en")
+        return
+    yield _maya_high_volume_fallback_text("en")
 
 
 def _promote_property_task_to_in_progress_after_worker_notify(
@@ -12768,12 +12855,18 @@ def get_manual_rooms():
         session.close()
 
 
+# Per-file cap for chat/property uploads (after multipart parse). Keeps compress/persist under gateway budget.
+_MAX_UPLOAD_FILE_BYTES = int(os.getenv("MAX_UPLOAD_FILE_BYTES", str(8 * 1024 * 1024)) or (8 * 1024 * 1024))
+
+
 @app.route("/api/upload", methods=["POST"])
+@app.route("/api/field/upload", methods=["POST"])
 @require_auth
 def upload_images():
     """
     Generic image upload — accepts multiple files, returns URLs.
     Routes to Cloudinary when configured, falls back to local storage.
+    `/api/field/upload` is an alias used by God Mode / chat injectors.
 
     Optional form field 'property_id': when provided, saves the first
     uploaded URL as the property's photo_url immediately so the caller
@@ -12788,16 +12881,53 @@ def upload_images():
 
         property_id = (request.form.get("property_id") or "").strip() or None
         tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
+        max_bytes = max(512 * 1024, min(_MAX_UPLOAD_FILE_BYTES, 16 * 1024 * 1024))
 
         uploaded_urls = []
         for f in files:
             if not f or not f.filename:
                 continue
             ct = (f.content_type or "").lower()
+            # God Mode may attach PDF; store only images here (reject others clearly).
             if not ct.startswith("image/"):
-                return jsonify({"error": f"Invalid file type: {f.filename}", "urls": []}), 400
+                return jsonify({
+                    "ok": False,
+                    "error": f"Invalid file type: {f.filename} (images only)",
+                    "urls": [],
+                }), 400
 
-            data, new_ext = _compress_image(f.stream)
+            # Reject oversized raw uploads before PIL (avoids long hangs / 504s).
+            try:
+                f.stream.seek(0, os.SEEK_END)
+                raw_len = int(f.stream.tell() or 0)
+                f.stream.seek(0)
+            except Exception:
+                raw_len = 0
+            content_len = request.content_length or 0
+            if raw_len and raw_len > max_bytes:
+                return jsonify({
+                    "ok": False,
+                    "error": "payload_too_large",
+                    "message": f"Image too large ({raw_len // (1024 * 1024)} MB). Max {max_bytes // (1024 * 1024)} MB per file — compress and retry.",
+                    "urls": [],
+                }), 413
+            if content_len and content_len > (app.config.get("MAX_CONTENT_LENGTH") or (32 * 1024 * 1024)):
+                return jsonify({
+                    "ok": False,
+                    "error": "payload_too_large",
+                    "message": "Upload request exceeds server limit.",
+                    "urls": [],
+                }), 413
+
+            # Tighter compress for chat attachments (faster persist, smaller payloads).
+            data, new_ext = _compress_image(f.stream, max_px=1280, quality=72)
+            if data and len(data) > max_bytes:
+                return jsonify({
+                    "ok": False,
+                    "error": "payload_too_large",
+                    "message": "Compressed image still exceeds size limit. Use a smaller photo.",
+                    "urls": [],
+                }), 413
             fallback_ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
             try:
                 url = _persist_image_bytes(data, new_ext or fallback_ext, tenant_id, subfolder="uploads")
@@ -12805,6 +12935,14 @@ def upload_images():
                 # Should not raise anymore — keep a compressed data-URI fallback.
                 import base64 as _b64_fb
                 mime = "jpeg" if (new_ext or fallback_ext) in ("jpg", "jpeg", None) else (new_ext or fallback_ext)
+                # Cap data-URI size so maya-command JSON never balloons past gateway limits.
+                if len(data) > 1_500_000:
+                    return jsonify({
+                        "ok": False,
+                        "error": "payload_too_large",
+                        "message": "Image too large for inline storage. Configure Cloudinary or shrink the file.",
+                        "urls": [],
+                    }), 413
                 url = f"data:image/{mime};base64,{_b64_fb.b64encode(data).decode('ascii')}"
             uploaded_urls.append(url)
 
@@ -16701,10 +16839,12 @@ Rules:
     # Hard gateway budget (≤15s) — never let Railway/Nginx/Cloudflare return 504.
     _budget = _maya_gateway_budget_sec(12)
     try:
-        _stream_timeout = int((os.getenv("MAYA_GEMINI_STREAM_TIMEOUT_SEC") or str(_budget)).strip())
+        _stream_timeout = int(
+            (os.getenv("MAYA_GEMINI_STREAM_TIMEOUT_SEC") or os.getenv("GEMINI_RPC_TIMEOUT_SEC") or "8").strip()
+        )
     except ValueError:
-        _stream_timeout = _budget
-    _stream_timeout = max(8, min(_stream_timeout, _budget))
+        _stream_timeout = 8
+    _stream_timeout = _gemini_rpc_timeout_sec(min(_stream_timeout, _budget))
     _deadline = time.monotonic() + float(_budget)
     _lang = (data.get("language") or "he")
 
