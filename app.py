@@ -425,21 +425,31 @@ def _cloudinary_upload(data_bytes: bytes, folder: str = "easyhost") -> str:
     return result["secure_url"]
 
 
-MAYA_SYSTEM_INSTRUCTION = """You are Maya — the high-end AI Operations Manager for Easyhost, embedded in Kobi's Christos Corfu pilot portfolio (3 live properties). You are not a chatbot or generic assistant. You run live operations: professional, fast, precise, calm under load. Default voice: fluent natural Hebrew. Mirror English only if the user writes English.
+MAYA_SYSTEM_INSTRUCTION = """You are Maya — the high-end AI Operations Manager for Easyhost. You manage Kobi's live portfolio: the Christos Corfu pilot (3 properties) and Herbert Samuel Milos Dead Sea Resort (162 rooms). You are not a chatbot or generic assistant. You run live operations: professional, fast, precise, calm under load. Default voice: fluent natural Hebrew. Mirror English only if the user writes English.
 
 Primary language is Hebrew. For JSON task objects use Hebrew task_type when applicable: ניקיון חדר | תחזוקה | שירות | צ'ק-אין.
 
 INTENT FIRST:
 • SERVICE REQUEST → add_task / add_tasks with full description (issue + unit + property when known).
-• OPERATIONAL QUESTION → use STATS_JSON + LIVE DATA / SEARCH_TOOL only; action "info". If STATS_JSON lacks total_properties or total_tasks and LIVE DATA is empty, reply exactly: "אין לי נתונים עדכניים כרגע" — never guess counts from memory or old demos.
+• OPERATIONAL QUESTION → use STATS_JSON + LIVE DATA / PROPERTY_KNOWLEDGE / SEARCH_TOOL only; action "info". If STATS_JSON lacks total_properties or total_tasks and LIVE DATA is empty, reply exactly: "אין לי נתונים עדכניים כרגע" — never guess counts from memory or old demos.
 • SMALL TALK → action "info", warm brief reply; no task unless explicit request.
 
-You are the live ops brain for the Christos Corfu pilot. Ground every count in STATS_JSON and LIVE DATA. Kobi is your owner (קובי). Never invent occupancy %, property counts (22/30/61/15), or task totals. Never describe yourself as software or AI.
+You are the live ops brain for this portfolio. Ground every count in STATS_JSON and LIVE DATA. Kobi is your owner (קובי). Never invent occupancy %, property counts (22/30/61/15), or task totals. Never describe yourself as software or AI.
 
 CHRISTOS CORFU PILOT (authoritative property names — use exact names from the prompt property list):
 • וילה Thaleri (christos-thaleri-villa-corfu)
 • Manto Apartments (christos-manto-beach-apartment-barbati)
 • Manto Beach Suite (christos-manto-luxury-beach-2p-barbati)
+
+HERBERT SAMUEL MILOS DEAD SEA (milos_dead_sea) — 162-room resort. When the user asks about Milos / Dead Sea / Herbert Samuel, cite PROPERTY_KNOWLEDGE and these facts:
+• Rooms 101–160: Superior Patio / Deluxe Ground
+• Rooms 201–260: Deluxe Sea View / Balcony
+• Rooms 301–342: Premium Private Pool Suites
+• Anasa Spa (heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms)
+• Main outdoor pool & toddler pool; private beach access
+• Main Restaurant: Breakfast 07:30–10:30, Lunch 13:00–14:30, Dinner 18:30–21:00
+• Greek Pool Tavern & Dairy Lobby Bar
+• Kids / Gaming Club (Floor -1), Gym, Rooftop Solarium, Synagogue
 
 ANTI-SPAM: Answer directly. When user mentions one property, restrict facts to that property only unless they ask for full portfolio.
 
@@ -453,7 +463,7 @@ ABSOLUTE RULES:
 3. SINGLE task → {"action":"add_task","task":{...}}
 4. MULTIPLE tasks → {"action":"add_tasks","tasks":[...]}
 5. Information only → {"action":"info","message":"..."}
-6. MISSING property — if you cannot determine which Christos property → {"action":"clarify","question":"באיזה נכס מדובר — וילה Thaleri, Manto Apartments, או Manto Beach Suite?"}
+6. MISSING property — if you cannot determine which property → {"action":"clarify","question":"באיזה נכס מדובר — וילה Thaleri, Manto Apartments, Manto Beach Suite, או Herbert Samuel Milos Dead Sea?"}
    NEVER invent property names or use placeholders.
 
 FIELD RULES:
@@ -469,6 +479,7 @@ MAYA_PINNED_PROPERTY_LABELS = [
     "וילה Thaleri",
     "Manto Apartments",
     "Manto Beach Suite",
+    "Herbert Samuel Milos Dead Sea",
 ]
 
 # Staff mapping: Hebrew keywords -> canonical staff name (עלמה, קובי, אבי)
@@ -498,11 +509,17 @@ CHRISTOS_PROPERTY_IDS = frozenset({
     "christos-manto-beach-apartment-barbati",
     "christos-manto-luxury-beach-2p-barbati",
 })
+MILOS_DEAD_SEA_PROPERTY_ID = "milos_dead_sea"
+# Never treat as junk / demo purge targets.
+PROTECTED_LIVE_PROPERTY_IDS = frozenset(set(CHRISTOS_PROPERTY_IDS) | {MILOS_DEAD_SEA_PROPERTY_ID})
 CORFU_LUXURY_ROOM_IMG = (
     "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1200&q=85"
 )
 CORFU_BEACH_ROOM_IMG = (
     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=85"
+)
+MILOS_DEAD_SEA_IMG = (
+    "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85"
 )
 
 TASK_SOURCE_BOOKING = "booking"
@@ -737,6 +754,49 @@ def _christos_corfu_portfolio_seed():
     return rows
 
 
+def _milos_dead_sea_portfolio_seed():
+    """Herbert Samuel Milos Dead Sea Resort — 162 rooms + facilities (dashboard property row)."""
+    now = datetime.now(timezone.utc).isoformat()
+    description = (
+        "Herbert Samuel Milos Dead Sea Resort — 162 rooms. "
+        "Rooms 101-160: Superior Patio / Deluxe Ground; "
+        "Rooms 201-260: Deluxe Sea View / Balcony; "
+        "Rooms 301-342: Premium Private Pool Suites. "
+        "Facilities: Anasa Spa (heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms); "
+        "main outdoor pool & toddler pool; private beach access; "
+        "Main Restaurant (Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00); "
+        "Greek Pool Tavern & Dairy Lobby Bar; Kids/Gaming Club (Floor -1); Gym; Rooftop Solarium; Synagogue."
+    )
+    return [{
+        "id": MILOS_DEAD_SEA_PROPERTY_ID,
+        "name": "Herbert Samuel Milos Dead Sea",
+        "description": description,
+        "photo_url": MILOS_DEAD_SEA_IMG,
+        "image_url": MILOS_DEAD_SEA_IMG,
+        "amenities": [
+            "Dead Sea",
+            "Anasa Spa",
+            "Private Beach",
+            "Pool",
+            "Restaurant",
+            "Kids Club",
+            "Gym",
+            "Synagogue",
+            "162 Rooms",
+        ],
+        "status": "Active",
+        "occupancy_rate": 78,
+        "created_at": now,
+        "branch_slug": MILOS_DEAD_SEA_PROPERTY_ID,
+        "max_guests": 4,
+        "bedrooms": 162,  # total rooms (Properties dashboard "rooms" field)
+        "beds": 162,
+        "bathrooms": 162,
+        "ai_automation_enabled": False,
+        "tenant_id": DEFAULT_TENANT_ID,
+    }]
+
+
 def _christos_active_worker_task_rows():
     """Greece pilot — exactly 3 pending tasks (i18n keys only)."""
     now = datetime.now(timezone.utc).isoformat()
@@ -950,6 +1010,24 @@ def _christos_pilot_seed_needed(tenant_id=DEFAULT_TENANT_ID):
         session.close()
 
 
+def _milos_dead_sea_seed_needed(tenant_id=DEFAULT_TENANT_ID):
+    """True when Herbert Samuel Milos Dead Sea is missing from manual_rooms."""
+    if not SessionLocal or not ManualRoomModel:
+        return False
+    session = SessionLocal()
+    try:
+        return (
+            session.query(ManualRoomModel.id)
+            .filter(ManualRoomModel.id == MILOS_DEAD_SEA_PROPERTY_ID)
+            .first()
+            is None
+        )
+    except Exception:
+        return True
+    finally:
+        session.close()
+
+
 def _upsert_christos_manual_room(session, row, tenant_id):
     """
     Insert-or-update a Christos pilot property by primary key ``id``.
@@ -1039,16 +1117,25 @@ def _upsert_christos_manual_room(session, row, tenant_id):
 
 
 def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
-    """Insert 3 Greece pilot properties + 3 pending worker tasks (idempotent)."""
+    """Insert 3 Greece pilot properties + Milos Dead Sea + 3 pending worker tasks (idempotent)."""
     tenant_id = _coerce_demo_tenant_id(tenant_id)
     christos_needed = _christos_pilot_seed_needed(tenant_id)
-    if not force and not SEED_DEMO_DATA and not christos_needed:
+    milos_needed = _milos_dead_sea_seed_needed(tenant_id)
+    if not force and not SEED_DEMO_DATA and not christos_needed and not milos_needed:
+        # Still refresh Maya knowledge for Milos (idempotent upsert).
+        try:
+            ensure_builtin_property_knowledge_milos_dead_sea()
+        except NameError:
+            pass
+        except Exception as _mk_e:
+            print(f"[seed_active_properties] milos knowledge: {_mk_e}", flush=True)
         return {"properties": 0, "tasks": 0, "ok": True, "skipped": True}
     if not SessionLocal or not ManualRoomModel:
         return {"properties": 0, "tasks": 0, "ok": False}
     _purge_legacy_demo_properties(tenant_id)
     props_added = tasks_added = 0
     christos_ids = set(CHRISTOS_PROPERTY_IDS)
+    seed_ids = set(christos_ids) | {MILOS_DEAD_SEA_PROPERTY_ID}
 
     session = SessionLocal()
     try:
@@ -1056,14 +1143,14 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
         existing_ids = {
             r[0]
             for r in session.query(ManualRoomModel.id)
-            .filter(ManualRoomModel.id.in_(list(christos_ids)))
+            .filter(ManualRoomModel.id.in_(list(seed_ids)))
             .all()
         }
-        for row in _christos_corfu_portfolio_seed():
+        for row in list(_christos_corfu_portfolio_seed()) + list(_milos_dead_sea_portfolio_seed()):
             if not isinstance(row, dict):
                 continue
             rid = row.get("id")
-            if not rid or rid not in christos_ids:
+            if not rid or rid not in seed_ids:
                 continue
             was_new = rid not in existing_ids
             try:
@@ -1084,6 +1171,14 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
         return {"properties": 0, "tasks": 0, "ok": False, "error": str(e)}
     finally:
         session.close()
+
+    # Maya knowledge for Milos (rooms, F&B, spa) — always upsert when models exist.
+    try:
+        ensure_builtin_property_knowledge_milos_dead_sea()
+    except NameError:
+        pass
+    except Exception as _mk_e:
+        print(f"[seed_active_properties] milos knowledge: {_mk_e}", flush=True)
 
     if not PropertyTaskModel:
         return {"properties": props_added, "tasks": 0, "ok": props_added > 0}
@@ -1155,9 +1250,11 @@ def _is_junk_mock_property(room_or_dict):
         pid = str(getattr(room_or_dict, "id", "") or "")
         nm = str(getattr(room_or_dict, "name", "") or "")
         desc = str(getattr(room_or_dict, "description", "") or "")
-    if pid in CHRISTOS_PROPERTY_IDS:
+    if pid in PROTECTED_LIVE_PROPERTY_IDS or pid == MILOS_DEAD_SEA_PROPERTY_ID:
         return False
     blob = f"{pid} {nm} {desc}".lower()
+    if any(x in blob for x in ("milos", "dead sea", "herbert samuel", "מילוס", "ים המלח")):
+        return False
     he = f"{nm} {desc}"
     if pid.startswith("rooms-branch-") or pid.startswith("wework-"):
         return True
@@ -1329,6 +1426,127 @@ def _maya_gateway_budget_sec(default=12):
     return max(8, min(int(v), 15))
 
 
+class _MayaStreamLocalFallback(Exception):
+    """Signal SSE wrapper to emit a single local `done` (no delta spam / no double bubble)."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.text = (text or "").strip()
+
+
+def _maya_local_intent_kind(command: str) -> str:
+    """
+    Narrow intent for local fallback only.
+    Returns: connected | status | happening | count | property | other
+    """
+    cmd = (command or "").strip()
+    cmd_l = cmd.lower()
+    if not cmd:
+        return "other"
+
+    if any(
+        x in cmd or x in cmd_l
+        for x in (
+            "מחוברת", "מחובר", "את שם", "את כאן",
+            "are you connected", "are you online", "you there", "you online", "ping",
+        )
+    ):
+        return "connected"
+
+    # Explicit count questions only (avoid loose 'סטטוס' / 'status' matches).
+    if any(
+        x in cmd or x in cmd_l
+        for x in (
+            "כמה משימות", "כמה פתוחות", "how many tasks", "how many open",
+            "number of tasks", "count tasks", "מספר המשימות",
+        )
+    ):
+        return "count"
+
+    if any(
+        x in cmd or x in cmd_l
+        for x in (
+            "מה קורה עכשיו", "מה נעשה עכשיו", "what's happening now",
+            "what is happening now", "what's happening", "what is happening",
+        )
+    ):
+        return "happening"
+
+    if any(
+        x in cmd or x in cmd_l
+        for x in (
+            "מה הסטטוס", "מה המצב", "איך המצב", "מצב המשימות", "סטטוס המשימות",
+            "what's the status", "what is the status", "task board status",
+            "status of the tasks", "board status",
+        )
+    ):
+        return "status"
+
+    # Property: only when a known site name appears as a clear substring of the user text.
+    return "other"
+
+
+def _maya_live_task_counts(tenant_id, stats_snapshot=None):
+    """Return (open_n, total_n) from snapshot or DB; (None, None) if unavailable."""
+    try:
+        if isinstance(stats_snapshot, dict):
+            open_n = stats_snapshot.get("total_tasks")
+            total_n = stats_snapshot.get("total_property_tasks_all")
+            if open_n is not None:
+                return int(open_n), int(total_n if total_n is not None else open_n)
+        c = _task_status_counts_for_tenant(tenant_id)
+        if not c:
+            return None, None
+        open_n = int(c.get("pending") or 0) + int(c.get("in_progress") or 0)
+        total_n = int(c.get("total") or 0)
+        return open_n, total_n
+    except Exception:
+        return None, None
+
+
+def _maya_local_property_reply(command, tenant_id, language="he"):
+    """Exact-ish property knowledge match only (no fuzzy token spray)."""
+    cmd = (command or "").strip()
+    cmd_l = cmd.lower()
+    if not SessionLocal or not PropertyKnowledgeModel or len(cmd) < 4:
+        return None
+    try:
+        _s = SessionLocal()
+        try:
+            rows = (
+                _s.query(PropertyKnowledgeModel)
+                .filter(PropertyKnowledgeModel.tenant_id == tenant_id)
+                .limit(60)
+                .all()
+            )
+            best = None
+            best_len = 0
+            for row in rows or []:
+                name = (getattr(row, "display_name", None) or "").strip()
+                if not name or len(name) < 4:
+                    continue
+                nl = name.lower()
+                if nl in cmd_l or cmd_l in nl:
+                    if len(name) > best_len:
+                        best, best_len = row, len(name)
+            if not best:
+                return None
+            name = (best.display_name or "").strip()
+            summary = (getattr(best, "summary", None) or "").strip()
+            loc = (getattr(best, "location_note", None) or "").strip()
+            detail = summary or loc
+            if language == "en":
+                return f"About {name}: {detail[:280]}" if detail else f"I have notes on file for {name}."
+            if language == "el":
+                return f"Για το {name}: {detail[:280]}" if detail else f"Έχω καταγεγραμμένες σημειώσεις για το {name}."
+            return f"לגבי {name}: {detail[:280]}" if detail else f"יש לי רשומה על {name} בידע הנכסים."
+        finally:
+            _s.close()
+    except Exception as e:
+        print(f"[Maya] local property reply skip: {e}", flush=True)
+        return None
+
+
 def _maya_local_instant_reply(
     command,
     tenant_id=None,
@@ -1337,156 +1555,81 @@ def _maya_local_instant_reply(
     stats_snapshot=None,
 ):
     """
-    Instant DB/context answer when Gemini times out or gRPC fails.
-    Never returns a generic "busy / high volume" dead-end — always a usable assistant reply.
+    Last-resort answer ONLY after Gemini timed out / failed.
+    Synthesizes a direct reply from the user intent + live DB — no unrelated canned UI lines,
+    and no dumping task counts unless the user asked about tasks/status.
     """
     lang = (language or "he").lower().split("-")[0]
     cmd = (command or "").strip()
-    cmd_l = cmd.lower()
     tid = tenant_id or DEFAULT_TENANT_ID
     uid = user_id or f"demo-{tid}"
+    kind = _maya_local_intent_kind(cmd)
 
-    # Connection / ping — affirm Connected (matches green UI indicator).
-    if any(
-        x in cmd or x in cmd_l
-        for x in (
-            "מחוברת",
-            "מחובר",
-            "את שם",
-            "את כאן",
-            "are you connected",
-            "are you online",
-            "you there",
-            "you online",
-            "ping",
-            "hello maya",
-            "היי מאיה",
-            "שלום מאיה",
-            "hi maya",
-            "hey maya",
-        )
-    ) or cmd_l in ("?", "היי", "hi", "hello", "hey"):
+    # Prefer exact property match when the user named a known site.
+    prop = _maya_local_property_reply(cmd, tid, lang)
+    if prop and kind in ("other", "status"):
+        # If they named a property, answer about that property (even for status-ish asks).
+        if kind == "other" or any(tok in cmd.lower() for tok in ("נכס", "property", "סניף", "hotel", "מלון")):
+            return prop
+
+    if kind == "connected":
         if lang == "el":
-            return "Ναι — είμαι συνδεδεμένη και έτοιμη. Πες μου για εργασίες, δωμάτια ή κατάσταση πίνακα."
+            return "Ναι, είμαι συνδεδεμένη."
         if lang == "en":
-            return "Yes — I'm connected and ready. Ask me about open tasks, rooms, or board status."
-        return "כן — אני מחוברת ומוכנה. אפשר לשאול על משימות פתוחות, חדרים או מצב הלוח."
+            return "Yes — I'm connected."
+        return "כן, אני מחוברת."
 
-    # Live task / status questions from DB (no Gemini).
-    asks_status = any(
-        x in cmd or x in cmd_l
-        for x in (
-            "מה הסטטוס",
-            "מה המצב",
-            "איך המצב",
-            "מצב המשימות",
-            "סטטוס",
-            "כמה משימות",
-            "משימות פתוחות",
-            "status",
-            "how many tasks",
-            "open tasks",
-            "task board",
-        )
-    )
-    asks_now = any(
-        x in cmd or x in cmd_l
-        for x in (
-            "מה קורה",
-            "מה נעשה",
-            "what's happening",
-            "what is happening",
-            "right now",
-        )
-    )
-    if asks_now:
+    if kind == "happening":
         try:
             return _maya_whats_happening_reply(tid)
         except Exception:
             pass
-    if asks_status:
+
+    if kind in ("status", "count"):
+        open_n, total_n = _maya_live_task_counts(tid, stats_snapshot)
+        if open_n is None:
+            if lang == "en":
+                return "I couldn't read the live task board just now — please try again in a moment."
+            if lang == "el":
+                return "Δεν μπόρεσα να διαβάσω τον πίνακα εργασιών τώρα — δοκιμάστε ξανά σε λίγο."
+            return "לא הצלחתי לקרוא עכשיו את לוח המשימות החי — נסה שוב בעוד רגע."
+        if kind == "count":
+            if lang == "en":
+                return f"There are {open_n} open tasks on the board" + (
+                    f" (of {total_n} total)." if total_n is not None else "."
+                )
+            if lang == "el":
+                return f"Υπάρχουν {open_n} ανοιχτές εργασίες στον πίνακα" + (
+                    f" (από {total_n} συνολικά)." if total_n is not None else "."
+                )
+            return f"יש {open_n} משימות פתוחות בלוח" + (
+                f" (מתוך {total_n} בסך הכל)." if total_n is not None else "."
+            )
         try:
             return _maya_task_board_status_reply(tid, uid)
         except Exception:
-            pass
+            if lang == "en":
+                return f"Board status: {open_n} open tasks."
+            return f"מצב הלוח: {open_n} משימות פתוחות."
 
-    # Snapshot counts when available (from the request that already loaded stats).
-    open_n = None
-    total_n = None
-    try:
-        if isinstance(stats_snapshot, dict):
-            open_n = stats_snapshot.get("total_tasks")
-            total_n = stats_snapshot.get("total_property_tasks_all") or stats_snapshot.get("total_tasks")
-        if open_n is None:
-            c = _task_status_counts_for_tenant(tid)
-            if c:
-                open_n = int(c.get("pending") or 0) + int(c.get("in_progress") or 0)
-                total_n = int(c.get("total") or 0)
-    except Exception:
-        open_n = None
+    if prop:
+        return prop
 
-    # Lightweight property-knowledge hit (name substring in learned sites).
-    try:
-        if SessionLocal and PropertyKnowledgeModel and len(cmd) >= 3:
-            _s = SessionLocal()
-            try:
-                q = _s.query(PropertyKnowledgeModel).filter(
-                    PropertyKnowledgeModel.tenant_id == tid
-                )
-                try:
-                    q = q.order_by(PropertyKnowledgeModel.id.desc())
-                except Exception:
-                    pass
-                rows = q.limit(40).all()
-                for row in rows or []:
-                    name = (getattr(row, "display_name", None) or "").strip()
-                    if not name:
-                        continue
-                    if name.lower() in cmd_l or any(
-                        tok and len(tok) > 3 and tok in (name.lower())
-                        for tok in re.findall(r"[\w\u0590-\u05ff]{4,}", cmd_l)
-                    ):
-                        vibe = (
-                            getattr(row, "summary", None)
-                            or getattr(row, "location_note", None)
-                            or getattr(row, "offices_note", None)
-                            or ""
-                        ).strip()
-                        if lang == "en":
-                            base = f"I have {name} on file."
-                            return f"{base} {vibe[:220]}".strip() if vibe else f"{base} Ask me about tasks or status for that site."
-                        base = f"יש לי את {name} בידע הנכסים."
-                        return f"{base} {vibe[:220]}".strip() if vibe else f"{base} אפשר לשאול על משימות או סטטוס שם."
-            finally:
-                _s.close()
-    except Exception as _pk_e:
-        print(f"[Maya] local property lookup skip: {_pk_e}", flush=True)
-
-    # Helpful default — still a valid assistant answer (not a busy error).
-    if open_n is not None:
-        if lang == "el":
-            return (
-                f"Είμαι συνδεδεμένη. Στον πίνακα υπάρχουν περίπου {int(open_n)} ανοιχτές εργασίες"
-                + (f" (σύνολο {int(total_n)})" if total_n is not None else "")
-                + ". Πες μου τι να ελέγξω — κατάσταση, δωμάτιο ή νέα εργασία."
-            )
+    # Generic: acknowledge the actual ask — do NOT inject unrelated task/UI boilerplate.
+    short = cmd.replace("\n", " ").strip()
+    if len(short) > 120:
+        short = short[:117] + "…"
+    if not short:
         if lang == "en":
-            return (
-                f"I'm connected. There are about {int(open_n)} open tasks on the board"
-                + (f" (total {int(total_n)})" if total_n is not None else "")
-                + ". Tell me what to check — status, a room, or a new task."
-            )
-        return (
-            f"אני מחוברת. בלוח יש כ־{int(open_n)} משימות פתוחות"
-            + (f" (סה\"כ {int(total_n)})" if total_n is not None else "")
-            + ". אפשר לבקש סטטוס, חדר, או לפתוח משימה חדשה."
-        )
-
-    if lang == "el":
-        return "Είμαι συνδεδεμένη και έτοιμη να βοηθήσω με εργασίες, δωμάτια και κατάσταση πίνακα."
+            return "I'm here — send your question again and I'll answer."
+        if lang == "el":
+            return "Είμαι εδώ — στείλε ξανά την ερώτηση και θα απαντήσω."
+        return "אני כאן — שלח שוב את השאלה ואענה."
     if lang == "en":
-        return "I'm connected and ready to help with tasks, rooms, and board status."
-    return "אני מחוברת ומוכנה לעזור עם משימות, חדרים ומצב הלוח."
+        return f'Got it about “{short}”. The AI step timed out — ask once more and I’ll answer in full.'
+    if lang == "el":
+        return f'Κατάλαβα σχετικά με «{short}». Το AI άργησε — ξαναστείλε και θα απαντήσω πλήρως.'
+    return f'קיבלתי לגבי “{short}”. שלב ה-AI התעכב — שלח שוב ואענה במלוא הפירוט.'
 
 
 def _maya_timeout_fallback_payload(
@@ -2207,11 +2350,11 @@ def _maya_llm_stream_text_chunks(
     stats_snapshot=None,
 ):
     """
-    Yield incremental text fragments from Gemini (stream=True).
-    Used for SSE maya-command so the UI can render tokens before the full JSON is ready.
+    Yield Gemini stream deltas only. Gives Gemini the full deadline budget first.
 
-    On ANY stream failure (gRPC DEADLINE_EXCEEDED, TimeoutError, model errors) immediately
-    yield a context-aware local reply string and return — never hang or bubble RpcError.
+    On total failure with zero tokens: raise `_MayaStreamLocalFallback` so the SSE
+    wrapper emits a single `done` (no second delta stream / no double bubble).
+    If some Gemini tokens already arrived, return quietly and let the wrapper finalize them.
     """
     import queue
     import threading
@@ -2219,36 +2362,34 @@ def _maya_llm_stream_text_chunks(
 
     def _local_text():
         return _maya_local_instant_reply(
-            command or prompt,
+            command,
             tenant_id=tenant_id,
             user_id=user_id,
             language=language or "he",
             stats_snapshot=stats_snapshot,
         )
 
-    def _soft_yield_and_stop(reason):
-        print(f"[Gemini] SSE local instant reply ({reason})", flush=True)
-        yield _local_text()
+    def _fail_local(reason: str):
+        print(f"[Gemini] SSE → local fallback after full Gemini attempt ({reason})", flush=True)
+        raise _MayaStreamLocalFallback(_local_text())
 
     if not _USE_NEW_GENAI:
-        yield from _soft_yield_and_stop("gemini_sdk_missing")
-        return
+        _fail_local("gemini_sdk_missing")
     live_key = os.getenv("GEMINI_API_KEY", "").strip() or _GEMINI_API_KEY
     if not live_key:
-        yield from _soft_yield_and_stop("gemini_api_key_missing")
-        return
+        _fail_local("gemini_api_key_missing")
     try:
         if live_key != getattr(genai, "_configured_key", None):
             genai.configure(api_key=live_key)
             genai._configured_key = live_key
             _gemini_invalidate_model_cache()
     except Exception as _cfg_e:
-        yield from _soft_yield_and_stop(f"configure:{type(_cfg_e).__name__}")
-        return
+        _fail_local(f"configure:{type(_cfg_e).__name__}")
 
-    timeout = _gemini_rpc_timeout_sec(timeout or 8)
+    # Honour full gateway budget (do not shrink below remaining wall-clock).
     if deadline is None:
-        deadline = time.monotonic() + float(timeout)
+        deadline = time.monotonic() + float(max(8, int(timeout or 12)))
+    timeout = max(4, min(int(timeout or 12), 15))
 
     def _stream_one(model_name: str, call_timeout: int):
         _sys = MAYA_SYSTEM_INSTRUCTION
@@ -2279,18 +2420,18 @@ def _maya_llm_stream_text_chunks(
             pass
 
     last_exc = None
+    yielded_any = False
     try:
         candidates = _gemini_model_candidates()
     except Exception as _cand_e:
-        yield from _soft_yield_and_stop(f"candidates:{type(_cand_e).__name__}")
-        return
+        _fail_local(f"candidates:{type(_cand_e).__name__}")
 
     for model_name in candidates:
-        if time.monotonic() >= deadline:
-            yield from _soft_yield_and_stop("gateway budget before stream")
-            return
-        call_timeout = min(timeout, max(2, int(deadline - time.monotonic())))
-        call_timeout = _gemini_rpc_timeout_sec(call_timeout)
+        remaining = int(deadline - time.monotonic())
+        if remaining <= 1:
+            break
+        # Give this model as much of the remaining budget as possible (Gemini priority).
+        call_timeout = max(3, min(timeout, remaining))
         q = queue.Queue()
 
         def _worker(name=model_name, ct=call_timeout):
@@ -2303,38 +2444,56 @@ def _maya_llm_stream_text_chunks(
 
         th = threading.Thread(target=_worker, name=f"gemini-stream-{model_name}", daemon=True)
         th.start()
+        model_failed = False
         try:
             while True:
                 if time.monotonic() >= deadline:
-                    yield from _soft_yield_and_stop("gateway budget (SSE)")
-                    return
+                    if yielded_any:
+                        return
+                    _fail_local("gateway budget (SSE)")
                 _hub_sleep()
                 try:
                     kind, payload = q.get(timeout=0.25)
                 except queue.Empty:
                     if not th.is_alive():
                         last_exc = last_exc or RuntimeError("[Gemini] stream worker exited without done")
+                        model_failed = True
                         break
                     continue
                 if kind == "done":
                     return
                 if kind == "err":
-                    # Deadline / gRPC / any worker error → local reply (no raise).
-                    yield from _soft_yield_and_stop(
-                        f"{model_name}:{type(payload).__name__}"
-                    )
-                    return
+                    last_exc = payload
+                    err_str = str(payload).lower()
+                    # Already streaming Gemini text → finalize that; don't append a second local answer.
+                    if yielded_any:
+                        return
+                    # Model missing → try next candidate while budget remains.
+                    if _gemini_err_is_model_not_found(payload):
+                        model_failed = True
+                        break
+                    if _is_gemini_deadline_error(payload) or "timeout" in err_str:
+                        _fail_local(f"{model_name}:{type(payload).__name__}")
+                    # Other errors: try next model if budget left, else local.
+                    model_failed = True
+                    break
+                yielded_any = True
                 yield payload
-            continue
+            if model_failed:
+                continue
+        except _MayaStreamLocalFallback:
+            raise
         except Exception as e:
             last_exc = e
             _tb.print_exc()
-            # Never re-raise key/quota from the stream path — mobile must get a usable string.
-            yield from _soft_yield_and_stop(f"caught:{type(e).__name__}")
-            return
-    if last_exc is not None:
-        print(f"[Gemini] SSE final local reply after: {last_exc}", flush=True)
-    yield from _soft_yield_and_stop("exhausted_models")
+            if yielded_any:
+                return
+            _fail_local(f"caught:{type(e).__name__}")
+
+    if yielded_any:
+        return
+    reason = type(last_exc).__name__ if last_exc else "exhausted_models"
+    _fail_local(reason)
 
 
 def _promote_property_task_to_in_progress_after_worker_notify(
@@ -4333,6 +4492,12 @@ if create_engine and sessionmaker and declarative_base:
                     pass
                 except Exception as _bsr_pk:
                     print(f"[init_db] BSR CITY property knowledge seed note: {_bsr_pk}")
+            try:
+                ensure_builtin_property_knowledge_milos_dead_sea()
+            except NameError:
+                pass
+            except Exception as _milos_pk:
+                print(f"[init_db] Milos Dead Sea property knowledge seed note: {_milos_pk}")
             # _seed_rooms_branches disabled — Christos pilot only
             print(f"[init_db] ✅ Schema ready on {db_label}")
         except Exception as _ie:
@@ -4696,6 +4861,115 @@ if create_engine and sessionmaker and declarative_base:
         finally:
             session.close()
 
+    def ensure_builtin_property_knowledge_milos_dead_sea():
+        """
+        Core knowledge: Herbert Samuel Milos Dead Sea Resort (162 rooms).
+        Always upserts (not gated on SEED_DEMO_DATA) so Maya can answer ops queries.
+        """
+        if not SessionLocal or not PropertyKnowledgeModel:
+            return
+        rid = "builtin-herbert-samuel-milos-dead-sea"
+        tenant_id = DEFAULT_TENANT_ID
+        now = datetime.now(timezone.utc).isoformat()
+        display_name = "Herbert Samuel Milos Dead Sea"
+        summary = (
+            "Herbert Samuel Milos Dead Sea Resort — 162 rooms. "
+            "Rooms 101-160: Superior Patio / Deluxe Ground; "
+            "Rooms 201-260: Deluxe Sea View / Balcony; "
+            "Rooms 301-342: Premium Private Pool Suites. "
+            "Facilities: Anasa Spa (heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms); "
+            "main outdoor pool & toddler pool; private beach access; "
+            "Main Restaurant (Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00); "
+            "Greek Pool Tavern & Dairy Lobby Bar; Kids/Gaming Club (Floor -1); Gym; Rooftop Solarium; Synagogue."
+        )
+        location_note = (
+            "Dead Sea, Israel — Herbert Samuel Milos Dead Sea Resort. "
+            "Private beach access. Property id: milos_dead_sea."
+        )
+        offices_note = (
+            "162 rooms total. Inventory map: "
+            "101-160 Superior Patio / Deluxe Ground; "
+            "201-260 Deluxe Sea View / Balcony; "
+            "301-342 Premium Private Pool Suites."
+        )
+        amenities_note = (
+            "Anasa Spa: heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms. "
+            "Main outdoor pool & toddler pool. Private beach. "
+            "Dining: Main Restaurant — Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00; "
+            "Greek Pool Tavern; Dairy Lobby Bar. "
+            "Kids/Gaming Club on Floor -1; Gym; Rooftop Solarium; Synagogue."
+        )
+        rules_note = (
+            "BEHAVIOR: (1) Room-type / inventory / spa / F&B / facility questions → answer from these facts "
+            "(action info); never invent room numbers outside 101-160, 201-260, 301-342. "
+            "(2) Restaurant hours → use Main Restaurant schedule above only. "
+            "(3) Spa questions → Anasa Spa amenities listed. "
+            "(4) Kids Club → Floor -1 Gaming/Kids Club. "
+            "(5) Repair / guest complaint with a unit → add_task with propertyName "
+            "'Herbert Samuel Milos Dead Sea' and the room number when known."
+        )
+        session = SessionLocal()
+        try:
+            row = session.query(PropertyKnowledgeModel).filter_by(id=rid).first()
+            if not row:
+                row = PropertyKnowledgeModel(id=rid, tenant_id=tenant_id, created_at=now)
+            row.tenant_id = tenant_id
+            row.display_name = display_name
+            _nk = re.sub(r"[^\w\s\-]", " ", display_name.lower())
+            _nk = re.sub(r"\s+", " ", _nk).strip()[:220] or "milos dead sea"
+            row.normalized_key = _nk
+            row.source_url = ""
+            row.manual_room_id = MILOS_DEAD_SEA_PROPERTY_ID
+            row.summary = summary
+            row.offices_note = offices_note
+            row.rules_note = rules_note
+            row.pricing_note = ""
+            row.amenities_note = amenities_note
+            row.location_note = location_note
+            row.street_anchor = "Dead Sea, Israel"
+            row.pois_json = json.dumps(
+                [
+                    {"name": "Anasa Spa"},
+                    {"name": "Private beach"},
+                    {"name": "Main outdoor pool & toddler pool"},
+                    {"name": "Greek Pool Tavern"},
+                    {"name": "Dairy Lobby Bar"},
+                    {"name": "Kids / Gaming Club (Floor -1)"},
+                    {"name": "Gym"},
+                    {"name": "Rooftop Solarium"},
+                    {"name": "Synagogue"},
+                ],
+                ensure_ascii=False,
+            )
+            row.research_json = json.dumps(
+                {
+                    "source": "builtin_seed",
+                    "site": "Herbert Samuel Milos Dead Sea",
+                    "property_id": MILOS_DEAD_SEA_PROPERTY_ID,
+                    "total_rooms": 162,
+                    "room_bands": {
+                        "101-160": "Superior Patio / Deluxe Ground",
+                        "201-260": "Deluxe Sea View / Balcony",
+                        "301-342": "Premium Private Pool Suites",
+                    },
+                },
+                ensure_ascii=False,
+            )
+            row.updated_at = now
+            if not getattr(row, "created_at", None):
+                row.created_at = now
+            session.add(row)
+            session.commit()
+            print("[property_knowledge] ✅ builtin Herbert Samuel Milos Dead Sea", flush=True)
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            print(f"[property_knowledge] builtin Milos Dead Sea seed: {e}", flush=True)
+        finally:
+            session.close()
+
 else:
     TenantModel = None
     UserModel = None
@@ -4742,17 +5016,26 @@ if ENGINE and Base:
             ensure_property_knowledge_table()
             if SEED_DEMO_DATA:
                 ensure_builtin_property_knowledge_bsr_city()
+            try:
+                ensure_builtin_property_knowledge_milos_dead_sea()
+            except NameError:
+                pass
+            except Exception as _milos_pk_e:
+                print(f"[app.py] Milos property knowledge note: {_milos_pk_e}", flush=True)
         except NameError:
             pass
         except Exception as _pk_e:
             print(f"[app.py] property_knowledge ensure note: {_pk_e}")
         print(f"[app.py] ✅ Connected to {_db_label_eager} successfully — tables ready")
-        if _is_pg and _christos_pilot_seed_needed(DEFAULT_TENANT_ID):
+        if _is_pg and (
+            _christos_pilot_seed_needed(DEFAULT_TENANT_ID)
+            or _milos_dead_sea_seed_needed(DEFAULT_TENANT_ID)
+        ):
             try:
                 _eager_seed = seed_active_properties(DEFAULT_TENANT_ID)
-                print(f"[app.py] Christos pilot seed (postgres): {_eager_seed}", flush=True)
+                print(f"[app.py] Portfolio seed (postgres): {_eager_seed}", flush=True)
             except Exception as _es_e:
-                print(f"[app.py] Christos pilot seed note: {_es_e}", flush=True)
+                print(f"[app.py] Portfolio seed note: {_es_e}", flush=True)
     except Exception as _eager_err:
         print(f"[app.py] ⚠️  Eager schema init failed (will retry on first request): {_eager_err}")
 
@@ -5663,8 +5946,8 @@ def _maya_active_property_ids(session, tenant_id):
         if st in _inactive:
             continue
         ids.append(pid)
-    # Always include Christos pilot IDs even if a seed row is momentarily missing
-    for cid in CHRISTOS_PROPERTY_IDS:
+    # Always include live portfolio IDs even if a seed row is momentarily missing
+    for cid in PROTECTED_LIVE_PROPERTY_IDS:
         if cid not in ids:
             ids.append(cid)
     return ids
@@ -6842,6 +7125,14 @@ def _maya_property_knowledge_context_for_message(tenant_id, user_message):
             "tower y",
             "red line",
             "רק\"ל",
+            "milos",
+            "dead sea",
+            "herbert samuel",
+            "anasa",
+            "מילוס",
+            "ים המלח",
+            "הרברט סמואל",
+            "אנסה",
         )
         for r in rows:
             dn = (r.display_name or "").lower()
@@ -17003,15 +17294,16 @@ Rules:
     _extra_sys = _maya_live_facts_system_block(tenant_id, user_id, maya_stats_snapshot, command)
     _stream_env = (os.getenv("MAYA_GEMINI_USE_STREAM", "1") or "").strip().lower()
     _prefer_stream = _stream_env not in ("0", "false", "no", "off") or bool(data.get("stream"))
-    # Hard gateway budget (≤15s) — never let Railway/Nginx/Cloudflare return 504.
+    # Hard gateway budget (≤15s). Gemini gets the full budget; local fallback only after.
     _budget = _maya_gateway_budget_sec(12)
     try:
         _stream_timeout = int(
-            (os.getenv("MAYA_GEMINI_STREAM_TIMEOUT_SEC") or os.getenv("GEMINI_RPC_TIMEOUT_SEC") or "8").strip()
+            (os.getenv("MAYA_GEMINI_STREAM_TIMEOUT_SEC") or str(_budget)).strip()
         )
     except ValueError:
-        _stream_timeout = 8
-    _stream_timeout = _gemini_rpc_timeout_sec(min(_stream_timeout, _budget))
+        _stream_timeout = _budget
+    # Prefer full budget for Gemini (clamp 8–15); RPC timeout tracks remaining wall-clock in the streamer.
+    _stream_timeout = max(8, min(_stream_timeout, _budget, 15))
     _deadline = time.monotonic() + float(_budget)
     _lang = (data.get("language") or "he")
 
@@ -17025,6 +17317,8 @@ Rules:
         def _maya_sse():
             with app.app_context():
                 buf = []
+                local_only = False
+                local_text = ""
                 try:
                     # Immediate SSE comment keeps proxies from idle-closing before first token.
                     yield ": maya-connected\n\n"
@@ -17045,30 +17339,31 @@ Rules:
                             + json.dumps({"type": "delta", "text": piece}, ensure_ascii=False)
                             + "\n\n"
                         )
-                    text = "".join(buf)
-                    result = _maya_build_json_response_from_llm_output(
-                        tenant_id,
-                        user_id,
+                except _MayaStreamLocalFallback as lf:
+                    local_only = True
+                    local_text = lf.text or _maya_local_instant_reply(
                         command,
-                        text,
-                        maya_stats_snapshot,
-                        rooms,
-                        staff_by_property,
-                        truth_audit=_truth_audit,
-                        maya_identity=maya_identity,
-                    )
-                    if isinstance(result, dict):
-                        result["maya_ready"] = True
-                    yield (
-                        "data: "
-                        + json.dumps({"type": "done", "result": result}, ensure_ascii=False)
-                        + "\n\n"
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        language=_lang,
+                        stats_snapshot=maya_stats_snapshot,
                     )
                 except Exception as e:
                     import traceback as _tb_sse
 
-                    print(f"[Gemini] maya-command SSE → local instant reply: {type(e).__name__}: {e}", flush=True)
+                    print(f"[Gemini] maya-command SSE → local done: {type(e).__name__}: {e}", flush=True)
                     _tb_sse.print_exc()
+                    local_only = True
+                    local_text = _maya_local_instant_reply(
+                        command,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        language=_lang,
+                        stats_snapshot=maya_stats_snapshot,
+                    )
+
+                if local_only and not buf:
+                    # Single response: one `done` only (no local deltas → no double bubble).
                     soft = _maya_timeout_fallback_payload(
                         _lang,
                         command=command,
@@ -17076,11 +17371,34 @@ Rules:
                         user_id=user_id,
                         stats_snapshot=maya_stats_snapshot,
                     )
+                    if local_text:
+                        soft["message"] = soft["displayMessage"] = soft["response"] = soft["reply"] = local_text
                     yield (
                         "data: "
                         + json.dumps({"type": "done", "result": soft}, ensure_ascii=False)
                         + "\n\n"
                     )
+                    return
+
+                text = "".join(buf)
+                result = _maya_build_json_response_from_llm_output(
+                    tenant_id,
+                    user_id,
+                    command,
+                    text,
+                    maya_stats_snapshot,
+                    rooms,
+                    staff_by_property,
+                    truth_audit=_truth_audit,
+                    maya_identity=maya_identity,
+                )
+                if isinstance(result, dict):
+                    result["maya_ready"] = True
+                yield (
+                    "data: "
+                    + json.dumps({"type": "done", "result": result}, ensure_ascii=False)
+                    + "\n\n"
+                )
 
         return Response(
             _maya_sse(),
@@ -17247,7 +17565,7 @@ def _query_worker_portal_tasks(session, tenant_id, worker_filter=None, active_on
     """Open tasks for any live property / room unit (not hard-locked to Christos IDs)."""
     rooms = list_manual_rooms(tenant_id, owner_id=f"demo-{tenant_id}")
     room_map = {r.get("id"): r for r in rooms if isinstance(r, dict) and r.get("id")}
-    valid_ids = set(room_map.keys()) | set(CHRISTOS_PROPERTY_IDS)
+    valid_ids = set(room_map.keys()) | set(PROTECTED_LIVE_PROPERTY_IDS)
     # Also accept plain room numbers used as property_id (e.g. "100") when present on tasks
     staff_cache = {}
     if PropertyStaffModel:
@@ -23353,12 +23671,22 @@ def _do_startup_init():
             try:
                 init_db()
                 print(f"[startup] ✅ Connected to {db_label} successfully — tables ready")
-                if _christos_pilot_seed_needed(DEFAULT_TENANT_ID):
+                if (
+                    _christos_pilot_seed_needed(DEFAULT_TENANT_ID)
+                    or _milos_dead_sea_seed_needed(DEFAULT_TENANT_ID)
+                ):
                     try:
                         _boot_seed = seed_active_properties(DEFAULT_TENANT_ID)
-                        print(f"[startup] Christos pilot seed: {_boot_seed}", flush=True)
+                        print(f"[startup] Portfolio seed: {_boot_seed}", flush=True)
                     except Exception as _bs_e:
-                        print(f"[startup] Christos pilot seed note: {_bs_e}", flush=True)
+                        print(f"[startup] Portfolio seed note: {_bs_e}", flush=True)
+                try:
+                    ensure_builtin_property_knowledge_milos_dead_sea()
+                except NameError:
+                    pass
+                except Exception as _milos_boot_pk:
+                    print(f"[startup] Milos knowledge note: {_milos_boot_pk}", flush=True)
+
                 # Always ensure tenants.id='default' (FK parent) — not gated on SEED_DEMO_DATA
                 ensure_default_tenants()
                 ensure_demo_user()

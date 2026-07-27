@@ -744,15 +744,12 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
     }
     if (uiPolishStartedRef.current) return;
     uiPolishStartedRef.current = true;
+    // Do not inject canned UI-polish lines into chat — they look like fake Maya answers.
     try {
       sessionStorage.removeItem('maya_ui_polish_message_pending');
       sessionStorage.setItem('maya_ui_polish_message_spoken_v1', '1');
     } catch (_) {}
-    const line =
-      'קובי, סידרתי את הסרגלים. הוספתי כפתור חיפוש ונתתי להם מראה מקצועי יותר. כל הטקסט המיותר נעלם והמידע עבר אליי לזיכרון. איך זה נראה עכשיו?';
-    addMayaMessage({ role: 'assistant', content: line });
-    if (voiceOnlyMaya) speakAssistantReply(line, { resumeMicAfter: true });
-  }, [voiceOnlyMaya, addMayaMessage, speakAssistantReply]);
+  }, []);
 
   useEffect(() => {
     const onPolish = () => runUiPolishWelcome();
@@ -775,11 +772,8 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
       sessionStorage.removeItem('maya_bazaar_cleanup_message_pending');
       sessionStorage.setItem('maya_bazaar_cleanup_message_spoken_v1', '1');
     } catch (_) {}
-    const line =
-      'קובי, שיחררתי את המסך מהבלוק של בזאר יפו. עכשיו הדשבורד נקי ומוקדש כולו לנכסים שלך. סרגל הסינון קיבל \'צבע\' ונוכחות, והוא מוכן לעבודה. איך הממשק נראה עכשיו?';
-    addMayaMessage({ role: 'assistant', content: line });
-    if (voiceOnlyMaya) speakAssistantReply(line, { resumeMicAfter: true });
-  }, [voiceOnlyMaya, addMayaMessage, speakAssistantReply]);
+    // No canned chat bubble — keeps Maya replies tied to the user's actual prompt.
+  }, []);
 
   useEffect(() => {
     const onBazaarCleanup = () => runBazaarDashboardCleanupWelcome();
@@ -1622,11 +1616,12 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
         const mayaBrainMod = await import('../../utils/mayaBrain');
         const bulkTaskCount = mayaBrainMod.countTaskStatusUpdatesInMayaResult(result);
         const isBulkTaskUpdate = bulkTaskCount > 1;
+        // Prefer final server text; for localFallback with no prior deltas, use that once.
         const displayContent = isBulkTaskUpdate
           ? MAYA_BULK_TASKS_DONE_HE
           : (typeof rawReply === 'string' ? rawReply : JSON.stringify(rawReply));
 
-        // Settle the streaming bubble with the processed final content + task card data
+        // Single bubble settle — replace any streamed crumbs with the final concise reply.
         patchMayaMessage(streamMsgId, {
           content: displayContent,
           streaming: false,
@@ -1635,11 +1630,15 @@ const MayaChat = memo(function MayaChat({ onAfterSendSuccess }) {
         forceScrollRef.current = true;
 
         try {
-          await mayaBrainMod.applyClientSideTaskUpdatesFromMayaResult(result);
+          if (!result?.localFallback && !result?.timeoutFallback) {
+            await mayaBrainMod.applyClientSideTaskUpdatesFromMayaResult(result);
+          }
         } catch (_) {
           /* optional client-side batch from parsed JSON */
         }
-        speakAssistantReply(displayContent);
+        if (displayContent && String(displayContent).trim()) {
+          speakAssistantReply(displayContent);
+        }
         setOnline(true);
 
         if (result.success) {

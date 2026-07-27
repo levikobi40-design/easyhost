@@ -1,6 +1,7 @@
 /**
 
  * Greece Corfu pilot — 3 properties (matches backend `_christos_corfu_portfolio_seed`).
+ * + Herbert Samuel Milos Dead Sea (matches `_milos_dead_sea_portfolio_seed`).
 
  */
 
@@ -11,6 +12,10 @@ const CORFU_LUXURY_ROOM_IMG =
 const CORFU_BEACH_ROOM_IMG =
 
   'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=85';
+
+const MILOS_DEAD_SEA_IMG =
+
+  'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85';
 
 
 
@@ -23,6 +28,8 @@ export const PORTFOLIO_IMAGE_URL_BY_ID = {
   'christos-manto-beach-apartment-barbati': CORFU_BEACH_ROOM_IMG,
 
   'christos-manto-luxury-beach-2p-barbati': CORFU_BEACH_ROOM_IMG,
+
+  milos_dead_sea: MILOS_DEAD_SEA_IMG,
 
 };
 
@@ -37,6 +44,8 @@ export const CHRISTOS_PROPERTY_IDS = [
   'christos-manto-luxury-beach-2p-barbati',
 
 ];
+
+export const MILOS_DEAD_SEA_PROPERTY_ID = 'milos_dead_sea';
 
 
 
@@ -142,6 +151,54 @@ export const initialProperties = [
 
   },
 
+  {
+
+    id: 'milos_dead_sea',
+
+    name: 'Herbert Samuel Milos Dead Sea',
+
+    description:
+      'Herbert Samuel Milos Dead Sea Resort — 162 rooms. '
+      + 'Rooms 101-160: Superior Patio / Deluxe Ground; '
+      + 'Rooms 201-260: Deluxe Sea View / Balcony; '
+      + 'Rooms 301-342: Premium Private Pool Suites. '
+      + 'Facilities: Anasa Spa, pools, private beach, Main Restaurant, Greek Pool Tavern, '
+      + 'Dairy Lobby Bar, Kids/Gaming Club (Floor -1), Gym, Rooftop Solarium, Synagogue.',
+
+    photo_url: MILOS_DEAD_SEA_IMG,
+
+    image_url: MILOS_DEAD_SEA_IMG,
+
+    amenities: [
+      'Dead Sea',
+      'Anasa Spa',
+      'Private Beach',
+      'Pool',
+      'Restaurant',
+      'Kids Club',
+      'Gym',
+      'Synagogue',
+      '162 Rooms',
+    ],
+
+    status: 'Active',
+
+    occupancy_rate: 78,
+
+    created_at: now(),
+
+    branch_slug: 'milos_dead_sea',
+
+    max_guests: 4,
+
+    bedrooms: 162,
+
+    beds: 162,
+
+    bathrooms: 162,
+
+  },
+
 ];
 
 
@@ -179,5 +236,3 @@ export function ensurePropertyPortfolioImages(list) {
   });
 
 }
-
-
