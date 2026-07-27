@@ -49,6 +49,7 @@ export default function PropertiesDashboard() {
     loading,
     refresh,
     applyPropertySnapshot,
+    removePropertyById,
     hasMoreProperties,
     loadingMoreProperties,
     loadMoreProperties,
@@ -286,7 +287,8 @@ export default function PropertiesDashboard() {
     if (!idStr) return;
     try {
       await deleteProperty(idStr);
-      refresh();
+      removePropertyById?.(idStr);
+      refresh(true);
       window.dispatchEvent(new Event('properties-refresh'));
     } catch (e) {
       window.alert(e?.message || tr('propertiesPage.deleteError'));

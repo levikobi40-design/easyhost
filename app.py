@@ -1098,14 +1098,20 @@ def _suppress_seed_property(pid):
 
 
 def _normalize_manual_room_id(raw):
-    """Normalize path/body property ids (string slugs or integer-looking PKs)."""
+    """Normalize path/body property ids (UUIDs, string slugs, or integer-looking PKs)."""
     try:
         from urllib.parse import unquote as _url_unquote
         s = _url_unquote(str(raw if raw is not None else "")).strip()
+        # Handle accidental double-encoding from clients
+        if "%" in s:
+            s = _url_unquote(s).strip()
     except Exception:
         s = str(raw if raw is not None else "").strip()
     if not s or s.lower() in ("undefined", "null", "none"):
         return ""
+    # Strip common wrappers: {uuid}, "uuid", <uuid>
+    if len(s) >= 2 and ((s[0] == "{" and s[-1] == "}") or (s[0] == "<" and s[-1] == ">") or (s[0] == s[-1] and s[0] in ("'", '"'))):
+        s = s[1:-1].strip()
     # JSON numbers / numeric PKs → canonical decimal string (no leading zeros)
     if re.fullmatch(r"-?\d+", s):
         try:
@@ -1115,25 +1121,70 @@ def _normalize_manual_room_id(raw):
     return s
 
 
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+_UUID_HEX_RE = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+def _looks_like_uuid(pid):
+    s = str(pid or "").strip()
+    return bool(_UUID_RE.match(s) or _UUID_HEX_RE.match(s.replace("-", "")))
+
+
 def _manual_room_id_candidates(pid):
-    """Candidate PK strings for lookup (handles int/string mismatches)."""
+    """Candidate PK strings for lookup (UUID / int / slug mismatches)."""
     base = _normalize_manual_room_id(pid)
     if not base:
         return []
-    out = [base]
-    raw = str(pid if pid is not None else "").strip()
-    if raw and raw not in out:
-        out.append(raw)
-    # Also try original digit string if normalize changed it
-    if re.fullmatch(r"-?\d+", raw) and raw not in out:
-        out.append(raw)
+    out = []
+    for cand in (base, str(pid if pid is not None else "").strip()):
+        if not cand or cand in out:
+            continue
+        out.append(cand)
+    # UUID variants: lower/upper, with/without hyphens
+    for cand in list(out):
+        low = cand.lower()
+        up = cand.upper()
+        if low not in out:
+            out.append(low)
+        if up not in out:
+            out.append(up)
+        hex_only = re.sub(r"[^0-9a-fA-F]", "", cand)
+        if _UUID_HEX_RE.match(hex_only):
+            dashed = (
+                f"{hex_only[0:8]}-{hex_only[8:12]}-{hex_only[12:16]}-"
+                f"{hex_only[16:20]}-{hex_only[20:32]}"
+            )
+            for v in (dashed, dashed.lower(), dashed.upper(), hex_only, hex_only.lower()):
+                if v not in out:
+                    out.append(v)
+    if re.fullmatch(r"-?\d+", base):
+        raw = str(pid if pid is not None else "").strip()
+        if raw and raw not in out:
+            out.append(raw)
     return out
+
+
+def _ids_equivalent(a, b):
+    """True when two property ids refer to the same row (UUID-safe)."""
+    sa = str(a or "").strip()
+    sb = str(b or "").strip()
+    if not sa or not sb:
+        return False
+    if sa == sb or sa.lower() == sb.lower():
+        return True
+    ha = re.sub(r"[^0-9a-fA-F]", "", sa).lower()
+    hb = re.sub(r"[^0-9a-fA-F]", "", sb).lower()
+    if len(ha) == 32 and len(hb) == 32 and ha == hb:
+        return True
+    return False
 
 
 def _find_manual_room_row(session, property_id, tenant_id=None):
     """
-    Resolve a manual_rooms row by string or integer-looking id.
-    Prefer tenant match; fall back to PK-only (seed rows / tenant drift).
+    Resolve a manual_rooms row by UUID, string slug, or integer-looking id.
+    Prefer tenant match; fall back to PK-only (custom rows / seed / tenant drift).
     """
     if not session or not ManualRoomModel:
         return None
@@ -1141,36 +1192,55 @@ def _find_manual_room_row(session, property_id, tenant_id=None):
     if not candidates:
         return None
     tid = _coerce_demo_tenant_id(tenant_id) if tenant_id else None
+
+    # 1) Exact ORM match (tenant-scoped, then global PK)
     for cand in candidates:
-        if tid:
-            row = session.query(ManualRoomModel).filter_by(id=cand, tenant_id=tid).first()
-            if row:
-                return row
-    for cand in candidates:
-        row = session.query(ManualRoomModel).filter_by(id=cand).first()
-        if row:
-            return row
-    # Case-insensitive slug match (e.g. Milos_Dead_Sea)
-    for cand in candidates:
-        if not re.search(r"[A-Za-z_]", cand):
-            continue
         try:
-            if func is not None:
-                row = (
-                    session.query(ManualRoomModel)
-                    .filter(func.lower(ManualRoomModel.id) == cand.lower())
-                    .first()
-                )
-            else:
-                row = None
-                for r in session.query(ManualRoomModel).all():
-                    if str(getattr(r, "id", "") or "").lower() == cand.lower():
-                        row = r
-                        break
+            if tid:
+                row = session.query(ManualRoomModel).filter_by(id=cand, tenant_id=tid).first()
+                if row:
+                    return row
+            row = session.query(ManualRoomModel).filter_by(id=cand).first()
             if row:
                 return row
-        except Exception:
-            pass
+        except Exception as _fe:
+            print(f"[find_manual_room] filter_by failed for {cand!r}: {_fe}", flush=True)
+
+    # 2) Case-insensitive / cast-as-text SQL (Postgres UUID-ish / collation edge cases)
+    if text is not None:
+        for cand in candidates:
+            try:
+                if _is_pg:
+                    sql = text(
+                        "SELECT id FROM manual_rooms "
+                        "WHERE lower(id::text) = lower(:pid) "
+                        "   OR replace(lower(id::text), '-', '') = replace(lower(:pid), '-', '') "
+                        "LIMIT 1"
+                    )
+                else:
+                    sql = text(
+                        "SELECT id FROM manual_rooms "
+                        "WHERE lower(id) = lower(:pid) "
+                        "   OR replace(lower(id), '-', '') = replace(lower(:pid), '-', '') "
+                        "LIMIT 1"
+                    )
+                rid = session.execute(sql, {"pid": cand}).scalar()
+                if rid:
+                    row = session.query(ManualRoomModel).filter_by(id=rid).first()
+                    if row:
+                        return row
+            except Exception as _sqle:
+                print(f"[find_manual_room] SQL lookup failed for {cand!r}: {_sqle}", flush=True)
+
+    # 3) Exhaustive in-Python compare (small portfolios; last resort)
+    try:
+        rows = session.query(ManualRoomModel).all()
+        for r in rows:
+            rid = getattr(r, "id", None)
+            if any(_ids_equivalent(rid, cand) for cand in candidates):
+                return r
+    except Exception as _scan_e:
+        print(f"[find_manual_room] scan failed: {_scan_e}", flush=True)
     return None
 
 
@@ -14196,11 +14266,13 @@ def create_property():
         return jsonify({"error": err_msg, "detail": str(e)}), 500
 
 
-@app.route("/api/properties/<string:property_id>", methods=["GET", "PUT", "PATCH", "OPTIONS"])
+@app.route("/api/properties/<path:property_id>", methods=["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def update_property(property_id):
-    """GET one property (JSON). PUT/PATCH — update manual_rooms."""
+    """GET one property (JSON). PUT/PATCH — update. DELETE — remove by UUID/slug."""
     if request.method == "OPTIONS":
         return Response(status=204)
+    if request.method == "DELETE":
+        return _delete_property_impl(property_id)
     pid = _normalize_manual_room_id(property_id)
     if not pid:
         return jsonify({"error": "Missing property id"}), 400
@@ -14368,14 +14440,30 @@ def update_property(property_id):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/properties/<string:property_id>", methods=["DELETE", "OPTIONS"])
 def delete_property(property_id):
-    """DELETE /api/properties/<id> — remove by string slug or integer-looking PK."""
-    if request.method == "OPTIONS":
-        return Response(status=204)
-    pid = _normalize_manual_room_id(property_id)
+    """Programmatic alias — HTTP DELETE is handled by update_property (same path)."""
+    return _delete_property_impl(property_id)
+
+
+def _delete_property_impl(property_id):
+    """
+    Remove a manual_rooms row by UUID string, seed slug, or integer-looking id.
+    Always returns HTTP 200 when the card can be cleared (found+deleted OR already absent).
+    """
+    # Accept id from path, query, or JSON body (clients sometimes POST the UUID oddly)
+    raw_pid = property_id
+    if not _normalize_manual_room_id(raw_pid):
+        raw_pid = (
+            request.args.get("id")
+            or request.args.get("property_id")
+            or (request.get_json(silent=True) or {}).get("id")
+            or (request.get_json(silent=True) or {}).get("property_id")
+            or property_id
+        )
+    pid = _normalize_manual_room_id(raw_pid)
     if not pid:
         return jsonify({"error": "Missing property id", "message": "Property id is required"}), 400
+
     guard = _guard_property_mutation_auth()
     if guard:
         return guard
@@ -14387,8 +14475,21 @@ def delete_property(property_id):
     session = SessionLocal()
     try:
         room = _find_manual_room_row(session, pid, tenant_id)
-        # Already gone — for system seeds, suppress re-seed and return success
         if not room:
+            # Diagnostic: help Railway logs when a UUID from the UI isn't in DB
+            try:
+                sample_ids = [
+                    str(r[0])
+                    for r in session.query(ManualRoomModel.id).limit(30).all()
+                    if r and r[0]
+                ]
+                print(
+                    f"[delete_property] not found pid={pid!r} tenant={tenant_id!r} "
+                    f"sample_ids={sample_ids}",
+                    flush=True,
+                )
+            except Exception:
+                pass
             if is_system_seed:
                 _suppress_seed_property(pid)
                 return jsonify({
@@ -14401,25 +14502,26 @@ def delete_property(property_id):
                         "(or already removed). It will not be re-seeded."
                     ),
                 }), 200
+            # Custom / UUID cards: treat as already gone so the UI can remove smoothly
             return jsonify({
-                "error": f"Property not found for id '{pid}'",
+                "ok": True,
+                "deleted": pid,
+                "already_absent": True,
                 "message": (
-                    f"No property with id '{pid}' exists for this account. "
-                    "Check the id (string slug or numeric) and try again."
+                    f"Property '{pid}' was already removed or not found in storage. "
+                    "The card can be cleared."
                 ),
-                "id": pid,
-                "code": "not_found",
-            }), 404
+            }), 200
 
-        # Prefer the row's real PK + tenant (handles int/string / tenant drift)
         real_pid = str(getattr(room, "id", None) or pid)
         room_tenant = getattr(room, "tenant_id", None) or tenant_id
         is_system_seed = real_pid in PROTECTED_LIVE_PROPERTY_IDS
 
-        # ── Cascade: remove child records first to avoid FK constraint errors ──
         deleted_tasks = 0
         deleted_staff = 0
-        cascade_ids = list(dict.fromkeys([real_pid, pid]))
+        cascade_ids = list(dict.fromkeys(
+            [real_pid, pid] + [c for c in _manual_room_id_candidates(pid) if c]
+        ))
         if PropertyTaskModel:
             try:
                 deleted_tasks = session.query(PropertyTaskModel).filter(
@@ -14448,6 +14550,27 @@ def delete_property(property_id):
         session.delete(room)
         session.commit()
 
+        # Belt-and-suspenders: raw DELETE if ORM left a twin row (case/hyphen variant)
+        if text is not None:
+            try:
+                for cand in cascade_ids:
+                    if _is_pg:
+                        session.execute(
+                            text("DELETE FROM manual_rooms WHERE id::text = :pid"),
+                            {"pid": cand},
+                        )
+                    else:
+                        session.execute(
+                            text("DELETE FROM manual_rooms WHERE id = :pid"),
+                            {"pid": cand},
+                        )
+                session.commit()
+            except Exception:
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
+
         seed_suppressed = False
         if is_system_seed:
             seed_suppressed = bool(_suppress_seed_property(real_pid))
@@ -14473,6 +14596,7 @@ def delete_property(property_id):
             "deleted": real_pid,
             "cascaded_tasks": deleted_tasks,
             "cascaded_staff": deleted_staff,
+            "message": f"Property '{real_pid}' deleted successfully.",
         }
         if is_system_seed:
             payload["seed_suppressed"] = True

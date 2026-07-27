@@ -140,6 +140,14 @@ export function PropertiesProvider({ children }) {
     });
   }, []);
 
+  const removePropertyById = useCallback((propertyId) => {
+    const id = propertyId != null ? String(propertyId).trim() : '';
+    if (!id) return;
+    rawRoomsAccRef.current = rawRoomsAccRef.current.filter((r) => String(r?.id) !== id);
+    setProperties((prev) => prev.filter((p) => String(p?.id) !== id));
+    setApiResultCount((n) => Math.max(0, (Number(n) || 0) - 1));
+  }, []);
+
   useEffect(() => {
     refresh(true);
   }, [refresh]);
@@ -169,6 +177,7 @@ export function PropertiesProvider({ children }) {
       dbLoadStatus,
       apiResultCount,
       applyPropertySnapshot,
+      removePropertyById,
       hasMoreProperties,
       loadingMoreProperties,
       loadMoreProperties,
@@ -180,6 +189,7 @@ export function PropertiesProvider({ children }) {
       dbLoadStatus,
       apiResultCount,
       applyPropertySnapshot,
+      removePropertyById,
       hasMoreProperties,
       loadingMoreProperties,
       loadMoreProperties,
