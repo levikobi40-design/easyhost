@@ -1518,13 +1518,23 @@ export const updateProperty = async (id, payload = {}) => {
   }
 };
 
-/** DELETE /properties/<id> - remove a property by UUID */
+/** DELETE /properties/<id> - remove a property by UUID or string slug */
 export const deleteProperty = async (id) => {
   const idStr = id != null && id !== '' ? String(id).trim() : '';
   if (!idStr) throw new Error('Property id required');
-  // Use the centralised apiRequest helper so auth headers, 401 dispatch,
-  // and the Railway URL are all resolved consistently (especially on mobile).
-  return apiRequest(`/properties/${encodeURIComponent(idStr)}`, { method: 'DELETE' });
+  try {
+    return await apiRequest(`/properties/${encodeURIComponent(idStr)}`, { method: 'DELETE' });
+  } catch (error) {
+    const msg =
+      error?.data?.message ||
+      error?.data?.error ||
+      error?.message ||
+      'Failed to delete property';
+    const err = new Error(msg);
+    err.status = error?.status;
+    err.data = error?.data;
+    throw err;
+  }
 };
 
 /** GET /properties/<id>/staff — optional role filter (e.g. cleaning) for WhatsApp targets */

@@ -239,7 +239,7 @@ export const apiRequest = async (path, options = {}) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (response.status === 401) _emitAuthRequired(url, 401);
-      const err = new Error(data.error || data.message || `HTTP ${response.status}`);
+      const err = new Error(data.message || data.error || `HTTP ${response.status}`);
       err.status = response.status;
       err.data   = data;
       throw err;

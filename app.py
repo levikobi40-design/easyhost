@@ -994,16 +994,22 @@ def _christos_pilot_seed_needed(tenant_id=DEFAULT_TENANT_ID):
     """True when any Christos Corfu pilot property id is missing (PK is global on manual_rooms.id)."""
     if not SessionLocal or not ManualRoomModel:
         return False
+    needed_ids = {
+        cid for cid in CHRISTOS_PROPERTY_IDS
+        if not _is_seed_property_suppressed(cid)
+    }
+    if not needed_ids:
+        return False
     session = SessionLocal()
     try:
         existing = {
             str(r[0])
             for r in session.query(ManualRoomModel.id)
-            .filter(ManualRoomModel.id.in_(list(CHRISTOS_PROPERTY_IDS)))
+            .filter(ManualRoomModel.id.in_(list(needed_ids)))
             .all()
             if r and r[0]
         }
-        return not set(CHRISTOS_PROPERTY_IDS).issubset(existing)
+        return not needed_ids.issubset(existing)
     except Exception:
         return False
     finally:
@@ -1012,6 +1018,8 @@ def _christos_pilot_seed_needed(tenant_id=DEFAULT_TENANT_ID):
 
 def _milos_dead_sea_seed_needed(tenant_id=DEFAULT_TENANT_ID):
     """True when Herbert Samuel Milos Dead Sea is missing from manual_rooms."""
+    if _is_seed_property_suppressed(MILOS_DEAD_SEA_PROPERTY_ID):
+        return False
     if not SessionLocal or not ManualRoomModel:
         return False
     session = SessionLocal()
@@ -1026,6 +1034,162 @@ def _milos_dead_sea_seed_needed(tenant_id=DEFAULT_TENANT_ID):
         return True
     finally:
         session.close()
+
+
+# ── Seed-property deletion tombstones ─────────────────────────────────────────
+# Hard-deleted system seeds (Christos / Milos) must not reappear on the next
+# boot/GET seed. Persisted under data/suppressed_seed_properties.json.
+_SUPPRESSED_SEED_IDS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "data",
+    "suppressed_seed_properties.json",
+)
+_SUPPRESSED_SEED_IDS_LOCK = threading.Lock()
+_SUPPRESSED_SEED_IDS_CACHE = None
+
+
+def _load_suppressed_seed_ids():
+    """Return frozenset of seed property ids the operator intentionally removed."""
+    global _SUPPRESSED_SEED_IDS_CACHE
+    with _SUPPRESSED_SEED_IDS_LOCK:
+        if _SUPPRESSED_SEED_IDS_CACHE is not None:
+            return _SUPPRESSED_SEED_IDS_CACHE
+        ids = set()
+        try:
+            if os.path.isfile(_SUPPRESSED_SEED_IDS_PATH):
+                with open(_SUPPRESSED_SEED_IDS_PATH, "r", encoding="utf-8") as fh:
+                    raw = json.load(fh)
+                if isinstance(raw, list):
+                    ids = {str(x).strip() for x in raw if str(x).strip()}
+                elif isinstance(raw, dict):
+                    ids = {str(x).strip() for x in (raw.get("ids") or []) if str(x).strip()}
+        except Exception as _sse:
+            print(f"[suppressed_seeds] load failed: {_sse}", flush=True)
+        _SUPPRESSED_SEED_IDS_CACHE = frozenset(ids)
+        return _SUPPRESSED_SEED_IDS_CACHE
+
+
+def _is_seed_property_suppressed(pid):
+    pid = str(pid or "").strip()
+    return bool(pid) and pid in _load_suppressed_seed_ids()
+
+
+def _suppress_seed_property(pid):
+    """Mark a system seed id as intentionally deleted so seeders skip it."""
+    global _SUPPRESSED_SEED_IDS_CACHE
+    pid = str(pid or "").strip()
+    if not pid:
+        return False
+    with _SUPPRESSED_SEED_IDS_LOCK:
+        cur = set(_SUPPRESSED_SEED_IDS_CACHE or _load_suppressed_seed_ids())
+        if pid in cur:
+            return False
+        cur.add(pid)
+        try:
+            os.makedirs(os.path.dirname(_SUPPRESSED_SEED_IDS_PATH), exist_ok=True)
+            with open(_SUPPRESSED_SEED_IDS_PATH, "w", encoding="utf-8") as fh:
+                json.dump({"ids": sorted(cur)}, fh, indent=2)
+            _SUPPRESSED_SEED_IDS_CACHE = frozenset(cur)
+            print(f"[suppressed_seeds] suppressed {pid!r}", flush=True)
+            return True
+        except Exception as _sse:
+            print(f"[suppressed_seeds] save failed: {_sse}", flush=True)
+            return False
+
+
+def _normalize_manual_room_id(raw):
+    """Normalize path/body property ids (string slugs or integer-looking PKs)."""
+    try:
+        from urllib.parse import unquote as _url_unquote
+        s = _url_unquote(str(raw if raw is not None else "")).strip()
+    except Exception:
+        s = str(raw if raw is not None else "").strip()
+    if not s or s.lower() in ("undefined", "null", "none"):
+        return ""
+    # JSON numbers / numeric PKs → canonical decimal string (no leading zeros)
+    if re.fullmatch(r"-?\d+", s):
+        try:
+            return str(int(s))
+        except Exception:
+            return s
+    return s
+
+
+def _manual_room_id_candidates(pid):
+    """Candidate PK strings for lookup (handles int/string mismatches)."""
+    base = _normalize_manual_room_id(pid)
+    if not base:
+        return []
+    out = [base]
+    raw = str(pid if pid is not None else "").strip()
+    if raw and raw not in out:
+        out.append(raw)
+    # Also try original digit string if normalize changed it
+    if re.fullmatch(r"-?\d+", raw) and raw not in out:
+        out.append(raw)
+    return out
+
+
+def _find_manual_room_row(session, property_id, tenant_id=None):
+    """
+    Resolve a manual_rooms row by string or integer-looking id.
+    Prefer tenant match; fall back to PK-only (seed rows / tenant drift).
+    """
+    if not session or not ManualRoomModel:
+        return None
+    candidates = _manual_room_id_candidates(property_id)
+    if not candidates:
+        return None
+    tid = _coerce_demo_tenant_id(tenant_id) if tenant_id else None
+    for cand in candidates:
+        if tid:
+            row = session.query(ManualRoomModel).filter_by(id=cand, tenant_id=tid).first()
+            if row:
+                return row
+    for cand in candidates:
+        row = session.query(ManualRoomModel).filter_by(id=cand).first()
+        if row:
+            return row
+    # Case-insensitive slug match (e.g. Milos_Dead_Sea)
+    for cand in candidates:
+        if not re.search(r"[A-Za-z_]", cand):
+            continue
+        try:
+            if func is not None:
+                row = (
+                    session.query(ManualRoomModel)
+                    .filter(func.lower(ManualRoomModel.id) == cand.lower())
+                    .first()
+                )
+            else:
+                row = None
+                for r in session.query(ManualRoomModel).all():
+                    if str(getattr(r, "id", "") or "").lower() == cand.lower():
+                        row = r
+                        break
+            if row:
+                return row
+        except Exception:
+            pass
+    return None
+
+
+def _viewer_may_see_shared_portfolio(identity, tenant_id, user_id):
+    """
+    System seeds (owner_id NULL — Christos / Milos) are visible only when intended:
+    demo sessions, AUTH_DISABLED / relaxed staging, or default-tenant admin/manager/ops.
+    New real accounts on other tenants (or client role) do not inherit them.
+    """
+    uid = str(user_id or "").strip()
+    if not uid or uid.startswith("demo-"):
+        return True
+    if AUTH_DISABLED or _auth_enforcement_relaxed():
+        return True
+    role = ((identity or {}).get("app_role") or "").strip().lower()
+    tid = _coerce_demo_tenant_id(tenant_id)
+    if tid == DEFAULT_TENANT_ID and role in ("admin", "manager", "operation"):
+        return True
+    return False
 
 
 def _upsert_christos_manual_room(session, row, tenant_id):
@@ -1151,6 +1315,8 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
                 continue
             rid = row.get("id")
             if not rid or rid not in seed_ids:
+                continue
+            if _is_seed_property_suppressed(rid) and not force:
                 continue
             was_new = rid not in existing_ids
             try:
@@ -6034,19 +6200,28 @@ def _staff_handle_for_identity(identity):
 
 def _owned_property_ids(session, identity):
     """Property IDs owned by this user within their tenant (for client/owner scoping).
-    Rows with owner_id NULL are treated as tenant-shared and stay visible."""
+
+    Client role is strict (owner_id == user_id only). Admin/manager may still
+    treat owner_id NULL as tenant-shared via list_manual_rooms(include_shared).
+    """
     if not ManualRoomModel:
         return []
     try:
-        rows = (
-            session.query(ManualRoomModel.id)
-            .filter(ManualRoomModel.tenant_id == identity["tenant_id"])
-            .filter(or_(
-                ManualRoomModel.owner_id.is_(None),
-                ManualRoomModel.owner_id == identity.get("user_id"),
-            ))
-            .all()
+        role = ((identity or {}).get("app_role") or "").strip().lower()
+        uid = (identity or {}).get("user_id")
+        q = session.query(ManualRoomModel.id).filter(
+            ManualRoomModel.tenant_id == identity["tenant_id"]
         )
+        if role == "client" or (
+            uid and not str(uid).startswith("demo-") and role not in ("admin", "manager", "operation")
+        ):
+            q = q.filter(ManualRoomModel.owner_id == uid)
+        else:
+            q = q.filter(or_(
+                ManualRoomModel.owner_id.is_(None),
+                ManualRoomModel.owner_id == uid,
+            ))
+        rows = q.all()
         return [r[0] for r in rows if r and r[0]]
     except Exception as _ope:
         print(f"[rbac] _owned_property_ids failed: {_ope}", flush=True)
@@ -9712,19 +9887,40 @@ def _db_manual_room_ids(tenant_id=DEFAULT_TENANT_ID):
         session.close()
 
 
-def list_manual_rooms(tenant_id, owner_id=None):
-    """Return list of dicts. When owner_id is set, only return properties owned by that user.
+def list_manual_rooms(tenant_id, owner_id=None, include_shared=None):
+    """Return list of dicts.
+
+    When owner_id is set (and not a demo-* session):
+      • include_shared=True  → owner rows + tenant-shared (owner_id NULL) seeds
+      • include_shared=False → only rows owned by this user_id (default for real accounts)
+      • include_shared=None  → False for real users, True for demo sessions
     Demo/guest sessions (owner_id starts with 'demo-') skip the owner filter so they can
-    see all properties in the tenant — needed for the God Mode dashboard and client demos."""
+    see all properties in the tenant — needed for the God Mode dashboard and client demos.
+    """
     if not SessionLocal or not ManualRoomModel:
         return []
     session = SessionLocal()
     try:
         q = session.query(ManualRoomModel).filter_by(tenant_id=tenant_id)
-        # Skip owner filter for demo sessions so all properties remain visible
+        # Hide soft-deleted / archived rows from portfolio lists
+        try:
+            q = q.filter(
+                or_(
+                    ManualRoomModel.status.is_(None),
+                    ~ManualRoomModel.status.in_(("deleted", "removed", "archived", "Deleted", "Removed", "Archived")),
+                )
+            )
+        except Exception:
+            pass
         is_demo_session = owner_id is not None and str(owner_id).startswith("demo-")
+        if include_shared is None:
+            include_shared = bool(is_demo_session or owner_id is None)
         if owner_id is not None and not is_demo_session:
-            q = q.filter(or_(ManualRoomModel.owner_id.is_(None), ManualRoomModel.owner_id == owner_id))
+            if include_shared:
+                q = q.filter(or_(ManualRoomModel.owner_id.is_(None), ManualRoomModel.owner_id == owner_id))
+            else:
+                # Strict user scoping — new accounts must not inherit global system seeds
+                q = q.filter(ManualRoomModel.owner_id == owner_id)
         rows = q.all()
         out = []
         for r in rows:
@@ -10566,11 +10762,11 @@ def _is_demo_seed_tenant(tenant_id) -> bool:
 
 
 def _kick_background_seed(tenant_id: str) -> None:
-    """Idempotent Christos pilot seed — runs once per tenant per process when properties missing."""
+    """Idempotent portfolio seed — runs once per tenant per process when properties missing."""
     tenant_id = _coerce_demo_tenant_id(tenant_id or DEFAULT_TENANT_ID)
     if tenant_id in _PORTFOLIO_SEED_DONE or tenant_id in _PORTFOLIO_SEED_RUNNING:
         return
-    if not _christos_pilot_seed_needed(tenant_id):
+    if not _christos_pilot_seed_needed(tenant_id) and not _milos_dead_sea_seed_needed(tenant_id):
         _PORTFOLIO_SEED_DONE.add(tenant_id)
         return
     _PORTFOLIO_SEED_RUNNING.add(tenant_id)
@@ -10585,7 +10781,7 @@ def _kick_background_seed(tenant_id: str) -> None:
             _PORTFOLIO_SEED_RUNNING.discard(tenant_id)
             _PORTFOLIO_SEED_DONE.add(tenant_id)
 
-    threading.Thread(target=_run, daemon=True, name=f"ChristosSeed-{tenant_id[:12]}").start()
+    threading.Thread(target=_run, daemon=True, name=f"PortfolioSeed-{tenant_id[:12]}").start()
 
 
 def _demo_seed_allowed(tenant_id=DEFAULT_TENANT_ID):
@@ -13684,31 +13880,52 @@ def create_property():
         tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
         # Never return 204 on GET — always JSON 200 (OPTIONS alone uses 204 for CORS).
         if ENGINE and ManualRoomModel:
-            if _christos_pilot_seed_needed(tenant_id):
+            if _christos_pilot_seed_needed(tenant_id) or _milos_dead_sea_seed_needed(tenant_id):
                 try:
                     seed_active_properties(tenant_id)
                 except Exception as _sync_seed_e:
-                    print(f"[create_property] Christos sync seed: {_sync_seed_e}", flush=True)
-            if _christos_pilot_seed_needed(DEFAULT_TENANT_ID):
+                    print(f"[create_property] Portfolio sync seed: {_sync_seed_e}", flush=True)
+            if (
+                tenant_id != DEFAULT_TENANT_ID
+                and (
+                    _christos_pilot_seed_needed(DEFAULT_TENANT_ID)
+                    or _milos_dead_sea_seed_needed(DEFAULT_TENANT_ID)
+                )
+            ):
                 try:
                     seed_active_properties(DEFAULT_TENANT_ID)
                 except Exception as _def_seed_e:
-                    print(f"[create_property] Christos default-tenant seed: {_def_seed_e}", flush=True)
+                    print(f"[create_property] default-tenant seed: {_def_seed_e}", flush=True)
             # Non-blocking: seed runs at most once per tenant per process lifetime.
             _kick_background_seed(tenant_id)
         try:
             user_id = getattr(request, "user_id", None)
-            # RBAC: admin / manager / operation / client see tenant portfolio
-            # (Christos seeds use owner_id=NULL = tenant-shared). Staff keeps owner filter.
             _ident = _identity_or_none()
             _role = (_ident or {}).get("app_role") if _ident else None
-            if _role in ("admin", "manager", "operation", "client") or not _ident:
-                user_id = None
+            _is_demo = (not user_id) or str(user_id).startswith("demo-")
+            # Shared system seeds (owner_id NULL) only when intended — not for every new account.
+            see_shared = _viewer_may_see_shared_portfolio(_ident, tenant_id, user_id)
+            if _role == "staff":
+                list_owner = user_id
+                include_shared = False
+            elif see_shared and _role in ("admin", "manager", "operation"):
+                # Default-tenant ops / demo: full tenant portfolio including seeds
+                list_owner = None
+                include_shared = True
+            elif see_shared and (_is_demo or not _ident):
+                list_owner = None
+                include_shared = True
+            else:
+                # Real user accounts (incl. client): strict user_id ownership
+                list_owner = user_id
+                include_shared = False
             try:
-                rooms = list_manual_rooms(tenant_id, owner_id=user_id)
-                if (not rooms) and tenant_id != DEFAULT_TENANT_ID:
-                    # Pilot fallback: surface default-tenant Christos portfolio when JWT tenant is empty
-                    rooms = list_manual_rooms(DEFAULT_TENANT_ID, owner_id=None)
+                rooms = list_manual_rooms(
+                    tenant_id, owner_id=list_owner, include_shared=include_shared
+                )
+                # Only demo / intended shared viewers may fall back to default-tenant seeds
+                if (not rooms) and tenant_id != DEFAULT_TENANT_ID and see_shared and _is_demo:
+                    rooms = list_manual_rooms(DEFAULT_TENANT_ID, owner_id=None, include_shared=True)
             except Exception as _list_err:
                 print(f"[create_property] list_manual_rooms failed: {_list_err!r}", flush=True)
                 import traceback as _tb_lm
@@ -13717,8 +13934,14 @@ def create_property():
             if rooms is None or not isinstance(rooms, list):
                 rooms = []
             rooms = [r for r in rooms if isinstance(r, dict) and not _is_junk_mock_property(r)]
-            if _christos_pilot_is_active(tenant_id, user_id, rooms):
-                rooms = _christos_pilot_room_rows(tenant_id, user_id, rooms)
+            if see_shared and _christos_pilot_is_active(tenant_id, list_owner, rooms):
+                rooms = _christos_pilot_room_rows(tenant_id, list_owner, rooms)
+            elif not see_shared:
+                # Strict lists never surface shared system seed ids
+                rooms = [
+                    r for r in rooms
+                    if str(r.get("id") or "") not in PROTECTED_LIVE_PROPERTY_IDS
+                ]
             portfolio_fallback = False
             rooms = [_finalize_property_images(r) for r in rooms if isinstance(r, dict)]
             try:
@@ -13754,14 +13977,26 @@ def create_property():
             print(f"[create_property] GET list failed: {_prop_err!r}", flush=True)
             import traceback as _tb_prop
             _tb_prop.print_exc()
-            # Error recovery: never inject demo portfolio — return empty or Christos-scoped live rows.
+            # Error recovery: never inject demo portfolio — return empty or user-scoped live rows.
+            _uid = getattr(request, "user_id", None)
+            _ident_rec = _identity_or_none()
+            _see = _viewer_may_see_shared_portfolio(_ident_rec, tenant_id, _uid)
             try:
-                rooms = list_manual_rooms(tenant_id, owner_id=getattr(request, "user_id", None))
+                rooms = list_manual_rooms(
+                    tenant_id,
+                    owner_id=None if _see else _uid,
+                    include_shared=bool(_see),
+                )
             except Exception:
                 rooms = []
             rooms = [r for r in (rooms or []) if isinstance(r, dict) and not _is_junk_mock_property(r)]
-            if _christos_pilot_is_active(tenant_id, getattr(request, "user_id", None), rooms):
-                rooms = _christos_pilot_room_rows(tenant_id, getattr(request, "user_id", None), rooms)
+            if _see and _christos_pilot_is_active(tenant_id, _uid, rooms):
+                rooms = _christos_pilot_room_rows(tenant_id, _uid, rooms)
+            elif not _see:
+                rooms = [
+                    r for r in rooms
+                    if str(r.get("id") or "") not in PROTECTED_LIVE_PROPERTY_IDS
+                ]
             rooms = [_finalize_property_images(r) for r in rooms if isinstance(r, dict)]
             try:
                 plimit = request.args.get("limit")
@@ -13966,7 +14201,7 @@ def update_property(property_id):
     """GET one property (JSON). PUT/PATCH — update manual_rooms."""
     if request.method == "OPTIONS":
         return Response(status=204)
-    pid = str(property_id).strip() if property_id is not None else ""
+    pid = _normalize_manual_room_id(property_id)
     if not pid:
         return jsonify({"error": "Missing property id"}), 400
     if request.method == "GET":
@@ -13990,11 +14225,25 @@ def update_property(property_id):
         if not SessionLocal or not ManualRoomModel:
             return jsonify({"error": "Database unavailable"}), 500
         try:
-            rooms = list_manual_rooms(tenant_id, owner_id=None)
-            for rr in rooms:
-                if str(rr.get("id")) == pid:
-                    return _no_cache_json(jsonify(rr)), 200
-            return jsonify({"error": "Property not found", "code": "not_found"}), 404
+            session = SessionLocal()
+            try:
+                row = _find_manual_room_row(session, pid, tenant_id)
+            finally:
+                session.close()
+            if row:
+                rooms = list_manual_rooms(
+                    getattr(row, "tenant_id", None) or tenant_id,
+                    owner_id=None,
+                    include_shared=True,
+                )
+                for rr in rooms:
+                    if str(rr.get("id")) == str(row.id):
+                        return _no_cache_json(jsonify(rr)), 200
+            return jsonify({
+                "error": f"Property not found for id '{pid}'",
+                "code": "not_found",
+                "id": pid,
+            }), 404
         except Exception as e:
             print("[get_property] Error:", e, flush=True)
             return jsonify({"error": str(e)}), 500
@@ -14008,19 +14257,15 @@ def update_property(property_id):
         data = request.get_json(silent=True) or {}
         session = SessionLocal()
         try:
-            room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
-            if not room and AUTH_DISABLED:
-                # Dev-only: legacy rows may use a different tenant_id slug.
-                room = session.query(ManualRoomModel).filter_by(id=pid).first()
-                if room:
-                    tenant_id = room.tenant_id
-                    print(
-                        f"[update_property] tenant-drift resolved for id={pid!r}: "
-                        f"expected tenant={tenant_id!r}, found on row",
-                        flush=True,
-                    )
+            room = _find_manual_room_row(session, pid, tenant_id)
+            if room:
+                tenant_id = getattr(room, "tenant_id", None) or tenant_id
             if not room:
-                return jsonify({"error": "Property not found", "id": pid, "code": "not_found"}), 404
+                return jsonify({
+                    "error": f"Property not found for id '{pid}'",
+                    "id": pid,
+                    "code": "not_found",
+                }), 404
             if data.get("name"):
                 room.name = (data.get("name") or "").strip() or room.name
             old_main, old_gal = _split_description_gallery(room.description or "")
@@ -14125,67 +14370,96 @@ def update_property(property_id):
 
 @app.route("/api/properties/<string:property_id>", methods=["DELETE", "OPTIONS"])
 def delete_property(property_id):
-    """DELETE /api/properties/<id> - remove property from manual_rooms by UUID."""
+    """DELETE /api/properties/<id> — remove by string slug or integer-looking PK."""
     if request.method == "OPTIONS":
         return Response(status=204)
-    try:
-        from urllib.parse import unquote as _url_unquote
-        pid = _url_unquote(str(property_id)).strip() if property_id else ""
-    except Exception:
-        pid = str(property_id).strip() if property_id else ""
+    pid = _normalize_manual_room_id(property_id)
     if not pid:
-        return jsonify({"error": "Missing property id"}), 400
+        return jsonify({"error": "Missing property id", "message": "Property id is required"}), 400
     guard = _guard_property_mutation_auth()
     if guard:
         return guard
     tenant_id = getattr(request, "tenant_id", DEFAULT_TENANT_ID)
     if not SessionLocal or not ManualRoomModel:
         return jsonify({"error": "Database unavailable"}), 500
+
+    is_system_seed = pid in PROTECTED_LIVE_PROPERTY_IDS
     session = SessionLocal()
     try:
-        room = session.query(ManualRoomModel).filter_by(id=pid, tenant_id=tenant_id).first()
-        if not room and AUTH_DISABLED:
-            # Dev-only tenant-drift fallback for legacy seeded rows.
-            room = session.query(ManualRoomModel).filter_by(id=pid).first()
+        room = _find_manual_room_row(session, pid, tenant_id)
+        # Already gone — for system seeds, suppress re-seed and return success
         if not room:
-            return jsonify({"error": "Property not found", "id": pid}), 404
+            if is_system_seed:
+                _suppress_seed_property(pid)
+                return jsonify({
+                    "ok": True,
+                    "deleted": pid,
+                    "already_absent": True,
+                    "seed_suppressed": True,
+                    "message": (
+                        f"System property '{pid}' was not in the database "
+                        "(or already removed). It will not be re-seeded."
+                    ),
+                }), 200
+            return jsonify({
+                "error": f"Property not found for id '{pid}'",
+                "message": (
+                    f"No property with id '{pid}' exists for this account. "
+                    "Check the id (string slug or numeric) and try again."
+                ),
+                "id": pid,
+                "code": "not_found",
+            }), 404
 
+        # Prefer the row's real PK + tenant (handles int/string / tenant drift)
+        real_pid = str(getattr(room, "id", None) or pid)
         room_tenant = getattr(room, "tenant_id", None) or tenant_id
+        is_system_seed = real_pid in PROTECTED_LIVE_PROPERTY_IDS
 
         # ── Cascade: remove child records first to avoid FK constraint errors ──
         deleted_tasks = 0
         deleted_staff = 0
+        cascade_ids = list(dict.fromkeys([real_pid, pid]))
         if PropertyTaskModel:
             try:
                 deleted_tasks = session.query(PropertyTaskModel).filter(
-                    PropertyTaskModel.property_id == pid,
-                    PropertyTaskModel.tenant_id == room_tenant,
+                    PropertyTaskModel.property_id.in_(cascade_ids),
+                    or_(
+                        PropertyTaskModel.tenant_id == room_tenant,
+                        PropertyTaskModel.tenant_id.is_(None),
+                    ),
                 ).delete(synchronize_session=False)
             except Exception as _te:
                 print(f"[delete_property] task cascade warning: {_te}", flush=True)
                 try:
                     deleted_tasks = session.query(PropertyTaskModel).filter(
-                        PropertyTaskModel.property_id == pid,
+                        PropertyTaskModel.property_id.in_(cascade_ids),
                     ).delete(synchronize_session=False)
                 except Exception as _te2:
                     print(f"[delete_property] task cascade fallback: {_te2}", flush=True)
         if PropertyStaffModel:
             try:
                 deleted_staff = session.query(PropertyStaffModel).filter(
-                    PropertyStaffModel.property_id == pid,
+                    PropertyStaffModel.property_id.in_(cascade_ids),
                 ).delete(synchronize_session=False)
             except Exception as _se:
                 print(f"[delete_property] staff cascade warning: {_se}", flush=True)
 
         session.delete(room)
         session.commit()
+
+        seed_suppressed = False
+        if is_system_seed:
+            seed_suppressed = bool(_suppress_seed_property(real_pid))
+
         try:
             _bump_tasks_version()
         except Exception:
             pass
         print(
-            f"[delete_property] deleted property {pid} "
-            f"(cascaded {deleted_tasks} tasks, {deleted_staff} staff)",
+            f"[delete_property] deleted property {real_pid} "
+            f"(cascaded {deleted_tasks} tasks, {deleted_staff} staff"
+            f"{', seed suppressed' if seed_suppressed else ''})",
             flush=True,
         )
         try:
@@ -14194,11 +14468,22 @@ def delete_property(property_id):
             _STATUS_GRID_CACHE["key"] = None
         except Exception:
             pass
-        return jsonify({"ok": True, "deleted": pid, "cascaded_tasks": deleted_tasks, "cascaded_staff": deleted_staff}), 200
+        payload = {
+            "ok": True,
+            "deleted": real_pid,
+            "cascaded_tasks": deleted_tasks,
+            "cascaded_staff": deleted_staff,
+        }
+        if is_system_seed:
+            payload["seed_suppressed"] = True
+            payload["message"] = (
+                f"Removed system property '{real_pid}'. It will not be re-seeded on refresh."
+            )
+        return jsonify(payload), 200
     except Exception as e:
         session.rollback()
         print(f"[delete_property] Error: {e}", flush=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "message": str(e)}), 500
     finally:
         session.close()
 
