@@ -17,6 +17,18 @@ const MILOS_DEAD_SEA_IMG =
 
   'https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85';
 
+const MILOS_SUPERIOR_PATIO_IMG =
+
+  'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80';
+
+const MILOS_DELUXE_SEA_VIEW_IMG =
+
+  'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+
+const MILOS_PREMIUM_POOL_SUITE_IMG =
+
+  'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80';
+
 
 
 /** @type {Record<string, string>} */
@@ -159,15 +171,27 @@ export const initialProperties = [
 
     description:
       'Herbert Samuel Milos Dead Sea Resort — 162 rooms. '
-      + 'Rooms 101-160: Superior Patio / Deluxe Ground; '
-      + 'Rooms 201-260: Deluxe Sea View / Balcony; '
-      + 'Rooms 301-342: Premium Private Pool Suites. '
+      + 'Rooms 101-160: Superior Patio; '
+      + 'Rooms 201-260: Deluxe Sea View; '
+      + 'Rooms 301-342: Premium Private Pool Suite. '
       + 'Facilities: Anasa Spa, pools, private beach, Main Restaurant, Greek Pool Tavern, '
       + 'Dairy Lobby Bar, Kids/Gaming Club (Floor -1), Gym, Rooftop Solarium, Synagogue.',
 
-    photo_url: MILOS_DEAD_SEA_IMG,
+    photo_url: MILOS_SUPERIOR_PATIO_IMG,
 
-    image_url: MILOS_DEAD_SEA_IMG,
+    image_url: MILOS_SUPERIOR_PATIO_IMG,
+
+    pictures: [
+      MILOS_SUPERIOR_PATIO_IMG,
+      MILOS_DELUXE_SEA_VIEW_IMG,
+      MILOS_PREMIUM_POOL_SUITE_IMG,
+    ],
+
+    room_types: [
+      { category: 'Superior Patio', rooms: '101-160', image_url: MILOS_SUPERIOR_PATIO_IMG },
+      { category: 'Deluxe Sea View', rooms: '201-260', image_url: MILOS_DELUXE_SEA_VIEW_IMG },
+      { category: 'Premium Private Pool Suite', rooms: '301-342', image_url: MILOS_PREMIUM_POOL_SUITE_IMG },
+    ],
 
     amenities: [
       'Dead Sea',
@@ -179,6 +203,9 @@ export const initialProperties = [
       'Gym',
       'Synagogue',
       '162 Rooms',
+      'Superior Patio',
+      'Deluxe Sea View',
+      'Premium Private Pool Suite',
     ],
 
     status: 'Active',

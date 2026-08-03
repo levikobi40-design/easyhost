@@ -28,9 +28,10 @@ const fmtDate = (iso) => {
   } catch { return iso; }
 };
 
-/** Group rooms by portfolio site (Bazaar / City Tower / ROOMS). */
+/** Group rooms by portfolio site (Bazaar / City Tower / ROOMS / Milos). */
 function inferInventoryBucket(room) {
-  const n = `${room?.property_name || ''} ${room?.name || ''}`.toLowerCase();
+  const n = `${room?.property_name || ''} ${room?.name || ''} ${room?.property_id || ''}`.toLowerCase();
+  if (/milos|dead sea|herbert samuel|מילוס|ים המלח|milos_dead_sea/.test(n)) return 'milos';
   if (/bazaar|בזאר|יפו|jaffa|מלון בזאר/.test(n)) return 'bazaar';
   if (/city tower|leonardo|סיטי|רמת גן|ramat gan|בורסה|diamond/.test(n)) return 'citytower';
   if (/rooms sky|sky tower|רומס|cowork|fattal|workspace/.test(n)) return 'rooms';
@@ -50,6 +51,14 @@ const BAZAAR_SUITE_URL =
 const DEFAULT_BAZAAR_HOTEL_URL = BAZAAR_DELUXE_URL;
 const DEFAULT_ROOMS_WORKSPACE_URL =
   'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&auto=format&fit=crop&q=85';
+/** Herbert Samuel Milos Dead Sea — room category images (match app.py) */
+const MILOS_SUPERIOR_PATIO_URL =
+  'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80';
+const MILOS_DELUXE_SEA_VIEW_URL =
+  'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80';
+const MILOS_PREMIUM_POOL_SUITE_URL =
+  'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80';
+const DEFAULT_MILOS_HOTEL_URL = MILOS_SUPERIOR_PATIO_URL;
 
 /** Treat stock/placeholder URLs as missing so we swap to HTTPS fallbacks. */
 const GENERIC_ROOM_IMAGE = /placeholder|via\.placeholder|picsum|unsplash\.com\/random|dummy|generic|default-hotel/i;
@@ -57,11 +66,15 @@ const GENERIC_ROOM_IMAGE = /placeholder|via\.placeholder|picsum|unsplash\.com\/r
 function resolveRoomPhotoUrl(room) {
   const raw = (room?.photo_url || '').trim();
   if (raw && !GENERIC_ROOM_IMAGE.test(raw)) return raw;
-  const n = `${room?.name || ''} ${room?.property_name || ''}`;
+  const n = `${room?.name || ''} ${room?.property_name || ''} ${room?.category || ''} ${room?.room_type || ''}`;
+  if (/superior\s*patio/i.test(n)) return MILOS_SUPERIOR_PATIO_URL;
+  if (/deluxe\s*sea\s*view/i.test(n)) return MILOS_DELUXE_SEA_VIEW_URL;
+  if (/premium\s*private\s*pool|private\s*pool\s*suite/i.test(n)) return MILOS_PREMIUM_POOL_SUITE_URL;
   if (/standard queen/i.test(n)) return BAZAAR_STANDARD_URL;
   if (/deluxe gallery/i.test(n)) return BAZAAR_DELUXE_URL;
   if (/jaffa suite/i.test(n)) return BAZAAR_SUITE_URL;
   const b = inferInventoryBucket(room);
+  if (b === 'milos') return DEFAULT_MILOS_HOTEL_URL;
   if (b === 'bazaar') return DEFAULT_BAZAAR_HOTEL_URL;
   if (b === 'citytower') return DEFAULT_BOUTIQUE_HOTEL_URL;
   if (b === 'rooms') return DEFAULT_ROOMS_WORKSPACE_URL;
@@ -69,6 +82,7 @@ function resolveRoomPhotoUrl(room) {
 }
 
 const INVENTORY_SECTIONS = [
+  { id: 'milos', title: 'Herbert Samuel Milos Dead Sea — Superior Patio · Deluxe Sea View · Premium Pool Suite' },
   { id: 'bazaar', title: 'בזאר יפו — 32 חדרי בוטיק' },
   { id: 'citytower', title: 'סיטי טאוור — דלוקס, אקזקוטיב, קלאב, סוויטות (ג׳וניור/ג׳קוזי), נגיש' },
   { id: 'rooms', title: 'ROOMS — משרדים (לפי קיבולת), חדרי ישיבות, חללי אירוע' },
@@ -121,8 +135,12 @@ function RoomCard({ room }) {
       <div className="ri-room-body">
         <div className="ri-room-name">{roomName}</div>
         <div className="ri-room-meta">
+          {(room.category || room.room_type) && (
+            <span className="ri-room-category">{room.category || room.room_type} · </span>
+          )}
           <BedDouble size={12} /> {room.beds || 1} מיטות
           {room.bedrooms > 1 && <> · {room.bedrooms} חדרי שינה</>}
+          {room.room_number != null && <> · #{room.room_number}</>}
         </div>
         {room.guest && room.status === 'occupied' && (
           <div className="ri-room-guest">

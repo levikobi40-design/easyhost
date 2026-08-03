@@ -425,16 +425,17 @@ def _cloudinary_upload(data_bytes: bytes, folder: str = "easyhost") -> str:
     return result["secure_url"]
 
 
-MAYA_SYSTEM_INSTRUCTION = """You are Maya — the high-end AI Operations Manager for Easyhost. You manage Kobi's live portfolio: the Christos Corfu pilot (3 properties) and Herbert Samuel Milos Dead Sea Resort (162 rooms). You are not a chatbot or generic assistant. You run live operations: professional, fast, precise, calm under load. Default voice: fluent natural Hebrew. Mirror English only if the user writes English.
+MAYA_SYSTEM_INSTRUCTION = """You are Maya — Easyhost's AI Operations Manager and Guest Concierge. You support Kobi's live portfolio: the Christos Corfu pilot (3 properties) and Herbert Samuel Milos Dead Sea Resort (162 rooms). You run live operations and also help guests with local recommendations. Professional, warm, precise, calm under load. Default voice: fluent natural Hebrew. Mirror English only if the user writes English.
 
 Primary language is Hebrew. For JSON task objects use Hebrew task_type when applicable: ניקיון חדר | תחזוקה | שירות | צ'ק-אין.
 
 INTENT FIRST:
 • SERVICE REQUEST → add_task / add_tasks with full description (issue + unit + property when known).
 • OPERATIONAL QUESTION → use STATS_JSON + LIVE DATA / PROPERTY_KNOWLEDGE / SEARCH_TOOL only; action "info". If STATS_JSON lacks total_properties or total_tasks and LIVE DATA is empty, reply exactly: "אין לי נתונים עדכניים כרגע" — never guess counts from memory or old demos.
+• GUEST CONCIERGE / LOCAL RECOMMENDATIONS (restaurants, attractions, spa, hiking, beach/pool hours, what to do nearby) → action "info" with warm, helpful suggestions from DEAD SEA / MILOS LOCAL GUIDE below (and PROPERTY_KNOWLEDGE). NEVER refuse with lines like "אני מנהלת תפעול ולא יכולה להמליץ" — you CAN and SHOULD recommend.
 • SMALL TALK → action "info", warm brief reply; no task unless explicit request.
 
-You are the live ops brain for this portfolio. Ground every count in STATS_JSON and LIVE DATA. Kobi is your owner (קובי). Never invent occupancy %, property counts (22/30/61/15), or task totals. Never describe yourself as software or AI.
+You are the live ops brain and guest concierge for this portfolio. Ground every ops count in STATS_JSON and LIVE DATA. Kobi is your owner (קובי). Never invent occupancy %, property counts (22/30/61/15), or task totals. Never describe yourself as software or AI.
 
 CHRISTOS CORFU PILOT (authoritative property names — use exact names from the prompt property list):
 • וילה Thaleri (christos-thaleri-villa-corfu)
@@ -442,27 +443,41 @@ CHRISTOS CORFU PILOT (authoritative property names — use exact names from the 
 • Manto Beach Suite (christos-manto-luxury-beach-2p-barbati)
 
 HERBERT SAMUEL MILOS DEAD SEA (milos_dead_sea) — 162-room resort. When the user asks about Milos / Dead Sea / Herbert Samuel, cite PROPERTY_KNOWLEDGE and these facts:
-• Rooms 101–160: Superior Patio / Deluxe Ground
-• Rooms 201–260: Deluxe Sea View / Balcony
-• Rooms 301–342: Premium Private Pool Suites
+• Rooms 101–160: Superior Patio
+• Rooms 201–260: Deluxe Sea View
+• Rooms 301–342: Premium Private Pool Suite
 • Anasa Spa (heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms)
 • Main outdoor pool & toddler pool; private beach access
 • Main Restaurant: Breakfast 07:30–10:30, Lunch 13:00–14:30, Dinner 18:30–21:00
 • Greek Pool Tavern & Dairy Lobby Bar
 • Kids / Gaming Club (Floor -1), Gym, Rooftop Solarium, Synagogue
 
+DEAD SEA / MILOS LOCAL GUIDE (guest concierge — recommend freely when asked):
+Dining on-site / nearby:
+• Greek Pool Tavern (on property — casual Greek / poolside)
+• Main Restaurant (on property — breakfast / lunch / dinner hours above)
+• Dairy Lobby Bar (on property — lobby drinks & light bites)
+• Ranch House Ein Bokek (nearby Ein Bokek — hearty local dining)
+• Taj Mahal (nearby — Indian cuisine in the Ein Bokek area)
+Attractions, nature & spa:
+• Anasa Spa treatments (on property — Dead Sea pool, hammam, sauna, treatment rooms)
+• Ein Gedi Nature Reserve (hiking, waterfalls, desert oasis — short drive)
+• Masada National Park (historic fortress / cable car — classic Dead Sea day trip)
+• Dead Sea panoramic viewpoints (sunrise/sunset photo spots along the shore)
+Beach / pool: private beach access + main outdoor pool & toddler pool — confirm same-day hours at reception when unsure.
+
 ANTI-SPAM: Answer directly. When user mentions one property, restrict facts to that property only unless they ask for full portfolio.
 
 OPERATIONAL MANDATE: Prioritize guest safety and crew load. Every add_task must map to a real property name from the live list.
 
-PERSONA: Israeli, professional, warm, brief. Never mention API keys, models, or HTTP errors in user-facing fields.
+PERSONA: Israeli, professional, warm, brief. As concierge: friendly and specific (name 2–4 options, short why). Never mention API keys, models, or HTTP errors in user-facing fields. Never claim you cannot give recommendations because you are "only operations".
 
 ABSOLUTE RULES:
-1. Return ONLY valid JSON (no markdown). "message" / "question" must sound like Maya.
+1. Return ONLY valid JSON (no markdown). "message" / "question" must sound like Maya — natural conversational Hebrew/English, never dump raw JSON inside the message field.
 2. Never enumerate properties/staff unless explicitly asked for a full list.
 3. SINGLE task → {"action":"add_task","task":{...}}
 4. MULTIPLE tasks → {"action":"add_tasks","tasks":[...]}
-5. Information only → {"action":"info","message":"..."}
+5. Information / recommendations → {"action":"info","message":"..."}
 6. MISSING property — if you cannot determine which property → {"action":"clarify","question":"באיזה נכס מדובר — וילה Thaleri, Manto Apartments, Manto Beach Suite, או Herbert Samuel Milos Dead Sea?"}
    NEVER invent property names or use placeholders.
 
@@ -473,6 +488,17 @@ FIELD RULES:
 - staffName: Alma→Cleaning, Kobi→Maintenance, Avi→Electrical
 - propertyName: exact name from live property list in prompt
 - Language: match user language (Hebrew default)."""
+
+# Dead Sea / Milos guest-concierge block — injected into guest chat + WhatsApp prompts
+MAYA_DEAD_SEA_CONCIERGE_CONTEXT = """
+DEAD SEA / HERBERT SAMUEL MILOS LOCAL GUIDE (authoritative for guest recommendations):
+On-property dining: Greek Pool Tavern; Main Restaurant (Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00); Dairy Lobby Bar.
+Nearby dining: Ranch House Ein Bokek; Taj Mahal (Ein Bokek area).
+Spa: Anasa Spa — heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms.
+Attractions & hiking: Ein Gedi Nature Reserve; Masada National Park; Dead Sea panoramic viewpoints.
+Beach/pool: private beach access; main outdoor pool & toddler pool (confirm same-day hours at reception if unsure).
+You ARE the guest concierge — give warm, specific recommendations. Never say you cannot recommend because you are "operations only".
+""".strip()
 
 # Pinned portfolio hotels (must match UI — see PropertiesContext buildBazaarJaffaPinned / buildCityTowerPinned)
 MAYA_PINNED_PROPERTY_LABELS = [
@@ -521,6 +547,130 @@ CORFU_BEACH_ROOM_IMG = (
 MILOS_DEAD_SEA_IMG = (
     "https://images.unsplash.com/photo-1540541338287-41700207dee6?auto=format&fit=crop&w=1200&q=85"
 )
+# Per room-type inventory images (Herbert Samuel Milos Dead Sea)
+MILOS_SUPERIOR_PATIO_IMG = (
+    "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80"
+)
+MILOS_DELUXE_SEA_VIEW_IMG = (
+    "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80"
+)
+MILOS_PREMIUM_POOL_SUITE_IMG = (
+    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80"
+)
+# Room bands → category name + image (162 rooms total)
+MILOS_ROOM_TYPE_BANDS = (
+    {
+        "start": 101,
+        "end": 160,
+        "category": "Superior Patio",
+        "image": MILOS_SUPERIOR_PATIO_IMG,
+    },
+    {
+        "start": 201,
+        "end": 260,
+        "category": "Deluxe Sea View",
+        "image": MILOS_DELUXE_SEA_VIEW_IMG,
+    },
+    {
+        "start": 301,
+        "end": 342,
+        "category": "Premium Private Pool Suite",
+        "image": MILOS_PREMIUM_POOL_SUITE_IMG,
+    },
+)
+
+
+def _milos_room_meta(room_number):
+    """Return (category_name, image_url) for a Milos room number."""
+    try:
+        n = int(room_number)
+    except (TypeError, ValueError):
+        return "Room", MILOS_DEAD_SEA_IMG
+    for band in MILOS_ROOM_TYPE_BANDS:
+        if band["start"] <= n <= band["end"]:
+            return band["category"], band["image"]
+    return "Room", MILOS_DEAD_SEA_IMG
+
+
+def _milos_inventory_room_numbers():
+    """All Milos inventory room numbers in display order (101-160, 201-260, 301-342)."""
+    nums = []
+    for band in MILOS_ROOM_TYPE_BANDS:
+        nums.extend(range(int(band["start"]), int(band["end"]) + 1))
+    return nums
+
+
+def _milos_room_type_gallery_urls():
+    """Ordered gallery: one image per room category (for property card / Maya)."""
+    return [band["image"] for band in MILOS_ROOM_TYPE_BANDS]
+
+
+def _refresh_milos_dead_sea_room_images(tenant_id=DEFAULT_TENANT_ID):
+    """Patch existing milos_dead_sea row so gallery/cover match room-type image map."""
+    if not SessionLocal or not ManualRoomModel:
+        return False
+    gallery = _milos_room_type_gallery_urls()
+    marker = "\n__EH_GALLERY__:"
+    session = SessionLocal()
+    try:
+        row = session.query(ManualRoomModel).filter_by(id=MILOS_DEAD_SEA_PROPERTY_ID).first()
+        if not row:
+            return False
+        desc = row.description or ""
+        main = desc.split(marker, 1)[0] if marker in desc else desc
+        if not (main or "").strip() or "milos" not in (main or "").lower():
+            main = (
+                "Herbert Samuel Milos Dead Sea Resort — 162 rooms. "
+                "Rooms 101-160: Superior Patio; "
+                "Rooms 201-260: Deluxe Sea View; "
+                "Rooms 301-342: Premium Private Pool Suite. "
+                "Facilities: Anasa Spa; main outdoor pool & toddler pool; private beach access; "
+                "Main Restaurant; Greek Pool Tavern & Dairy Lobby Bar; Kids/Gaming Club (Floor -1); "
+                "Gym; Rooftop Solarium; Synagogue."
+            )
+        main = re.sub(
+            r"Rooms 101-160:[^;]*;",
+            "Rooms 101-160: Superior Patio;",
+            main,
+            count=1,
+            flags=re.I,
+        )
+        main = re.sub(
+            r"Rooms 201-260:[^;]*;",
+            "Rooms 201-260: Deluxe Sea View;",
+            main,
+            count=1,
+            flags=re.I,
+        )
+        main = re.sub(
+            r"Rooms 301-342:[^;]*;",
+            "Rooms 301-342: Premium Private Pool Suite;",
+            main,
+            count=1,
+            flags=re.I,
+        )
+        row.description = f"{main.rstrip()}{marker}{json.dumps(gallery, ensure_ascii=False)}"
+        row.photo_url = MILOS_SUPERIOR_PATIO_IMG
+        if tenant_id and not getattr(row, "tenant_id", None):
+            row.tenant_id = tenant_id
+        session.commit()
+        try:
+            _STATUS_GRID_CACHE["ts"] = 0.0
+            _STATUS_GRID_CACHE["payload"] = None
+            _STATUS_GRID_CACHE["key"] = None
+        except Exception:
+            pass
+        print("[milos] refreshed room-type gallery images", flush=True)
+        return True
+    except Exception as e:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        print(f"[milos] refresh room images failed: {e}", flush=True)
+        return False
+    finally:
+        session.close()
 
 TASK_SOURCE_BOOKING = "booking"
 TASK_SOURCE_MAYA = "maya"
@@ -755,24 +905,29 @@ def _christos_corfu_portfolio_seed():
 
 
 def _milos_dead_sea_portfolio_seed():
-    """Herbert Samuel Milos Dead Sea Resort — 162 rooms + facilities (dashboard property row)."""
+    """Herbert Samuel Milos Dead Sea Resort — 162 rooms + room-type images."""
     now = datetime.now(timezone.utc).isoformat()
     description = (
         "Herbert Samuel Milos Dead Sea Resort — 162 rooms. "
-        "Rooms 101-160: Superior Patio / Deluxe Ground; "
-        "Rooms 201-260: Deluxe Sea View / Balcony; "
-        "Rooms 301-342: Premium Private Pool Suites. "
+        "Rooms 101-160: Superior Patio; "
+        "Rooms 201-260: Deluxe Sea View; "
+        "Rooms 301-342: Premium Private Pool Suite. "
         "Facilities: Anasa Spa (heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms); "
         "main outdoor pool & toddler pool; private beach access; "
         "Main Restaurant (Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00); "
         "Greek Pool Tavern & Dairy Lobby Bar; Kids/Gaming Club (Floor -1); Gym; Rooftop Solarium; Synagogue."
     )
+    # Persist room-type gallery on the property row (Superior → Sea View → Pool Suite).
+    # Inline marker — do not call _merge_description_gallery (defined later in module).
+    gallery = _milos_room_type_gallery_urls()
+    description = f"{description}\n__EH_GALLERY__:{json.dumps(gallery, ensure_ascii=False)}"
     return [{
         "id": MILOS_DEAD_SEA_PROPERTY_ID,
         "name": "Herbert Samuel Milos Dead Sea",
         "description": description,
-        "photo_url": MILOS_DEAD_SEA_IMG,
-        "image_url": MILOS_DEAD_SEA_IMG,
+        "photo_url": MILOS_SUPERIOR_PATIO_IMG,
+        "image_url": MILOS_SUPERIOR_PATIO_IMG,
+        "pictures": list(gallery),
         "amenities": [
             "Dead Sea",
             "Anasa Spa",
@@ -783,6 +938,9 @@ def _milos_dead_sea_portfolio_seed():
             "Gym",
             "Synagogue",
             "162 Rooms",
+            "Superior Patio",
+            "Deluxe Sea View",
+            "Premium Private Pool Suite",
         ],
         "status": "Active",
         "occupancy_rate": 78,
@@ -794,6 +952,14 @@ def _milos_dead_sea_portfolio_seed():
         "bathrooms": 162,
         "ai_automation_enabled": False,
         "tenant_id": DEFAULT_TENANT_ID,
+        "room_types": [
+            {
+                "category": b["category"],
+                "rooms": f"{b['start']}-{b['end']}",
+                "image_url": b["image"],
+            }
+            for b in MILOS_ROOM_TYPE_BANDS
+        ],
     }]
 
 
@@ -1363,6 +1529,12 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
             pass
         except Exception as _mk_e:
             print(f"[seed_active_properties] milos knowledge: {_mk_e}", flush=True)
+        try:
+            _refresh_milos_dead_sea_room_images(tenant_id)
+        except NameError:
+            pass
+        except Exception as _img_e:
+            print(f"[seed_active_properties] milos images: {_img_e}", flush=True)
         return {"properties": 0, "tasks": 0, "ok": True, "skipped": True}
     if not SessionLocal or not ManualRoomModel:
         return {"properties": 0, "tasks": 0, "ok": False}
@@ -1415,6 +1587,12 @@ def seed_active_properties(tenant_id=DEFAULT_TENANT_ID, force=False):
         pass
     except Exception as _mk_e:
         print(f"[seed_active_properties] milos knowledge: {_mk_e}", flush=True)
+    try:
+        _refresh_milos_dead_sea_room_images(tenant_id)
+    except NameError:
+        pass
+    except Exception as _img_e:
+        print(f"[seed_active_properties] milos images: {_img_e}", flush=True)
 
     if not PropertyTaskModel:
         return {"properties": props_added, "tasks": 0, "ok": props_added > 0}
@@ -1673,7 +1851,7 @@ class _MayaStreamLocalFallback(Exception):
 def _maya_local_intent_kind(command: str) -> str:
     """
     Narrow intent for local fallback only.
-    Returns: connected | status | happening | count | property | other
+    Returns: connected | status | happening | count | concierge | property | other
     """
     cmd = (command or "").strip()
     cmd_l = cmd.lower()
@@ -1718,8 +1896,122 @@ def _maya_local_intent_kind(command: str) -> str:
     ):
         return "status"
 
+    if any(
+        x in cmd or x in cmd_l
+        for x in (
+            "המלצ", "להמליץ", "מסעד", "אוכל", "dining", "restaurant", "recommend",
+            "attraction", "אטרקצ", "טיול", "hiking", "הליכה", "עין גדי", "ein gedi",
+            "מצדה", "masada", "ספא", "spa", "anasa", "אנסה", "ים המלח", "dead sea",
+            "חוף", "בריכה", "pool", "beach", "מסעדה", "tavern", "מזנון", "בר ",
+            "lobby bar", "ranch house", "taj mahal", "מה לעשות", "what to do",
+            "סיור", "tour", "כיבוד", "קפה",
+        )
+    ):
+        return "concierge"
+
     # Property: only when a known site name appears as a clear substring of the user text.
     return "other"
+
+
+def _maya_local_concierge_reply(command, language="he"):
+    """Deterministic Dead Sea / Milos guest-concierge fallback (no Gemini)."""
+    lang = (language or "he").lower().split("-")[0]
+    cmd = (command or "").strip().lower()
+    # Spa
+    if any(x in cmd for x in ("spa", "ספא", "anasa", "אנסה", "טיפול", "hammam", "סאונה")):
+        if lang == "en":
+            return (
+                "For spa time I recommend Anasa Spa on property — heated Dead Sea pool, "
+                "Jacuzzi, Hammam, Sauna, and treatment rooms. Reception can book a slot."
+            )
+        return (
+            "לספא שווה לכוון ל־Anasa Spa במתחם — בריכת ים המלח מחוממת, ג'קוזי, חמאם, "
+            "סאונה וחדרי טיפולים. אפשר לתאם תור בקבלה."
+        )
+    # Hiking / attractions
+    if any(x in cmd for x in ("hiking", "טיול", "הליכה", "ein gedi", "עין גדי", "masada", "מצדה", "אטרקצ", "attraction", "viewpoint", "תצפית")):
+        if lang == "en":
+            return (
+                "Great day trips from Milos: Ein Gedi Nature Reserve for hiking and waterfalls, "
+                "Masada National Park for the fortress views, and the Dead Sea panoramic viewpoints "
+                "for sunrise/sunset photos."
+            )
+        return (
+            "המלצות חזקות ליד מיילוס: שמורת עין גדי לטיול מים ומדבר, מצדה לפנורמה והיסטוריה, "
+            "ותצפיות ים המלח לשקיעה/זריחה. אם תרצו — אכוון גם לפי רמת קושי וזמן."
+        )
+    # Beach / pool hours
+    if any(x in cmd for x in ("beach", "חוף", "pool", "בריכה", "שעות", "hours")):
+        if lang == "en":
+            return (
+                "You have private beach access plus the main outdoor pool and toddler pool. "
+                "For exact same-day opening hours, reception has the latest schedule — "
+                "Greek Pool Tavern is perfect for a poolside bite."
+            )
+        return (
+            "יש גישה לחוף פרטי, בריכה חיצונית ראשית ובריכת פעוטות. "
+            "לשעות מדויקות להיום כדאי לאשר בקבלה — וליד הבריכה שווה לעצור ב־Greek Pool Tavern."
+        )
+    # Dining default / recommend
+    if lang == "en":
+        return (
+            "Happy to recommend! On property: Greek Pool Tavern, the Main Restaurant "
+            "(Breakfast 07:30–10:30, Lunch 13:00–14:30, Dinner 18:30–21:00), and the Dairy Lobby Bar. "
+            "Nearby in Ein Bokek: Ranch House and Taj Mahal. Tell me the vibe you want — casual, "
+            "romantic, or family — and I’ll narrow it down."
+        )
+    return (
+        "בשמחה! במתחם: Greek Pool Tavern, המסעדה הראשית "
+        "(ארוחת בוקר 07:30–10:30, צהריים 13:00–14:30, ערב 18:30–21:00) ו־Dairy Lobby Bar. "
+        "באזור עין בוקק: Ranch House ו־Taj Mahal. תגידו איזה אווירה בא לכם — קז'ואל, רומנטית או משפחתית — ואדייק."
+    )
+
+
+def _maya_guest_plain_text(raw):
+    """
+    Guest-facing replies must be natural prose — never raw {"action":...} JSON.
+    Extracts message/reply fields when the model returns action JSON by mistake.
+    """
+    t = (raw or "").strip()
+    if not t:
+        return ""
+    # Strip common markdown fences
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:json)?\s*", "", t, flags=re.I)
+        t = re.sub(r"\s*```$", "", t)
+        t = t.strip()
+    if t.startswith("{") and ("action" in t or "message" in t or "reply" in t):
+        try:
+            obj = json.loads(t)
+            if isinstance(obj, dict):
+                for k in ("message", "displayMessage", "reply", "question", "text", "response"):
+                    v = obj.get(k)
+                    if isinstance(v, str) and v.strip():
+                        return v.strip()
+        except Exception:
+            pass
+        m = re.search(
+            r'"(?:message|displayMessage|reply|question|text|response)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            t,
+        )
+        if m:
+            try:
+                return json.loads(f'"{m.group(1)}"')
+            except Exception:
+                return (
+                    m.group(1)
+                    .replace("\\n", "\n")
+                    .replace('\\"', '"')
+                    .replace("\\\\", "\\")
+                )
+        # Looks like JSON but unreadable — do not show braces to the guest
+        return ""
+    # Refuse leaked ops-only canned lines; replace with concierge tone
+    if "מנהלת תפעול" in t and ("לא יכול" in t or "להמליץ" in t):
+        return ""
+    if "operations manager" in t.lower() and "cannot recommend" in t.lower():
+        return ""
+    return t
 
 
 def _maya_live_task_counts(tenant_id, stats_snapshot=None):
@@ -1800,6 +2092,9 @@ def _maya_local_instant_reply(
     tid = tenant_id or DEFAULT_TENANT_ID
     uid = user_id or f"demo-{tid}"
     kind = _maya_local_intent_kind(cmd)
+
+    if kind == "concierge":
+        return _maya_local_concierge_reply(cmd, lang)
 
     # Prefer exact property match when the user named a known site.
     prop = _maya_local_property_reply(cmd, tid, lang)
@@ -5110,9 +5405,12 @@ if create_engine and sessionmaker and declarative_base:
         display_name = "Herbert Samuel Milos Dead Sea"
         summary = (
             "Herbert Samuel Milos Dead Sea Resort — 162 rooms. "
-            "Rooms 101-160: Superior Patio / Deluxe Ground; "
-            "Rooms 201-260: Deluxe Sea View / Balcony; "
-            "Rooms 301-342: Premium Private Pool Suites. "
+            "Rooms 101-160: Superior Patio "
+            f"({MILOS_SUPERIOR_PATIO_IMG}); "
+            "Rooms 201-260: Deluxe Sea View "
+            f"({MILOS_DELUXE_SEA_VIEW_IMG}); "
+            "Rooms 301-342: Premium Private Pool Suite "
+            f"({MILOS_PREMIUM_POOL_SUITE_IMG}). "
             "Facilities: Anasa Spa (heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms); "
             "main outdoor pool & toddler pool; private beach access; "
             "Main Restaurant (Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00); "
@@ -5124,24 +5422,37 @@ if create_engine and sessionmaker and declarative_base:
         )
         offices_note = (
             "162 rooms total. Inventory map: "
-            "101-160 Superior Patio / Deluxe Ground; "
-            "201-260 Deluxe Sea View / Balcony; "
-            "301-342 Premium Private Pool Suites."
+            "101-160 Superior Patio; "
+            "201-260 Deluxe Sea View; "
+            "301-342 Premium Private Pool Suite. "
+            f"Images: Superior Patio={MILOS_SUPERIOR_PATIO_IMG}; "
+            f"Deluxe Sea View={MILOS_DELUXE_SEA_VIEW_IMG}; "
+            f"Premium Private Pool Suite={MILOS_PREMIUM_POOL_SUITE_IMG}."
         )
         amenities_note = (
             "Anasa Spa: heated Dead Sea pool, Jacuzzi, Hammam, Sauna, treatment rooms. "
             "Main outdoor pool & toddler pool. Private beach. "
-            "Dining: Main Restaurant — Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00; "
+            "Dining on-site: Main Restaurant — Breakfast 07:30-10:30, Lunch 13:00-14:30, Dinner 18:30-21:00; "
             "Greek Pool Tavern; Dairy Lobby Bar. "
-            "Kids/Gaming Club on Floor -1; Gym; Rooftop Solarium; Synagogue."
+            "Nearby dining (Ein Bokek): Ranch House Ein Bokek; Taj Mahal. "
+            "Attractions: Ein Gedi Nature Reserve; Masada National Park; Dead Sea panoramic viewpoints. "
+            "Kids/Gaming Club on Floor -1; Gym; Rooftop Solarium; Synagogue. "
+            "Room categories with images: "
+            f"Superior Patio (101-160) {MILOS_SUPERIOR_PATIO_IMG}; "
+            f"Deluxe Sea View (201-260) {MILOS_DELUXE_SEA_VIEW_IMG}; "
+            f"Premium Private Pool Suite (301-342) {MILOS_PREMIUM_POOL_SUITE_IMG}."
         )
         rules_note = (
             "BEHAVIOR: (1) Room-type / inventory / spa / F&B / facility questions → answer from these facts "
             "(action info); never invent room numbers outside 101-160, 201-260, 301-342. "
-            "(2) Restaurant hours → use Main Restaurant schedule above only. "
-            "(3) Spa questions → Anasa Spa amenities listed. "
-            "(4) Kids Club → Floor -1 Gaming/Kids Club. "
-            "(5) Repair / guest complaint with a unit → add_task with propertyName "
+            "(2) When describing or showing a room, use its category name and mapped image URL. "
+            "(3) Restaurant hours → use Main Restaurant schedule above only. "
+            "(4) Spa questions → Anasa Spa amenities listed. "
+            "(5) Kids Club → Floor -1 Gaming/Kids Club. "
+            "(6) Guest concierge / local recommendations (restaurants, attractions, hiking, spa, beach/pool) → "
+            "answer warmly with specific names from amenities_note / LOCAL GUIDE; NEVER refuse with "
+            "'אני מנהלת תפעול ולא יכולה להמליץ'. "
+            "(7) Repair / guest complaint with a unit → add_task with propertyName "
             "'Herbert Samuel Milos Dead Sea' and the room number when known."
         )
         session = SessionLocal()
@@ -5169,7 +5480,13 @@ if create_engine and sessionmaker and declarative_base:
                     {"name": "Private beach"},
                     {"name": "Main outdoor pool & toddler pool"},
                     {"name": "Greek Pool Tavern"},
+                    {"name": "Main Restaurant"},
                     {"name": "Dairy Lobby Bar"},
+                    {"name": "Ranch House Ein Bokek"},
+                    {"name": "Taj Mahal"},
+                    {"name": "Ein Gedi Nature Reserve"},
+                    {"name": "Masada National Park"},
+                    {"name": "Dead Sea panoramic viewpoints"},
                     {"name": "Kids / Gaming Club (Floor -1)"},
                     {"name": "Gym"},
                     {"name": "Rooftop Solarium"},
@@ -5184,9 +5501,32 @@ if create_engine and sessionmaker and declarative_base:
                     "property_id": MILOS_DEAD_SEA_PROPERTY_ID,
                     "total_rooms": 162,
                     "room_bands": {
-                        "101-160": "Superior Patio / Deluxe Ground",
-                        "201-260": "Deluxe Sea View / Balcony",
-                        "301-342": "Premium Private Pool Suites",
+                        "101-160": {
+                            "category": "Superior Patio",
+                            "image_url": MILOS_SUPERIOR_PATIO_IMG,
+                        },
+                        "201-260": {
+                            "category": "Deluxe Sea View",
+                            "image_url": MILOS_DELUXE_SEA_VIEW_IMG,
+                        },
+                        "301-342": {
+                            "category": "Premium Private Pool Suite",
+                            "image_url": MILOS_PREMIUM_POOL_SUITE_IMG,
+                        },
+                    },
+                    "local_guide": {
+                        "dining_onsite": [
+                            "Greek Pool Tavern",
+                            "Main Restaurant",
+                            "Dairy Lobby Bar",
+                        ],
+                        "dining_nearby": ["Ranch House Ein Bokek", "Taj Mahal"],
+                        "attractions": [
+                            "Ein Gedi Nature Reserve",
+                            "Masada National Park",
+                            "Dead Sea panoramic viewpoints",
+                            "Anasa Spa treatments",
+                        ],
                     },
                 },
                 ensure_ascii=False,
@@ -5197,6 +5537,10 @@ if create_engine and sessionmaker and declarative_base:
             session.add(row)
             session.commit()
             print("[property_knowledge] ✅ builtin Herbert Samuel Milos Dead Sea", flush=True)
+            try:
+                _refresh_milos_dead_sea_room_images(tenant_id)
+            except Exception as _img_e:
+                print(f"[property_knowledge] milos image refresh: {_img_e}", flush=True)
         except Exception as e:
             try:
                 session.rollback()
@@ -6755,6 +7099,19 @@ def _maya_live_facts_system_block(tenant_id, user_id, stats_snapshot=None, user_
         "SEARCH_TOOL — you must treat the following lines as query results from property_tasks + room grid + portfolio context. "
         "Do not invent workers, rooms, or counts beyond what appears here and in STATS_JSON in the user prompt."
     )
+    # Guest-concierge / local tips — inject Dead Sea guide when relevant
+    try:
+        if _maya_local_intent_kind(user_message or "") == "concierge" or any(
+            x in (user_message or "").lower()
+            for x in ("milos", "dead sea", "ים המלח", "מילוס", "ein bokek")
+        ):
+            lines.append(MAYA_DEAD_SEA_CONCIERGE_CONTEXT)
+            lines.append(
+                "CONCIERGE POLICY: Answer with warm specific recommendations. "
+                "Never refuse with 'אני מנהלת תפעול ולא יכולה להמליץ'."
+            )
+    except Exception:
+        pass
     if not use_bazaar_grid and isinstance(stats_snapshot, dict):
         tp = int(stats_snapshot.get("total_properties") or 0)
         if tp:
@@ -10054,19 +10411,58 @@ def _grid_dirty_slots_from_occ(occ_pct, n_total=61):
 
 
 def _room_status_grid_payload(tenant_id, user_id):
-    """Live room status grid — Christos pilot (3 properties); no demo portfolio padding."""
+    """Live room status grid — expands Milos into 162 typed units; other props stay 1 unit."""
     props = list_manual_rooms(tenant_id, owner_id=user_id)
     if not props:
         return {"rooms": [], "summary": {"ready": 0, "occupied": 0, "dirty": 0, "total": 0}}
     if _christos_pilot_is_active(tenant_id, user_id, props):
         props = _christos_pilot_room_rows(tenant_id, user_id, props)
     occ_pct = float(get_daily_stats()["occupancy_pct"])
-    n_total = max(1, len(props))
-    n_dirty, n_occ, _rem = _grid_dirty_slots_from_occ(occ_pct, n_total)
-    rooms_out = []
-    for i, p in enumerate(props):
+
+    # Expand Milos Dead Sea into per-room inventory units (category + image)
+    milos_nums = _milos_inventory_room_numbers()
+    unit_specs = []  # list of dicts used to build rooms_out
+    for p in props:
         pid = p.get("id")
         pname = p.get("name") or pid
+        if str(pid) == MILOS_DEAD_SEA_PROPERTY_ID:
+            for rn in milos_nums:
+                cat, img = _milos_room_meta(rn)
+                unit_specs.append({
+                    "id": f"{pid}-r{rn}",
+                    "name": f"Room {rn} · {cat}",
+                    "property_id": pid,
+                    "property_name": pname,
+                    "room_number": rn,
+                    "category": cat,
+                    "room_type": cat,
+                    "beds": 2,
+                    "bedrooms": 1,
+                    "photo_url": img,
+                })
+        else:
+            photo = _normalize_external_photo_url(
+                (p.get("photo_url") or p.get("image_url") or "").strip(),
+                pname,
+                pid,
+            )
+            unit_specs.append({
+                "id": f"{pid}-u1",
+                "name": pname,
+                "property_id": pid,
+                "property_name": pname,
+                "room_number": None,
+                "category": None,
+                "room_type": None,
+                "beds": int(p.get("beds") or 1),
+                "bedrooms": int(p.get("bedrooms") or 1),
+                "photo_url": photo,
+            })
+
+    n_total = max(1, len(unit_specs))
+    n_dirty, n_occ, _rem = _grid_dirty_slots_from_occ(occ_pct, n_total)
+    rooms_out = []
+    for i, spec in enumerate(unit_specs):
         room_idx = i + 1
         if room_idx <= n_occ:
             status = "occupied"
@@ -10074,24 +10470,23 @@ def _room_status_grid_payload(tenant_id, user_id):
             status = "dirty"
         else:
             status = "ready"
-        photo = _normalize_external_photo_url(
-            (p.get("photo_url") or p.get("image_url") or "").strip(),
-            pname,
-            pid,
-        )
-        rooms_out.append(
-            {
-                "id": f"{pid}-u1",
-                "name": pname,
-                "property_id": pid,
-                "property_name": pname,
-                "status": status,
-                "beds": int(p.get("beds") or 1),
-                "bedrooms": int(p.get("bedrooms") or 1),
-                "photo_url": photo,
-                "guest": "Guest" if status == "occupied" else None,
-            }
-        )
+        row = {
+            "id": spec["id"],
+            "name": spec["name"],
+            "property_id": spec["property_id"],
+            "property_name": spec["property_name"],
+            "status": status,
+            "beds": spec["beds"],
+            "bedrooms": spec["bedrooms"],
+            "photo_url": spec["photo_url"],
+            "guest": "Guest" if status == "occupied" else None,
+        }
+        if spec.get("room_number") is not None:
+            row["room_number"] = spec["room_number"]
+        if spec.get("category"):
+            row["category"] = spec["category"]
+            row["room_type"] = spec["room_type"]
+        rooms_out.append(row)
     summary = {"ready": 0, "occupied": 0, "dirty": 0, "total": len(rooms_out)}
     for r in rooms_out:
         st = r.get("status")
@@ -16706,10 +17101,19 @@ def _maya_build_json_response_from_llm_output(
     notify_ok = True
 
     if _parsed_action == "info":
-        # Informational reply from LLM — use its message verbatim; never substitute a task fallback
+        # Informational reply from LLM — use its message; sanitize refusal / leaked JSON
         display_msg = (parsed.get("message") or "").strip()
-        if not display_msg:
-            display_msg = "אני כאן. במה אוכל לעזור?"
+        if display_msg.startswith("{") and "action" in display_msg:
+            display_msg = _maya_guest_plain_text(display_msg)
+        _ops_refusal = (
+            "מנהלת תפעול" in (display_msg or "")
+            and ("לא יכול" in display_msg or "להמליץ" in display_msg)
+        )
+        if not display_msg or _ops_refusal:
+            if _maya_local_intent_kind(command or "") == "concierge":
+                display_msg = _maya_local_concierge_reply(command or "", "he")
+            else:
+                display_msg = "אני כאן. במה אוכל לעזור?"
     elif task_created:
         # A task was actually written to the DB — notify and confirm
         staff_name = (task or {}).get("staff_name", "")
@@ -17665,8 +18069,8 @@ Classify and return ONLY valid JSON (no extra text):
   {{"action":"add_tasks","tasks":[<task_obj>, <task_obj>, ...]}}
   Produce exactly as many task objects as requested. Each gets its own propertyName and content.
 
-• Information / question / small talk:
-  {{"action":"info","message":"<warm, concise answer; match user language; for chat without ops, stay human — no fake task counts>"}}
+• Information / question / small talk / guest concierge recommendations:
+  {{"action":"info","message":"<warm, concise natural answer; match user language; for local tips use DEAD SEA / MILOS LOCAL GUIDE; never refuse recommendations; never put raw JSON inside message>"}}
 
 • Property or room is UNCLEAR / not in the property list (include when unsure which hotel: Bazaar Jaffa vs Leonardo City Tower Ramat Gan):
   {{"action":"clarify","question":"באיזה מלון או אתר מדובר — בזאר יפו, סיטי טאוור רמת גן, או רומס סקיי טאוור? אני צריכה פרט מדויק כדי לפתוח את המשימה."}}
@@ -23210,15 +23614,27 @@ def twilio_whatsapp_webhook():
         def _wa_maya_reply(_from=clean_from, _body=body, _profile=profile, _budget=budget):
             deadline = time.monotonic() + float(_budget)
             try:
-                reply_text = _gemini_generate(
-                    f"Guest ({_profile or _from}) says: {_body}",
-                    timeout=min(10, _budget),
-                    deadline=deadline,
+                wa_prompt = (
+                    "You are Maya, a warm hotel AI guest concierge for Herbert Samuel Milos Dead Sea. "
+                    "Reply in natural Hebrew (or mirror the guest language). "
+                    "Plain conversational text only — NEVER output JSON or action objects. "
+                    "You can recommend restaurants, attractions, spa, hiking, beach/pool hours.\n\n"
+                    f"{MAYA_DEAD_SEA_CONCIERGE_CONTEXT}\n\n"
+                    f"Guest ({_profile or _from}) says: {_body}"
                 )
-                if not (reply_text or "").strip():
-                    reply_text = _guest_maya_fallback_reply("he")
+                reply_text = _maya_guest_plain_text(
+                    _gemini_generate(wa_prompt, timeout=min(10, _budget), deadline=deadline) or ""
+                )
+                if not reply_text:
+                    if _maya_local_intent_kind(_body) == "concierge":
+                        reply_text = _maya_local_concierge_reply(_body, "he")
+                    else:
+                        reply_text = _guest_maya_fallback_reply("he")
             except Exception as _e:
-                reply_text = _guest_maya_fallback_reply("he")
+                if _maya_local_intent_kind(_body) == "concierge":
+                    reply_text = _maya_local_concierge_reply(_body, "he")
+                else:
+                    reply_text = _guest_maya_fallback_reply("he")
                 print(f"[Twilio/WhatsApp] Maya offline (fallback reply): {_e}", flush=True)
             try:
                 send_whatsapp(_from, reply_text)
@@ -23266,12 +23682,24 @@ def api_guest_maya_chat():
             "task_created": False,
         }), 200
 
-    hotel_bit = f" at {hotel_name}" if hotel_name else ""
+    hotel_bit = f" at {hotel_name}" if hotel_name else " at Herbert Samuel Milos Dead Sea"
     room_bit = f" room {room_number}" if room_number else ""
     guest_bit = guest_name or "Guest"
+    _is_milos = (
+        "milos" in (property_id or "").lower()
+        or "milos" in (hotel_name or "").lower()
+        or "dead sea" in (hotel_name or "").lower()
+        or "ים המלח" in (hotel_name or "")
+        or not hotel_name
+    )
+    local_guide = MAYA_DEAD_SEA_CONCIERGE_CONTEXT if _is_milos else ""
     prompt = (
-        f"You are Maya, a warm hotel AI concierge{hotel_bit}. "
-        f"Reply in language code '{language}' only. Keep it short (1-3 sentences). "
+        f"You are Maya, a warm hotel AI guest concierge{hotel_bit}. "
+        f"Reply in language code '{language}' only as natural conversational text "
+        f"(1–5 short sentences). NEVER output JSON or action objects — plain guest-facing text only. "
+        f"Never say you are only operations or cannot recommend. "
+        f"For restaurants, attractions, spa, hiking, beach/pool — give specific local suggestions.\n\n"
+        f"{local_guide}\n\n"
         f"Guest ({guest_bit}{room_bit}) says: {message}"
     )
 
@@ -23279,16 +23707,24 @@ def api_guest_maya_chat():
     _budget = _maya_gateway_budget_sec(12)
     _deadline = time.monotonic() + float(_budget)
     try:
-        reply_text = (
+        reply_text = _maya_guest_plain_text(
             _gemini_generate(prompt, timeout=min(10, _budget), deadline=_deadline) or ""
-        ).strip()
+        )
     except Exception as e:
         print(f"[api_guest_maya_chat] Gemini → local reply: {e}", flush=True)
         reply_text = ""
 
     if not reply_text:
-        # Prefer a short helpful guest reply over a dead-end busy message.
-        reply_text = _guest_maya_fallback_reply(language)
+        # Concierge intent → local Dead Sea tips; otherwise soft thanks.
+        if _maya_local_intent_kind(message) == "concierge":
+            reply_text = _maya_local_concierge_reply(message, language)
+        else:
+            reply_text = _guest_maya_fallback_reply(language)
+    reply_text = _maya_guest_plain_text(reply_text) or (
+        _maya_local_concierge_reply(message, language)
+        if _maya_local_intent_kind(message) == "concierge"
+        else _guest_maya_fallback_reply(language)
+    )
 
     task_created = False
     task_id = None
