@@ -13,6 +13,7 @@ import PremiumDashboard from './components/dashboard/PremiumDashboard';
 import PropertiesDashboard from './components/dashboard/PropertiesDashboard';
 import GodModeDashboard from './components/dashboard/GodModeDashboard';
 import RoomInventoryDashboard from './components/dashboard/RoomInventoryDashboard';
+import EchoHotelsDashboard from './components/echo/EchoHotelsDashboard';
 import OwnerDashboard from './components/dashboard/OwnerDashboard';
 import LeadsCRM from './components/crm/LeadsCRM';
 import FieldView from './components/features/FieldView';
@@ -199,15 +200,15 @@ function MainApp() {
     const tier = resolveNavTier(role, authToken);
     const roleViews = isBazaarJaffa
       ? {
-          admin: ['tasks', 'properties', 'bazaar-week', 'manualops', 'scheduler', 'godmode'],
-          operation: ['tasks', 'properties', 'bazaar-week', 'scheduler'],
+          admin: ['tasks', 'properties', 'bazaar-week', 'manualops', 'scheduler', 'godmode', 'echo'],
+          operation: ['tasks', 'properties', 'bazaar-week', 'scheduler', 'echo'],
           staff: ['tasks'],
           operator: ['operator'],
           field: ['field'],
         }
       : {
-          admin: ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'inventory', 'analytics', 'manualops', 'scheduler', 'godmode'],
-          operation: ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'inventory', 'analytics', 'scheduler'],
+          admin: ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'inventory', 'analytics', 'manualops', 'scheduler', 'godmode', 'echo'],
+          operation: ['dashboard', 'premium', 'properties', 'tasks', 'crm', 'inventory', 'analytics', 'scheduler', 'echo'],
           staff: ['tasks'],
           operator: ['operator'],
           field: ['field'],
@@ -389,6 +390,7 @@ function MainApp() {
         if (activeView === 'inventory')  return <RoomInventoryDashboard key="room-inventory" />;
         if (activeView === 'scheduler') return <ShiftScheduler key="scheduler" />;
         if (activeView === 'godmode')    return <GodModeDashboard key="godmode" />;
+        if (activeView === 'echo')       return <EchoHotelsDashboard key="echo-hotels" />;
         if (activeView === 'manualops') return <ManualOperationsHub key="manual-ops" />;
         if (activeView === 'analytics')  return <OwnerDashboard key="owner-analytics" onSwitchToEmployee={() => setActiveView('field')} />;
         return <EnterpriseDashboard key="host-dashboard" />;

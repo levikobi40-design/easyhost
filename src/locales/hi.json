@@ -83,7 +83,8 @@
     "field": "⚡ Field Agent",
     "scheduler": "Shift scheduler",
     "manualops": "Manual operations",
-    "godmode": "🔮 Operational Excellence"
+    "godmode": "🔮 Operational Excellence",
+    "echo": "🏨 Echo Hotels"
   },
   "godMode": {
     "demoStaff": "Demo staff"

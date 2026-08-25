@@ -29,6 +29,7 @@ const menuItems = [
   { id: 'field',      icon: Map,             fallback: '⚡ Field Agent'        },
   { id: 'scheduler',  icon: CalendarRange,   fallback: '📅 Shift Scheduler',   adminOnly: true },
   { id: 'godmode',    icon: Cpu,             fallback: '🔮 Operational Excellence', adminOnly: true },
+  { id: 'echo',       icon: Building2,       fallback: '🏨 Echo Hotels' },
   { id: 'manualops',  icon: UserCog,         fallback: '👥 Staff & Planner' },
 ];
 
@@ -76,15 +77,15 @@ const Sidebar = ({ activeView, setActiveView }) => {
   /** ADMIN: full nav. OPERATION: no Settings (`manualops`) or Developer (`godmode`). STAFF: tasks only. */
   const roleNav = isBazaarJaffaTenant
     ? {
-        admin: ['tasks', 'properties', 'bazaar-week', 'manualops', 'scheduler', 'godmode'],
-        operation: ['tasks', 'properties', 'bazaar-week', 'scheduler'],
+        admin: ['tasks', 'properties', 'bazaar-week', 'manualops', 'scheduler', 'godmode', 'echo'],
+        operation: ['tasks', 'properties', 'bazaar-week', 'scheduler', 'echo'],
         staff: ['tasks'],
         operator: ['operator'],
         field: ['field'],
       }
     : {
-        admin: ['dashboard', 'analytics', 'premium', 'properties', 'inventory', 'tasks', 'crm', 'manualops', 'scheduler', 'godmode'],
-        operation: ['dashboard', 'analytics', 'premium', 'properties', 'inventory', 'tasks', 'crm', 'scheduler'],
+        admin: ['dashboard', 'analytics', 'premium', 'properties', 'inventory', 'tasks', 'crm', 'manualops', 'scheduler', 'godmode', 'echo'],
+        operation: ['dashboard', 'analytics', 'premium', 'properties', 'inventory', 'tasks', 'crm', 'scheduler', 'echo'],
         staff: ['tasks'],
         operator: ['operator'],
         field: ['field'],

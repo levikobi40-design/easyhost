@@ -1,17 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { RefreshCw, BedDouble, Users, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
-import { API_URL } from '../../utils/apiClient';
+import { API_URL, getAuthHeaders } from '../../utils/apiClient';
 import useCurrency from '../../hooks/useCurrency';
 import './RoomInventoryDashboard.css';
-
-/* ── helpers ── */
-const getAuthHeaders = () => {
-  try {
-    const raw = localStorage.getItem('hotel-enterprise-storage');
-    const token = raw ? JSON.parse(raw)?.state?.authToken : null;
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch { return {}; }
-};
 
 const STATUS_META = {
   ready:    { label: 'מוכן',      labelEn: 'Ready',    color: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', dot: '🟢' },
@@ -200,7 +191,11 @@ export default function RoomInventoryDashboard() {
     seedingRef.current = true;
     setSeeding(true);
     try {
-      await fetch(`${API_URL}/seed-rooms-status`, { method: 'POST' });
+      await fetch(`${API_URL}/seed-rooms-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+      });
     } catch (_) {}
     seedingRef.current = false;
     setSeeding(false);

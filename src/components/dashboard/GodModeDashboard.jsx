@@ -6,11 +6,49 @@ import {
   MessageSquare, Paperclip, Send, Trash2, Eye,
 } from 'lucide-react';
 import useTranslations from '../../hooks/useTranslations';
-import { fetchWithRetry, API_URL, getAuthHeaders } from '../../utils/apiClient';
+import {
+  fetchWithRetry,
+  API_URL,
+  getAuthHeaders,
+  clearStaleAuthTokens,
+  hasValidAuthToken,
+  isAuthBypassedClient,
+} from '../../utils/apiClient';
 import api from '../../services/api';
 import hotelRealtime from '../../services/hotelRealtime';
 import { notifyTasksChanged, subscribeCrossTabTaskSync } from '../../utils/taskSyncBridge';
 import './GodModeDashboard.css';
+
+/** Authenticated fetch for Operational Excellence — always sends JWT + credentials. */
+async function gmFetch(path, options = {}, { retry401 = true } = {}) {
+  const url = path.startsWith('http')
+    ? path
+    : `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const baseHeaders =
+    options.body instanceof FormData
+      ? { ...getAuthHeaders() }
+      : { 'Content-Type': 'application/json', ...getAuthHeaders() };
+  const headers = { ...baseHeaders, ...(options.headers || {}) };
+  const init = { ...options, headers, credentials: 'include' };
+  let res = await fetch(url, init);
+  if (res.status === 401 && retry401) {
+    clearStaleAuthTokens();
+    // Brief pause so login/storage can settle, then retry once with fresh headers
+    await new Promise((r) => setTimeout(r, 350));
+    const retryHeaders = {
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...getAuthHeaders(),
+      ...(options.headers || {}),
+    };
+    res = await fetch(url, { ...options, headers: retryHeaders, credentials: 'include' });
+    if (res.status === 401 && typeof window !== 'undefined' && !isAuthBypassedClient()) {
+      window.dispatchEvent(
+        new CustomEvent('easyhost-auth-required', { detail: { url, status: 401 } }),
+      );
+    }
+  }
+  return res;
+}
 
 const fmt = (iso) => {
   if (!iso) return '—';
@@ -150,13 +188,29 @@ export default function GodModeDashboard() {
   const fetchOverview = useCallback(async () => {
     try {
       const [ovRes, logRes] = await Promise.all([
-        fetch(`${API_URL}/god-mode/overview`),
-        fetch(`${API_URL}/sim-log?limit=60`),
+        gmFetch('/god-mode/overview'),
+        gmFetch('/sim-log?limit=60'),
       ]);
       if (ovRes.ok) {
         setData(await ovRes.json());
         setLastRefresh(new Date());
         setError(null);
+      } else if (ovRes.status === 401) {
+        const msg = hasValidAuthToken()
+          ? 'Session rejected (401) — retrying…'
+          : 'Session expired — please sign in again';
+        setError(msg);
+        // Auto-retry once more after auth event / storage settle (avoid stuck "Backend offline")
+        window.setTimeout(() => {
+          gmFetch('/god-mode/overview')
+            .then(async (r) => {
+              if (!r.ok) return;
+              setData(await r.json());
+              setLastRefresh(new Date());
+              setError(null);
+            })
+            .catch(() => {});
+        }, 1200);
       } else {
         throw new Error(`HTTP ${ovRes.status}`);
       }
@@ -165,7 +219,10 @@ export default function GodModeDashboard() {
         setSimLog(logData.entries || []);
       }
     } catch (e) {
-      setError(e.message);
+      const isNet =
+        e?.isNetworkError ||
+        /failed to fetch|networkerror|cannot reach/i.test(String(e?.message || ''));
+      setError(isNet ? `Backend not connected (${e.message})` : e.message);
     } finally {
       setLoading(false);
     }
@@ -202,12 +259,17 @@ export default function GodModeDashboard() {
   const toggleSim = async (action) => {
     setSimBusy(true);
     try {
-      await fetch(`${API_URL}/demo/toggle`, {
+      const res = await gmFetch('/demo/toggle', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `HTTP ${res.status}`);
+      }
       await fetchOverview();
+    } catch (e) {
+      alert(`❌ Simulation toggle failed: ${e.message}`);
     } finally {
       setSimBusy(false);
     }
@@ -216,8 +278,9 @@ export default function GodModeDashboard() {
   const seedRooms = async () => {
     setSimBusy(true);
     try {
-      const res  = await fetch(`${API_URL}/seed-rooms-status`, { method: 'POST' });
-      const json = await res.json();
+      const res  = await gmFetch('/seed-rooms-status', { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       await fetchOverview();
       alert(json.message || '✅ Room inventory seeded');
     } catch (e) {
@@ -230,8 +293,9 @@ export default function GodModeDashboard() {
   const runPilot = async () => {
     setSimBusy(true);
     try {
-      const res  = await fetch(`${API_URL}/demo/run-pilot`, { method: 'POST' });
-      const json = await res.json();
+      const res  = await gmFetch('/demo/run-pilot', { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       await fetchOverview();
       alert(json.message || '✅ Pilot simulation running');
     } catch (e) {
@@ -278,7 +342,7 @@ export default function GodModeDashboard() {
         fd.append('files', injectFile);
         if (injectPropId) fd.append('property_id', injectPropId);
         // Prefer /upload; /field/upload is an alias on the backend.
-        const upRes = await fetchWithRetry(`${API_URL}/upload`, { method: 'POST', body: fd }, { maxRetries: 2 });
+        const upRes = await fetchWithRetry(`${API_URL}/upload`, { method: 'POST', body: fd, credentials: 'include' }, { maxRetries: 2 });
         if (upRes.status === 413) {
           const upJson = await upRes.json().catch(() => ({}));
           setInjectDone(`❌ ${upJson.message || 'Image too large for upload.'}`);
@@ -293,10 +357,9 @@ export default function GodModeDashboard() {
       }
 
       // Inject the message into Maya's AI pipeline (same as Maya chat: /ai/maya-command)
-      const res = await fetch(`${API_URL}/ai/maya-command`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body:    JSON.stringify({
+      const res = await gmFetch('/ai/maya-command', {
+        method: 'POST',
+        body: JSON.stringify({
           command: injectMsg,
           message: injectMsg,
           property_id: injectPropId || undefined,
@@ -304,7 +367,11 @@ export default function GodModeDashboard() {
           source: 'god-mode-inject',
         }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInjectDone(`❌ ${json.error || `HTTP ${res.status}`}`);
+        return;
+      }
       setInjectDone(
         json.displayMessage || json.message || json.reply || json.response
           || '✅ Message sent — check Mission Board.',
@@ -350,8 +417,9 @@ export default function GodModeDashboard() {
     if (!window.confirm('Reset the demo? This will clear all uploaded files and set all rooms to Ready.')) return;
     setSimBusy(true);
     try {
-      const res  = await fetch(`${API_URL}/demo/reset`, { method: 'POST' });
-      const json = await res.json();
+      const res  = await gmFetch('/demo/reset', { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       await fetchOverview();
       alert(json.message || '♻️ Demo reset complete.');
     } catch (e) {
@@ -448,12 +516,24 @@ export default function GodModeDashboard() {
 
       {error && (
         <div className="gm-error-bar">
-          ⚠️ Backend offline ({error}).&nbsp;
-          Run <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 4 }}>
-            python app.py
-          </code> in the project root, then&nbsp;
+          {/401|session|unauthorized|sign in/i.test(String(error)) ? (
+            <>⚠️ Auth issue ({error}).&nbsp;</>
+          ) : /Backend not connected|failed to fetch|network/i.test(String(error)) ? (
+            <>
+              ⚠️ Backend not connected ({error}).&nbsp;
+              Run <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 4 }}>
+                python app.py
+              </code> in the project root, then&nbsp;
+            </>
+          ) : (
+            <>⚠️ {error}.&nbsp;</>
+          )}
           <button
-            onClick={fetchOverview}
+            onClick={() => {
+              clearStaleAuthTokens();
+              setLoading(true);
+              fetchOverview();
+            }}
             style={{ background: 'none', border: '1px solid #fbbf24', borderRadius: 4,
                      color: '#fbbf24', padding: '1px 8px', cursor: 'pointer', fontWeight: 700 }}
           >retry</button>

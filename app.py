@@ -3564,6 +3564,15 @@ def bypass_auth_for_ai_routes():
         g.bypass_ai_auth = True
     elif path == "/api/upload" or path.startswith("/api/upload"):
         g.bypass_ai_auth = True
+    elif path.startswith("/api/demo/") or path.startswith("/api/god-mode/") or path in (
+        "/api/sim-log",
+        "/api/seed-rooms-status",
+    ):
+        # Operational Excellence panel — soft-auth when staging/AUTH_DISABLED
+        g.bypass_ai_auth = True
+    elif path.startswith("/api/health"):
+        # /api/health and /api/health/* must never hard-block the UI
+        g.bypass_ai_auth = True
     else:
         g.bypass_ai_auth = False
 
@@ -6740,6 +6749,40 @@ def _check_admin_extra_key():
             "error": "Forbidden",
             "hint": "DEBLOAT_KEY required (query ?key=, header X-Admin-Key, or JSON key)",
         }), 403
+    return None
+
+
+def _guard_god_mode_auth(*, admin_only=False):
+    """
+    Auth for Operational Excellence / demo pilot panel.
+    Prefer real JWT; under AUTH_DISABLED / staging-relaxed fall back to soft demo
+    identity (never hard-401 the panel). Strict mode: require valid Bearer JWT.
+    Returns None on success, or (response, status_code) on failure.
+    """
+    if AUTH_DISABLED or _auth_enforcement_relaxed():
+        try:
+            identity = get_property_tasks_auth_bundle()
+        except Exception:
+            identity = _soft_demo_auth_identity()
+        tenant_id = _coerce_demo_tenant_id(identity.get("tenant_id") or DEFAULT_TENANT_ID)
+        request.tenant_id = tenant_id
+        request.user_id = (identity.get("user_id") or "").strip() or f"demo-{tenant_id}"
+        request.app_role = identity.get("app_role") or "admin"
+        return None
+    try:
+        identity = get_property_tasks_auth_bundle()
+    except Exception as exc:
+        msg = str(exc).strip() or "Unauthorized"
+        return jsonify({"error": msg, "ok": False}), 401
+    role = identity.get("app_role") or ""
+    if admin_only and role != "admin":
+        return jsonify({"error": "Forbidden — admin required", "ok": False}), 403
+    if role not in ("admin", "manager", "operation"):
+        return jsonify({"error": "Forbidden — ops access required", "ok": False}), 403
+    tenant_id = _coerce_demo_tenant_id(identity.get("tenant_id") or DEFAULT_TENANT_ID)
+    request.tenant_id = tenant_id
+    request.user_id = (identity.get("user_id") or "").strip() or f"demo-{tenant_id}"
+    request.app_role = role
     return None
 
 
@@ -12649,15 +12692,25 @@ def activity_feed():
     return jsonify({"events": list(events), "server_ts": now_ms})
 
 
-@app.route("/api/demo/status", methods=["GET"])
+@app.route("/api/demo/status", methods=["GET", "OPTIONS"])
 def demo_status():
-    """Return current pilot simulation status."""
-    return jsonify({"active": DEMO_ACTIVE, "mock_staff": MOCK_STAFF_NAMES})
+    """Return current pilot simulation status (soft-auth — never hard-401)."""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth()
+    if guard:
+        return guard
+    return jsonify({"ok": True, "active": DEMO_ACTIVE, "mock_staff": MOCK_STAFF_NAMES})
 
 
-@app.route("/api/demo/toggle", methods=["POST"])
+@app.route("/api/demo/toggle", methods=["POST", "OPTIONS"])
 def demo_toggle():
     """Start or stop the pilot simulation. Body: { action: 'start'|'stop'|'reset' }"""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth(admin_only=True)
+    if guard:
+        return guard
     data   = request.get_json(silent=True) or {}
     action = data.get("action", "start")
     if action == "stop":
@@ -12677,10 +12730,84 @@ def demo_toggle():
                 print(f"[Demo reset] Error: {e}")
             finally:
                 session.close()
-        return jsonify({"ok": True, "active": False, "reset": True})
+        try:
+            _invalidate_status_grid_cache()
+        except Exception:
+            pass
+        return jsonify({"ok": True, "active": False, "reset": True, "message": "♻️ Demo reset complete."})
     # default: start
     start_pilot_simulation()
     return jsonify({"ok": True, "active": True})
+
+
+@app.route("/api/demo/reset", methods=["POST", "OPTIONS"])
+def demo_reset():
+    """Alias used by Operational Excellence panel — same as /api/demo/toggle action=reset."""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth(admin_only=True)
+    if guard:
+        return guard
+    stop_pilot_simulation()
+    if SessionLocal and PropertyTaskModel:
+        session = SessionLocal()
+        try:
+            session.query(PropertyTaskModel).filter(
+                PropertyTaskModel.staff_name.in_(MOCK_STAFF_NAMES)
+            ).delete(synchronize_session=False)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"[Demo reset] Error: {e}")
+        finally:
+            session.close()
+    try:
+        _invalidate_status_grid_cache()
+    except Exception:
+        pass
+    return jsonify({"ok": True, "active": False, "reset": True, "message": "♻️ Demo reset complete."})
+
+
+@app.route("/api/seed-rooms-status", methods=["POST", "OPTIONS"])
+def api_seed_rooms_status():
+    """
+    Operational Excellence / Room Inventory — refresh demo room grid + bookings context.
+    Soft-auth under AUTH_DISABLED / staging; JWT required in strict mode.
+    """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth()
+    if guard:
+        return guard
+    tenant_id = getattr(request, "tenant_id", None) or DEFAULT_TENANT_ID
+    user_id = getattr(request, "user_id", None) or f"demo-{tenant_id}"
+    try:
+        _invalidate_status_grid_cache()
+    except Exception:
+        pass
+    try:
+        payload = _room_status_grid_payload(tenant_id, user_id)
+        bookings = _upcoming_bookings_payload(tenant_id, user_id)
+        summary = payload.get("summary") or {}
+        n_bookings = len((bookings or {}).get("bookings") or [])
+        return jsonify({
+            "ok": True,
+            "message": (
+                f"✅ Room inventory ready — "
+                f"{summary.get('occupied', 0)} Occupied, "
+                f"{summary.get('dirty', 0)} Dirty, "
+                f"{summary.get('ready', 0)} Ready · {n_bookings} upcoming bookings"
+            ),
+            "summary": summary,
+            "upcoming_bookings": n_bookings,
+        }), 200
+    except Exception as e:
+        print(f"[seed-rooms-status] {e}", flush=True)
+        return jsonify({
+            "ok": True,
+            "message": "✅ Room inventory refresh requested (partial).",
+            "error": str(e),
+        }), 200
 
 
 @app.route("/init-db", methods=["GET", "POST"])
@@ -12855,7 +12982,7 @@ def db_status():
     return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
-@app.route("/api/demo/run-pilot", methods=["POST", "GET"])
+@app.route("/api/demo/run-pilot", methods=["POST", "GET", "OPTIONS"])
 def run_pilot_endpoint():
     """
     One-click pilot simulation launcher.
@@ -12864,14 +12991,11 @@ def run_pilot_endpoint():
     Also accepts an optional query param:
       ?reset=1  → stop + wipe mock-staff tasks before restarting
     """
-    if not AUTH_DISABLED:
-        try:
-            identity = get_property_tasks_auth_bundle()
-        except Exception as exc:
-            msg = str(exc).strip() or "Unauthorized"
-            return jsonify({"error": msg}), 401
-        if identity.get("app_role") != "admin":
-            return jsonify({"error": "Forbidden — admin required"}), 403
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth(admin_only=True)
+    if guard:
+        return guard
     if request.args.get("reset") == "1":
         stop_pilot_simulation()
         if SessionLocal and PropertyTaskModel:
@@ -12900,26 +13024,34 @@ def run_pilot_endpoint():
     })
 
 
-@app.route("/api/sim-log", methods=["GET"])
-@require_auth
+@app.route("/api/sim-log", methods=["GET", "OPTIONS"])
 def sim_log_endpoint():
     """
     Real-time simulation activity log for the God Mode admin dashboard.
     Returns the last N entries (newest first) from the _SIM_LOG deque.
     Query param: ?limit=50
     """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth()
+    if guard:
+        return guard
     limit   = min(int(request.args.get("limit", 50)), 200)
     entries = list(_SIM_LOG)[-limit:]
-    return jsonify({"entries": list(reversed(entries)), "count": len(_SIM_LOG)})
+    return jsonify({"ok": True, "entries": list(reversed(entries)), "count": len(_SIM_LOG)})
 
 
-@app.route("/api/god-mode/overview", methods=["GET"])
-@require_auth
+@app.route("/api/god-mode/overview", methods=["GET", "OPTIONS"])
 def god_mode_overview():
     """
     Master God-Mode overview: all pilot properties with task counts,
     recent pending tasks, recent mock-staff completions, and live stats.
     """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    guard = _guard_god_mode_auth()
+    if guard:
+        return guard
     if not SessionLocal or not ManualRoomModel or not PropertyTaskModel:
         return jsonify({"properties": [], "pending_tasks": [], "completions": [], "stats": {}, "demo_active": DEMO_ACTIVE})
 
@@ -15702,8 +15834,10 @@ def api_health_bookings_tasks_sync():
     try:
         tenant_id, user_id = get_auth_context_from_request()
     except Exception:
-        if not _auth_enforcement_relaxed() and not AUTH_DISABLED:
-            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+        # Health probes must not hard-401 the UI — soft-fallback to default tenant.
+        soft = _soft_demo_auth_identity()
+        tenant_id = soft.get("tenant_id") or DEFAULT_TENANT_ID
+        user_id = soft.get("user_id") or f"demo-{tenant_id}"
     # JWT tenant wins — ignore spoofable X-Tenant-Id override.
     upcoming = _upcoming_bookings_payload(tenant_id, user_id)
     bookings = upcoming.get("bookings") or []
