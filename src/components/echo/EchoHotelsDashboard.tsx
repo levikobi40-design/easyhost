@@ -4,7 +4,6 @@ import {
   Building2,
   CheckCircle2,
   ClipboardList,
-  MessageCircle,
   Send,
   Sparkles,
   UserPlus,
@@ -18,13 +17,17 @@ import {
   ECHO_TAGLINE,
   buildRoomsForProperty,
   computeEchoStats,
-  echoMayaFreeTextReply,
+  echoMayaAvatarReply,
   getEchoProperty,
   type EchoOpsStatus,
   type EchoPropertyId,
   type EchoRoom,
 } from '../../data/echoHotels';
+import { speakMayaReply, cancelMayaSpeech } from '../../utils/mayaVoice';
 import './EchoHotelsDashboard.css';
+
+const MAYA_AVATAR_URL =
+  'https://api.dicebear.com/7.x/personas/svg?seed=MayaEcho&backgroundColor=0d9488';
 
 type ChatMsg = { id: string; role: 'guest' | 'maya'; text: string; at: number };
 
@@ -97,16 +100,24 @@ export default function EchoHotelsDashboard() {
     {
       id: 'welcome',
       role: 'maya',
-      text: 'שלום! אני Maya מ־Echo Hotels. שאלו על Wi‑Fi, Happy Hour או ארוחת בוקר — או הקלידו חופשי.',
+      text: 'שלום, אני מאיה מ־Echo Hotels. שאלו על חדר, Happy Hour או Wi‑Fi — ואענה בקצרה לאווטאר.',
       at: Date.now(),
     },
   ]);
   const [draft, setDraft] = useState('');
+  const [speaking, setSpeaking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const property = useMemo(() => getEchoProperty(propertyId), [propertyId]);
   const rooms = roomsByProperty[propertyId] ?? [];
   const stats = useMemo(() => computeEchoStats(rooms), [rooms]);
+
+  const mayaCtx = useMemo(
+    () => ({ propertyId, propertyName: property.name, rooms }),
+    [propertyId, property.name, rooms],
+  );
+
+  useEffect(() => () => cancelMayaSpeech(), []);
 
   // Hard guard: never show mismatched room types for the selected property
   useEffect(() => {
@@ -162,6 +173,13 @@ export default function EchoHotelsDashboard() {
     setAssignName('');
   };
 
+  const speakAnswer = (answer: string) => {
+    setSpeaking(true);
+    speakMayaReply(answer, 'he', {
+      onComplete: () => setSpeaking(false),
+    });
+  };
+
   const pushMaya = (guestText: string, answer: string) => {
     const now = Date.now();
     setChat((c) => [
@@ -169,9 +187,11 @@ export default function EchoHotelsDashboard() {
       { id: `g-${now}`, role: 'guest', text: guestText, at: now },
       { id: `m-${now + 1}`, role: 'maya', text: answer, at: now + 1 },
     ]);
+    speakAnswer(answer);
   };
 
-  const onQuickPrompt = (label: string, answer: string) => {
+  const onQuickPrompt = (label: string, canned: string) => {
+    const answer = canned.trim() || echoMayaAvatarReply(label, mayaCtx);
     pushMaya(label, answer);
   };
 
@@ -179,7 +199,7 @@ export default function EchoHotelsDashboard() {
     e?.preventDefault?.();
     const text = draft.trim();
     if (!text) return;
-    pushMaya(text, echoMayaFreeTextReply(text, property.name));
+    pushMaya(text, echoMayaAvatarReply(text, mayaCtx));
     setDraft('');
   };
 
@@ -297,13 +317,24 @@ export default function EchoHotelsDashboard() {
           </div>
         </section>
 
-        {/* Maya panel */}
-        <aside className="echo-maya" aria-label="Maya AI Concierge">
+        {/* Maya WhatsApp / Operations avatar preview */}
+        <aside className="echo-maya" aria-label="Maya WhatsApp Operations preview">
           <div className="echo-maya-head">
-            <MessageCircle size={18} aria-hidden />
+            <div className={`echo-maya-avatar-wrap ${speaking ? 'echo-maya-speaking' : ''}`}>
+              <div className="echo-maya-avatar-glow" aria-hidden />
+              <img
+                src={MAYA_AVATAR_URL}
+                alt="Maya"
+                className="echo-maya-avatar-img"
+              />
+              <span className={`echo-maya-live-dot ${speaking ? 'pulse' : ''}`} />
+            </div>
             <div>
-              <h2>Maya · Echo Concierge</h2>
-              <p>WhatsApp-style guest replies</p>
+              <h2>מאיה · WhatsApp / Operations</h2>
+              <p>
+                אווטאר אינטראקטיבי · תשובות קצרות לדיבור
+                {speaking ? ' · מדברת…' : ''}
+              </p>
             </div>
           </div>
 
@@ -326,7 +357,7 @@ export default function EchoHotelsDashboard() {
                 key={m.id}
                 className={`echo-bubble ${m.role === 'maya' ? 'echo-bubble-maya' : 'echo-bubble-guest'}`}
               >
-                <span className="echo-bubble-who">{m.role === 'maya' ? 'Maya' : 'אורח'}</span>
+                <span className="echo-bubble-who">{m.role === 'maya' ? 'מאיה' : 'אורח'}</span>
                 {m.text}
               </div>
             ))}
@@ -338,7 +369,7 @@ export default function EchoHotelsDashboard() {
               className="echo-maya-input maya-input-field"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="הקלידו שאלה לאורח Echo…"
+              placeholder="שאלו את מאיה — תשובה קצרה לאווטאר…"
               aria-label="Maya message"
             />
             <button type="submit" className="echo-maya-send" aria-label="Send">

@@ -149,7 +149,11 @@ export function buildRoomsForProperty(propertyId: EchoPropertyId): EchoRoom[] {
   for (const alloc of prop.roomTypes) {
     for (let i = 0; i < alloc.count; i += 1) {
       const roomNumber = alloc.floor * 100 + (i + 1);
-      const status = STATUS_CYCLE[seq % STATUS_CYCLE.length];
+      let status = STATUS_CYCLE[seq % STATUS_CYCLE.length];
+      // Demo narrative: Avenue 102 is mid-clean (Maya avatar sample prompt).
+      if (propertyId === 'echo-dizengoff-avenue' && roomNumber === 102) {
+        status = 'Dirty / In Progress';
+      }
       rooms.push({
         id: `${propertyId}-r${roomNumber}`,
         propertyId,
@@ -201,53 +205,196 @@ export const ECHO_MAYA_PROMPTS: readonly {
   answer: string;
 }[] = [
   {
-    id: 'happy-hour',
-    label: 'מה שעות ה-Happy Hour והיין בלובי?',
+    id: 'happy-hour-garden',
+    label: 'מתי הראפי האוור בדיזינגוף גארדן?',
     answer:
-      'ה-Happy Hour שלנו מתקיים בכל ערב בלובי בין 18:00 ל-19:30 כולל כוס יין במתנה!',
+      'ה-Happy Hour בדיזינגוף גארדן מתקיים בכל יום בלובי בין השעות 18:00 ל-19:30, וכולל יין ונשנושים חופשי. תרצה שאשלח תזכורת לאורחים?',
+  },
+  {
+    id: 'room-102',
+    label: 'מה המצב בחדר 102?',
+    answer: '', // resolved live from room grid in echoMayaAvatarReply
   },
   {
     id: 'wifi',
     label: 'מה קוד ה-Wi-Fi בחדר?',
-    answer: 'רשת: Echo_Guest | סיסמה: Echo2026',
+    answer: 'רשת Echo Guest, סיסמה Echo 2026. אפשר להתחבר מיד בחדר.',
   },
   {
     id: 'breakfast',
     label: 'איפה אפשר לאכול ארוחת בוקר קרוב?',
     answer:
-      'ארוחת הבוקר מוגשת בבתי הקפה השותפים שלנו ממש ליד המלון ברחוב דיזנגוף / בן יהודה.',
+      'ארוחת הבוקר מוגשת בבתי הקפה השותפים ליד המלון ברחוב דיזנגוף או בן יהודה.',
   },
 ] as const;
 
 export const ECHO_CTA_HE =
   'נבנה במיוחד עבור הנהלת Echo Hotels | פיילוט תפעולי של 14 ימים ללא עלות וללא צורך בחיבור מורכב ב-PMS.';
 
-/** Free-text Maya replies keyed by simple intent tokens (Hebrew + English). */
-export function echoMayaFreeTextReply(input: string, propertyName: string): string {
-  const t = (input || '').trim().toLowerCase();
-  if (!t) {
-    return `שלום מ־Echo Hotels (${propertyName})! במה אפשר לעזור?`;
+/** Spoken-avatar system persona (WhatsApp / Operations preview). */
+export const MAYA_ECHO_AVATAR_PERSONA = `
+You are Maya (מאיה), EasyHost AI operational assistant and guest concierge for Echo Hotels Tel Aviv.
+Properties: Dizengoff Avenue, Dizengoff Garden, Sea-Land Suites, Iconic Hotel.
+Tone: professional, warm, helpful, concise. Hebrew by default; English only if the user writes English.
+Brevity: 1–3 short sentences max — output is spoken by an interactive video avatar.
+Formatting: plain text only. No bullets, tables, markdown, or code.
+Capabilities: room cleaning status, check-in/out help, maintenance alerts, concierge (Wi-Fi, Happy Hour, amenities).
+`.trim();
+
+const PROPERTY_ALIASES: { id: EchoPropertyId; he: string; en: RegExp }[] = [
+  {
+    id: 'echo-dizengoff-garden',
+    he: 'דיזינגוף גארדן',
+    en: /dizengoff\s*garden|garden/i,
+  },
+  {
+    id: 'echo-dizengoff-avenue',
+    he: 'דיזינגוף אבניו',
+    en: /dizengoff\s*avenue|avenue|אבניו/i,
+  },
+  {
+    id: 'echo-sea-land-suites',
+    he: 'סי־לנד סוויטס',
+    en: /sea[- ]?land|בן\s*יהודה/i,
+  },
+  {
+    id: 'echo-iconic-hotel',
+    he: 'אייקוניק',
+    en: /iconic|יהודה\s*הלוי/i,
+  },
+];
+
+function hebrewPropertyName(id: EchoPropertyId): string {
+  return PROPERTY_ALIASES.find((p) => p.id === id)?.he || getEchoProperty(id).name;
+}
+
+function clampSpoken(text: string, maxSentences = 3): string {
+  const plain = String(text || '')
+    .replace(/[*_`#>-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!plain) return '';
+  const parts = plain.split(/(?<=[.!?…])\s+/).filter(Boolean);
+  return parts.slice(0, maxSentences).join(' ');
+}
+
+export type EchoMayaReplyContext = {
+  propertyId: EchoPropertyId;
+  propertyName: string;
+  rooms: EchoRoom[];
+};
+
+function resolveRoomStatusLine(
+  roomNumber: number,
+  ctx: EchoMayaReplyContext,
+): string {
+  const room =
+    ctx.rooms.find((r) => r.roomNumber === roomNumber) ||
+    // Cross-property fallback for demo questions like "חדר 102"
+    ECHO_PROPERTIES.flatMap((p) =>
+      p.id === ctx.propertyId ? [] : buildRoomsForProperty(p.id),
+    ).find((r) => r.roomNumber === roomNumber);
+
+  const propId = room?.propertyId || ctx.propertyId;
+  const propHe = hebrewPropertyName(propId);
+  if (!room) {
+    return `לא מצאתי את חדר ${roomNumber} ב־Echo Hotels כרגע. אפשר לבדוק מספר אחר?`;
   }
-  if (/wifi|ויי.?פי|סיסמ|קוד.?ה.?wi/i.test(t) || t.includes('wifi') || t.includes('וייפי') || t.includes('wi-fi')) {
-    return ECHO_MAYA_PROMPTS[1].answer;
+  if (room.status === 'Dirty / In Progress') {
+    return `חדר ${roomNumber} ב${propHe} נמצא כרגע בסטטוס ניקיון. צוות המשק מעריך שהוא יהיה מוכן בתוך 20 דקות.`;
   }
-  if (/happy.?hour|הפי.?אוור|יין|לובי/i.test(t)) {
-    return ECHO_MAYA_PROMPTS[0].answer;
+  if (room.status === 'Ready / Inspected') {
+    return `חדר ${roomNumber} ב${propHe} מוכן ובדוק. אפשר לשבץ אורח מיד.`;
   }
-  if (/בוקר|breakfast|לאכול|קפה|דיזנגוף|בן.?יהודה/i.test(t)) {
-    return ECHO_MAYA_PROMPTS[2].answer;
+  return `חדר ${roomNumber} ב${propHe} תפוס כרגע, עם בקשת לא להפריע.`;
+}
+
+/**
+ * Avatar-safe Maya reply for Echo Hotels WhatsApp / Operations preview.
+ * Always plain Hebrew/English prose, 1–3 sentences, no markdown.
+ */
+export function echoMayaAvatarReply(
+  input: string,
+  ctx: EchoMayaReplyContext,
+): string {
+  const raw = (input || '').trim();
+  const t = raw.toLowerCase();
+  const isEn = /^[\x00-\x7F\s\d.,!?'"\-]+$/.test(raw) && /[a-z]/i.test(raw);
+
+  if (!raw) {
+    return isEn
+      ? 'Hi, I am Maya from Echo Hotels. How can I help?'
+      : 'שלום, אני מאיה מ־Echo Hotels. במה אוכל לעזור?';
   }
-  if (/ספא|spa|בריכה|pool|חוף|beach/i.test(t)) {
-    return `ב־${propertyName} אפשר לתאם ספא / בריכה דרך הקבלה — אשמח להפנות אתכם.`;
+
+  const roomMatch =
+    raw.match(/(?:חדר|room)\s*#?\s*(\d{2,4})/i) ||
+    (/מצב|status|ניק|clean|ready|מוכן/i.test(raw) ? raw.match(/\b(\d{3})\b/) : null);
+  if (roomMatch) {
+    return clampSpoken(resolveRoomStatusLine(Number(roomMatch[1]), ctx));
   }
+
+  const mentionedGarden =
+    /גארדן|garden|דיזינגוף\s*גארדן/i.test(raw) || /ראפי|הפי|happy/i.test(t);
+  if (/happy.?hour|הפי.?אוור|ראפי.?אוור|יין|לובי/i.test(t) || /ראפי/.test(raw)) {
+    const place = mentionedGarden && /גארדן|garden/i.test(raw)
+      ? 'בדיזינגוף גארדן'
+      : `ב${hebrewPropertyName(ctx.propertyId)}`;
+    return clampSpoken(
+      `ה-Happy Hour ${place} מתקיים בכל יום בלובי בין השעות 18:00 ל-19:30, וכולל יין ונשנושים חופשי. תרצה שאשלח תזכורת לאורחים?`,
+    );
+  }
+
+  if (/wifi|ויי.?פי|סיסמ|קוד.?ה.?wi|wi-fi/i.test(t) || raw.includes('וייפי')) {
+    return clampSpoken('רשת Echo Guest, סיסמה Echo 2026. אפשר להתחבר מיד בחדר.');
+  }
+
+  if (/בוקר|breakfast|לאכול|קפה/i.test(t)) {
+    return clampSpoken(
+      'ארוחת הבוקר מוגשת בבתי הקפה השותפים ליד המלון ברחוב דיזנגוף או בן יהודה.',
+    );
+  }
+
   if (/צ.?ק.?אאוט|checkout|check.?out|יציאה/i.test(t)) {
-    return 'צ׳ק-אאוט עד 11:00. אפשר לבקש late checkout בקבלה לפי זמינות.';
+    return clampSpoken('צ׳ק-אאוט עד שעה אחת עשרה. אפשר לבקש יציאה מאוחרת בקבלה לפי זמינות.');
   }
+
   if (/צ.?ק.?אין|check.?in|הגעה/i.test(t)) {
-    return 'צ׳ק-אין החל מ־15:00. מוקדמים? הקבלה תשמור את המזוודות בשמחה.';
+    return clampSpoken('צ׳ק-אין החל משלוש אחר הצהריים. מוקדמים? הקבלה תשמור מזוודות בשמחה.');
   }
-  return (
-    `תודה על הפנייה ל־Echo Hotels (${propertyName}). ` +
-    'קיבלתי את ההודעה — הקבלה או Maya ב־WhatsApp יחזרו אליך מיד עם תשובה מדויקת.'
+
+  if (/תחזוק|maintenance|תקלה|שבור|broken|leak|דליפ/i.test(t)) {
+    return clampSpoken(
+      `קיבלתי. אפתח התראת תחזוקה עבור ${ctx.propertyName} ואעדכן את הצוות מיד.`,
+    );
+  }
+
+  if (/ניק|clean|housekeep|משק/i.test(t)) {
+    const dirty = ctx.rooms.filter((r) => r.status === 'Dirty / In Progress').length;
+    return clampSpoken(
+      dirty > 0
+        ? `ב${hebrewPropertyName(ctx.propertyId)} יש כרגע ${dirty} חדרים בניקיון פעיל. רוצה עדכון על חדר מסוים?`
+        : `ב${hebrewPropertyName(ctx.propertyId)} אין כרגע חדרים בניקיון פעיל. הכול נראה מוכן.`,
+    );
+  }
+
+  if (isEn) {
+    return clampSpoken(
+      `Thanks — I am Maya at Echo Hotels ${ctx.propertyName}. Ask me about rooms, Wi-Fi, Happy Hour, or check-in.`,
+    );
+  }
+
+  return clampSpoken(
+    `תודה, אני מאיה מ־Echo Hotels ב${hebrewPropertyName(ctx.propertyId)}. אפשר לשאול על חדר, Wi-Fi, Happy Hour או צ׳ק-אין.`,
   );
+}
+
+/** @deprecated use echoMayaAvatarReply — kept for older call sites */
+export function echoMayaFreeTextReply(input: string, propertyName: string): string {
+  const prop = ECHO_PROPERTIES.find((p) => p.name === propertyName) || ECHO_PROPERTIES[0];
+  return echoMayaAvatarReply(input, {
+    propertyId: prop.id,
+    propertyName: prop.name,
+    rooms: buildRoomsForProperty(prop.id),
+  });
 }
