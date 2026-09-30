@@ -505,7 +505,7 @@ MAYA_AVATAR_SYSTEM_INSTRUCTION = """
 You are Maya (מאיה), an AI operational assistant and guest concierge for EasyHost AI, specializing in luxury villa management and maintenance operations.
 CORE PERSONALITY & BEHAVIOR:
 - Tone: Professional, warm, efficient, and concise.
-- Language: Respond in Hebrew by default (unless the user writes in English).
+- Language: Always reply in the same language the user wrote in. If the message is in English, reply entirely in English with no Hebrew words; if it is in Hebrew, reply entirely in Hebrew. Use Hebrew only when the language is unclear.
 - Brevity constraint: Keep your answers very short (1 to 3 sentences maximum) for interactive voice/avatar output.
 - Formatting: Plain text only. No markdown, tables, bullet points, or code blocks.
 KNOWLEDGE BASE & FOCUS:
@@ -522,7 +522,7 @@ Wi-Fi: network Villa_Guest, password Corfu2026 (also printed on the card by the 
 Self check-in: from 15:00. The key lockbox is next to the main door; its code is sent by WhatsApp on the arrival day. Check-out until 11:00, leave the keys back in the lockbox.
 Air conditioning: remote controls are in each bedroom; keep windows closed while AC is running.
 Urgent maintenance (water leak, power outage, AC or pool failure): the on-call maintenance team is reachable 24/7 through this WhatsApp chat and responds within about 60 minutes.
-If a villa status is not listed below, say you will check with the operations team instead of guessing.
+For anything not listed here (such as a villa's current cleaning status), say you will check with the operations team instead of guessing.
 """.strip()
 
 # Pinned portfolio hotels (must match UI — see PropertiesContext buildBazaarJaffaPinned / buildCityTowerPinned)
@@ -23844,9 +23844,10 @@ def _maya_avatar_spoken_text(raw, max_sentences=3):
 @app.route("/api/maya/echo-avatar", methods=["POST", "OPTIONS"])
 def api_maya_echo_avatar():
     """
-    Echo Hotels avatar chat (WhatsApp / Operations preview). Gemini with the short avatar persona.
+    Luxury villa avatar chat (WhatsApp / Operations preview). Gemini with the short avatar persona,
+    grounded only in the Corfu villa facts — any property/room data in the body is ignored.
     Always 200: on failure returns ok=false with an empty reply so the client uses its local fallback.
-    Body: { message, property_name?, rooms?: [{room_number, room_type, status}] }
+    Body: { message }
     """
     if request.method == "OPTIONS":
         return Response(status=204)
@@ -23855,24 +23856,11 @@ def api_maya_echo_avatar():
     if not message:
         return jsonify({"ok": False, "reply": "", "source": "empty"}), 200
 
-    property_name = str(data.get("property_name") or "").strip()[:80]
-    rooms = data.get("rooms") if isinstance(data.get("rooms"), list) else []
-    room_lines = []
-    for r in rooms[:40]:
-        if not isinstance(r, dict):
-            continue
-        num = str(r.get("room_number") or "").strip()[:6]
-        if not num:
-            continue
-        room_type = str(r.get("room_type") or "").strip()[:60]
-        status = str(r.get("status") or "").strip()[:40]
-        room_lines.append(f"Room {num} ({room_type}): {status}")
-
     live = [MAYA_AVATAR_VILLA_FACTS]
-    if property_name:
-        live.append(f"Currently selected property: {property_name}.")
-    if room_lines:
-        live.append("Live room statuses for the selected property:\n" + "\n".join(room_lines))
+    if re.search(r"[\u0590-\u05FF]", message):
+        live.append("The user wrote in Hebrew. Reply only in Hebrew.")
+    elif re.search(r"[A-Za-z]", message):
+        live.append("The user wrote in English. Reply only in English, with no Hebrew at all.")
 
     budget = _maya_gateway_budget_sec(10)
     deadline = time.monotonic() + float(budget)
@@ -23883,7 +23871,8 @@ def api_maya_echo_avatar():
             extra_system="\n\n".join(live),
             deadline=deadline,
             system_instruction=MAYA_AVATAR_SYSTEM_INSTRUCTION,
-            max_output_tokens=220,
+            # Thinking models spend part of this budget before answering; too low cuts replies mid-sentence.
+            max_output_tokens=1024,
         )
     except Exception as e:
         print(f"[echo-avatar] Gemini unavailable → client fallback: {type(e).__name__}: {e}", flush=True)

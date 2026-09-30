@@ -190,7 +190,7 @@ export default function EchoHotelsDashboard() {
     setThinking(true);
     cancelMayaSpeech();
     const ctx = mayaCtx;
-    const fromGemini = await askEchoMayaAvatar(guestText, ctx.propertyName, ctx.rooms);
+    const fromGemini = await askEchoMayaAvatar(guestText);
     const answer = fromGemini || cannedFallback.trim() || echoMayaAvatarReply(guestText, ctx);
     setThinking(false);
     setChat((c) => [...c, { id: `m-${Date.now()}`, role: 'maya', text: answer, at: Date.now() }]);
