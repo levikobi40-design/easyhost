@@ -296,7 +296,12 @@
       "contacted": "נוצר קשר",
       "qualified": "מוכשר",
       "converted": "הומר",
-      "lost": "אבוד"
+      "lost": "אבוד",
+      "pending": "ממתין לשליחה",
+      "sent": "מייל נשלח",
+      "replied": "השיב",
+      "booked": "נקבעה שיחה",
+      "optOut": "הוסר מהרשימה"
     }
   },
   "mayaChat": {

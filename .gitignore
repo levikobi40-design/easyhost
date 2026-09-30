@@ -57,3 +57,8 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+# Auto-mailer send history
+outreach/sent_log.csv
+outreach/leads_tracker.json
+outreach/leads_tracker.tmp
+outreach/ab_report.json

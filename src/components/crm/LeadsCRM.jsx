@@ -19,6 +19,7 @@ const sourceIcons = {
   direct: '🎯',
   referral: '👥',
   social: '📱',
+  cold_email: '✉️',
 };
 
 const LeadsCRM = () => {
@@ -53,6 +54,11 @@ const LeadsCRM = () => {
     { value: 'qualified', label: t('leadsCRM.status.qualified'), color: '#8b5cf6' },
     { value: 'converted', label: t('leadsCRM.status.converted'), color: '#10b981' },
     { value: 'lost', label: t('leadsCRM.status.lost'), color: '#ef4444' },
+    { value: 'Pending', label: t('leadsCRM.status.pending'), color: '#94a3b8' },
+    { value: 'Sent', label: t('leadsCRM.status.sent'), color: '#0ea5e9' },
+    { value: 'Replied', label: t('leadsCRM.status.replied'), color: '#a855f7' },
+    { value: 'Booked', label: t('leadsCRM.status.booked'), color: '#10b981' },
+    { value: 'Opt-Out', label: t('leadsCRM.status.optOut'), color: '#ef4444' },
   ];
 
   const leadsWithFallback = leads;

@@ -296,7 +296,12 @@
       "contacted": "Contacted",
       "qualified": "Qualified",
       "converted": "Converted",
-      "lost": "Lost"
+      "lost": "Lost",
+      "pending": "Pending",
+      "sent": "Sent",
+      "replied": "Replied",
+      "booked": "Booked",
+      "optOut": "Opt-Out"
     }
   },
   "mayaChat": {
