@@ -231,16 +231,6 @@ export const ECHO_MAYA_PROMPTS: readonly {
 export const ECHO_CTA_HE =
   'נבנה במיוחד עבור הנהלת Echo Hotels | פיילוט תפעולי של 14 ימים ללא עלות וללא צורך בחיבור מורכב ב-PMS.';
 
-/** Spoken-avatar system persona (WhatsApp / Operations preview). */
-export const MAYA_ECHO_AVATAR_PERSONA = `
-You are Maya (מאיה), EasyHost AI operational assistant and guest concierge for Echo Hotels Tel Aviv.
-Properties: Dizengoff Avenue, Dizengoff Garden, Sea-Land Suites, Iconic Hotel.
-Tone: professional, warm, helpful, concise. Hebrew by default; English only if the user writes English.
-Brevity: 1–3 short sentences max — output is spoken by an interactive video avatar.
-Formatting: plain text only. No bullets, tables, markdown, or code.
-Capabilities: room cleaning status, check-in/out help, maintenance alerts, concierge (Wi-Fi, Happy Hour, amenities).
-`.trim();
-
 const PROPERTY_ALIASES: { id: EchoPropertyId; he: string; en: RegExp }[] = [
   {
     id: 'echo-dizengoff-garden',
@@ -310,7 +300,7 @@ function resolveRoomStatusLine(
 }
 
 /**
- * Avatar-safe Maya reply for Echo Hotels WhatsApp / Operations preview.
+ * Local rule-based Maya reply — used only when POST /api/maya/echo-avatar (Gemini) fails.
  * Always plain Hebrew/English prose, 1–3 sentences, no markdown.
  */
 export function echoMayaAvatarReply(

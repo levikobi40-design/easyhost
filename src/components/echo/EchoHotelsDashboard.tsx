@@ -24,6 +24,7 @@ import {
   type EchoRoom,
 } from '../../data/echoHotels';
 import { speakMayaReply, cancelMayaSpeech } from '../../utils/mayaVoice';
+import { askEchoMayaAvatar } from '../../services/echoMayaAvatar';
 import './EchoHotelsDashboard.css';
 
 const MAYA_AVATAR_URL =
@@ -106,6 +107,7 @@ export default function EchoHotelsDashboard() {
   ]);
   const [draft, setDraft] = useState('');
   const [speaking, setSpeaking] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const property = useMemo(() => getEchoProperty(propertyId), [propertyId]);
@@ -141,7 +143,7 @@ export default function EchoHotelsDashboard() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chat]);
+  }, [chat, thinking]);
 
   const updateRoom = useCallback(
     (roomId: string, patch: Partial<EchoRoom>) => {
@@ -180,27 +182,31 @@ export default function EchoHotelsDashboard() {
     });
   };
 
-  const pushMaya = (guestText: string, answer: string) => {
+  /** Gemini first; the canned answer (quick prompts) or local rules only when Gemini fails. */
+  const askMaya = async (guestText: string, cannedFallback = '') => {
+    if (thinking) return;
     const now = Date.now();
-    setChat((c) => [
-      ...c,
-      { id: `g-${now}`, role: 'guest', text: guestText, at: now },
-      { id: `m-${now + 1}`, role: 'maya', text: answer, at: now + 1 },
-    ]);
+    setChat((c) => [...c, { id: `g-${now}`, role: 'guest', text: guestText, at: now }]);
+    setThinking(true);
+    cancelMayaSpeech();
+    const ctx = mayaCtx;
+    const fromGemini = await askEchoMayaAvatar(guestText, ctx.propertyName, ctx.rooms);
+    const answer = fromGemini || cannedFallback.trim() || echoMayaAvatarReply(guestText, ctx);
+    setThinking(false);
+    setChat((c) => [...c, { id: `m-${Date.now()}`, role: 'maya', text: answer, at: Date.now() }]);
     speakAnswer(answer);
   };
 
   const onQuickPrompt = (label: string, canned: string) => {
-    const answer = canned.trim() || echoMayaAvatarReply(label, mayaCtx);
-    pushMaya(label, answer);
+    void askMaya(label, canned);
   };
 
   const onSend = (e?: React.FormEvent) => {
     e?.preventDefault?.();
     const text = draft.trim();
-    if (!text) return;
-    pushMaya(text, echoMayaAvatarReply(text, mayaCtx));
+    if (!text || thinking) return;
     setDraft('');
+    void askMaya(text);
   };
 
   return (
@@ -333,7 +339,7 @@ export default function EchoHotelsDashboard() {
               <h2>מאיה · WhatsApp / Operations</h2>
               <p>
                 אווטאר אינטראקטיבי · תשובות קצרות לדיבור
-                {speaking ? ' · מדברת…' : ''}
+                {thinking ? ' · חושבת…' : speaking ? ' · מדברת…' : ''}
               </p>
             </div>
           </div>
@@ -345,6 +351,7 @@ export default function EchoHotelsDashboard() {
                 type="button"
                 className="echo-prompt-chip"
                 onClick={() => onQuickPrompt(p.label, p.answer)}
+                disabled={thinking}
               >
                 {p.label}
               </button>
@@ -361,6 +368,12 @@ export default function EchoHotelsDashboard() {
                 {m.text}
               </div>
             ))}
+            {thinking && (
+              <div className="echo-bubble echo-bubble-maya echo-bubble-typing" aria-live="polite">
+                <span className="echo-bubble-who">מאיה</span>
+                מקלידה…
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
@@ -372,7 +385,7 @@ export default function EchoHotelsDashboard() {
               placeholder="שאלו את מאיה — תשובה קצרה לאווטאר…"
               aria-label="Maya message"
             />
-            <button type="submit" className="echo-maya-send" aria-label="Send">
+            <button type="submit" className="echo-maya-send" aria-label="Send" disabled={thinking}>
               <Send size={16} />
             </button>
           </form>

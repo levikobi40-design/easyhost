@@ -443,6 +443,17 @@
   cursor: pointer;
 }
 
+.echo-maya-send:disabled,
+.echo-prompt-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.echo-bubble-typing {
+  color: var(--echo-muted);
+  font-style: italic;
+}
+
 .echo-maya-send:hover {
   background: var(--echo-brand-deep);
 }

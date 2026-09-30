@@ -500,6 +500,31 @@ Beach/pool: private beach access; main outdoor pool & toddler pool (confirm same
 You ARE the guest concierge — give warm, specific recommendations. Never say you cannot recommend because you are "operations only".
 """.strip()
 
+# Echo Hotels WhatsApp / Operations preview avatar — replies are spoken aloud, so plain short text only.
+MAYA_ECHO_AVATAR_SYSTEM_INSTRUCTION = """
+You are Maya (מאיה), an AI operational assistant and guest concierge for EasyHost AI.
+You are embedded as an interactive avatar in the WhatsApp / Operations preview section.
+CORE PERSONALITY & BEHAVIOR:
+- Tone: Professional, warm, helpful, and concise.
+- Language: Respond in Hebrew by default (unless the user writes in English).
+- Brevity constraint: Keep your answers very short (1 to 3 sentences maximum) so it works perfectly for voice/avatar output.
+- Formatting: Do not use bullet points, tables, markdown, or code blocks. Use plain text only.
+KNOWLEDGE BASE:
+- Platform: EasyHost AI
+- Target Client: Echo Hotels Tel Aviv (Dizengoff Avenue, Dizengoff Garden, Sea-Land Suites, Iconic Hotel).
+- Capabilities: Room cleaning status updates, guest check-in/out, maintenance alerts, guest concierge inquiries.
+""".strip()
+
+MAYA_ECHO_AVATAR_FACTS = """
+Echo Hotels guest facts (use when relevant, never invent others):
+Happy Hour: every evening in the lobby 18:00-19:30, includes wine and snacks.
+Wi-Fi: network Echo_Guest, password Echo2026.
+Breakfast: served at partner cafés next to the hotels on Dizengoff / Ben Yehuda.
+Check-in from 15:00. Check-out until 11:00; late check-out on request at reception.
+Addresses: Dizengoff Avenue 133 Dizengoff St; Dizengoff Garden 138 Dizengoff St; Sea-Land Suites 84 Ben Yehuda St; Iconic Hotel 147 Yehuda HaLevi St.
+If a room status is not listed below, say you will check with housekeeping instead of guessing.
+""".strip()
+
 # Pinned portfolio hotels (must match UI — see PropertiesContext buildBazaarJaffaPinned / buildCityTowerPinned)
 MAYA_PINNED_PROPERTY_LABELS = [
     "וילה Thaleri",
@@ -2689,11 +2714,19 @@ def _gemini_generate_content(model, prompt, *, stream=False, timeout_sec=8):
     return model.generate_content(prompt, stream=stream)
 
 
-def _gemini_generate(prompt: str, timeout: int = 8, extra_system: str = "", deadline: float | None = None) -> str:
+def _gemini_generate(
+    prompt: str,
+    timeout: int = 8,
+    extra_system: str = "",
+    deadline: float | None = None,
+    system_instruction: str | None = None,
+    max_output_tokens: int = 768,
+) -> str:
     """
     Maya unified LLM: **Gemini** (google-generativeai). Same MAYA_SYSTEM_INSTRUCTION / LIVE DATA.
     Blocking SDK calls run via eventlet.tpool so the single eventlet worker is not stalled.
     `deadline` is time.monotonic() wall-clock; when hit, raises TimeoutError (no more model retries).
+    `system_instruction` replaces MAYA_SYSTEM_INSTRUCTION (e.g. the plain-text avatar persona).
     """
     import traceback as _tb
 
@@ -2717,16 +2750,18 @@ def _gemini_generate(prompt: str, timeout: int = 8, extra_system: str = "", dead
 
     timeout = _gemini_rpc_timeout_sec(timeout or 8)
 
+    _base_sys = (system_instruction or "").strip() or MAYA_SYSTEM_INSTRUCTION
+
     def _call_model(model_name, call_timeout):
-        _sys = MAYA_SYSTEM_INSTRUCTION
+        _sys = _base_sys
         if (extra_system or "").strip():
-            _sys = MAYA_SYSTEM_INSTRUCTION + "\n\n--- LIVE DATA (authoritative) ---\n" + extra_system.strip()
+            _sys = _base_sys + "\n\n--- LIVE DATA (authoritative) ---\n" + extra_system.strip()
         model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=_sys,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.42,
-                max_output_tokens=768,
+                max_output_tokens=max_output_tokens,
             ),
         )
         resp = _gemini_generate_content(model, prompt, stream=False, timeout_sec=call_timeout)
@@ -23790,6 +23825,73 @@ def _guest_maya_fallback_reply(language="he"):
     if lang == "en":
         return "Thanks for reaching out! We'll get back to you shortly. 🙏"
     return "תודה על הפנייה! נחזור אליך בהקדם. 🙏"
+
+
+def _maya_avatar_spoken_text(raw, max_sentences=3):
+    """Plain spoken text for the avatar: no JSON, markdown, or bullets; at most N sentences."""
+    t = _maya_guest_plain_text(raw)
+    if not t:
+        return ""
+    t = re.sub(r"```.*?```", " ", t, flags=re.S)
+    t = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", t, flags=re.M)
+    t = re.sub(r"[*_`#|>]+", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    parts = [p for p in re.split(r"(?<=[.!?…])\s+", t) if p]
+    return " ".join(parts[:max_sentences]).strip()
+
+
+@app.route("/api/maya/echo-avatar", methods=["POST", "OPTIONS"])
+def api_maya_echo_avatar():
+    """
+    Echo Hotels avatar chat (WhatsApp / Operations preview). Gemini with the short avatar persona.
+    Always 200: on failure returns ok=false with an empty reply so the client uses its local fallback.
+    Body: { message, property_name?, rooms?: [{room_number, room_type, status}] }
+    """
+    if request.method == "OPTIONS":
+        return Response(status=204)
+    data = request.get_json(silent=True) or {}
+    message = str(data.get("message") or "").strip()[:500]
+    if not message:
+        return jsonify({"ok": False, "reply": "", "source": "empty"}), 200
+
+    property_name = str(data.get("property_name") or "").strip()[:80]
+    rooms = data.get("rooms") if isinstance(data.get("rooms"), list) else []
+    room_lines = []
+    for r in rooms[:40]:
+        if not isinstance(r, dict):
+            continue
+        num = str(r.get("room_number") or "").strip()[:6]
+        if not num:
+            continue
+        room_type = str(r.get("room_type") or "").strip()[:60]
+        status = str(r.get("status") or "").strip()[:40]
+        room_lines.append(f"Room {num} ({room_type}): {status}")
+
+    live = [MAYA_ECHO_AVATAR_FACTS]
+    if property_name:
+        live.append(f"Currently selected property: {property_name}.")
+    if room_lines:
+        live.append("Live room statuses for the selected property:\n" + "\n".join(room_lines))
+
+    budget = _maya_gateway_budget_sec(10)
+    deadline = time.monotonic() + float(budget)
+    try:
+        raw = _gemini_generate(
+            message,
+            timeout=min(8, budget),
+            extra_system="\n\n".join(live),
+            deadline=deadline,
+            system_instruction=MAYA_ECHO_AVATAR_SYSTEM_INSTRUCTION,
+            max_output_tokens=220,
+        )
+    except Exception as e:
+        print(f"[echo-avatar] Gemini unavailable → client fallback: {type(e).__name__}: {e}", flush=True)
+        return jsonify({"ok": False, "reply": "", "source": "unavailable"}), 200
+
+    reply = _maya_avatar_spoken_text(raw)
+    if not reply:
+        return jsonify({"ok": False, "reply": "", "source": "empty_model_reply"}), 200
+    return jsonify({"ok": True, "reply": reply, "source": "gemini"}), 200
 
 
 @app.route("/api/guest/maya-chat", methods=["POST", "OPTIONS"])
