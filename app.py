@@ -513,14 +513,16 @@ KNOWLEDGE BASE & FOCUS:
 - Core Capabilities: Villa cleaning status, maintenance alerts (pool, air conditioning, plumbing), guest check-in instructions, local recommendations, and concierge services.
 """.strip()
 
-MAYA_ECHO_AVATAR_FACTS = """
-Echo Hotels guest facts (use when relevant, never invent others):
-Happy Hour: every evening in the lobby 18:00-19:30, includes wine and snacks.
-Wi-Fi: network Echo_Guest, password Echo2026.
-Breakfast: served at partner cafés next to the hotels on Dizengoff / Ben Yehuda.
-Check-in from 15:00. Check-out until 11:00; late check-out on request at reception.
-Addresses: Dizengoff Avenue 133 Dizengoff St; Dizengoff Garden 138 Dizengoff St; Sea-Land Suites 84 Ben Yehuda St; Iconic Hotel 147 Yehuda HaLevi St.
-If a room status is not listed below, say you will check with housekeeping instead of guessing.
+# Demo villa facts for the avatar — replace with the client's real codes and contacts before a live pilot.
+MAYA_AVATAR_VILLA_FACTS = """
+Corfu luxury villa guest facts (use when relevant, never invent others):
+Villas: Villa Thaleri (Corfu), Manto Apartments and Manto Beach Suite (Barbati beach, Corfu).
+Pool maintenance: daily 09:00-10:30; the pool is closed during service. Pool heating needs about 24 hours to reach temperature after it is switched on.
+Wi-Fi: network Villa_Guest, password Corfu2026 (also printed on the card by the villa entrance).
+Self check-in: from 15:00. The key lockbox is next to the main door; its code is sent by WhatsApp on the arrival day. Check-out until 11:00, leave the keys back in the lockbox.
+Air conditioning: remote controls are in each bedroom; keep windows closed while AC is running.
+Urgent maintenance (water leak, power outage, AC or pool failure): the on-call maintenance team is reachable 24/7 through this WhatsApp chat and responds within about 60 minutes.
+If a villa status is not listed below, say you will check with the operations team instead of guessing.
 """.strip()
 
 # Pinned portfolio hotels (must match UI — see PropertiesContext buildBazaarJaffaPinned / buildCityTowerPinned)
@@ -23832,7 +23834,8 @@ def _maya_avatar_spoken_text(raw, max_sentences=3):
         return ""
     t = re.sub(r"```.*?```", " ", t, flags=re.S)
     t = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", t, flags=re.M)
-    t = re.sub(r"[*_`#|>]+", "", t)
+    t = re.sub(r"[*`#|>]+", "", t)
+    t = re.sub(r"(?<!\w)_+|_+(?!\w)", "", t)
     t = re.sub(r"\s+", " ", t).strip()
     parts = [p for p in re.split(r"(?<=[.!?…])\s+", t) if p]
     return " ".join(parts[:max_sentences]).strip()
@@ -23865,7 +23868,7 @@ def api_maya_echo_avatar():
         status = str(r.get("status") or "").strip()[:40]
         room_lines.append(f"Room {num} ({room_type}): {status}")
 
-    live = [MAYA_ECHO_AVATAR_FACTS]
+    live = [MAYA_AVATAR_VILLA_FACTS]
     if property_name:
         live.append(f"Currently selected property: {property_name}.")
     if room_lines:
